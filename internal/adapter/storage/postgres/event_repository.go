@@ -1,0 +1,394 @@
+package postgres
+
+import (
+	"applegacy/backend/internal/core/domain"
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/jackc/pgx/v4/pgxpool"
+)
+
+type EventRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewEventRepository(db *pgxpool.Pool) *EventRepository {
+	return &EventRepository{db: db}
+}
+
+func (r *EventRepository) ListCategories(ctx context.Context) ([]domain.EventCategory, error) {
+	query := `SELECT id, name, description, order_index, created_at FROM events.categories ORDER BY order_index ASC, name ASC`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []domain.EventCategory
+	for rows.Next() {
+		var c domain.EventCategory
+		err := rows.Scan(&c.ID, &c.Name, &c.Description, &c.OrderIndex, &c.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		categories = append(categories, c)
+	}
+	return categories, nil
+}
+
+func (r *EventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) {
+	query := `
+		SELECT e.id, e.category_id, c.name as category, e.title, e.description, e.image_url, 
+		       e.location, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free, 
+		       e.action_status, e.button_text, e.attendees_limit, e.includes, c.order_index
+		FROM events.events e
+		JOIN events.categories c ON e.category_id = c.id
+		ORDER BY c.order_index ASC, e.start_date ASC
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []domain.Event
+	for rows.Next() {
+		var e domain.Event
+		err := rows.Scan(
+			&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
+			&e.Location, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
+			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.CategoryOrder,
+		)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
+}
+
+func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
+	query := `
+		SELECT e.id, e.category_id, c.name as category, e.title, e.description, e.image_url, 
+		       e.location, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free, 
+		       e.action_status, e.button_text, e.attendees_limit, e.includes, c.order_index
+		FROM events.events e
+		JOIN events.categories c ON e.category_id = c.id
+		WHERE e.id = $1
+	`
+	var e domain.Event
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
+		&e.Location, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
+		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.CategoryOrder,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
+func (r *EventRepository) GetWorkshopsByEventID(ctx context.Context, eventID string) ([]domain.Workshop, error) {
+	query := `
+		SELECT 
+			id, event_id, '' as event_title, name, 
+			COALESCE(description, '') as description, 
+			COALESCE(room, '') as room, 
+			COALESCE(speaker, '') as speaker, 
+			COALESCE(image_url, '') as image_url, 
+			start_date_time, end_date_time
+		FROM events.workshops
+		WHERE event_id = $1::uuid
+		ORDER BY start_date_time ASC
+	`
+	rows, err := r.db.Query(ctx, query, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workshops []domain.Workshop
+	for rows.Next() {
+		var w domain.Workshop
+		err := rows.Scan(
+			&w.ID, &w.EventID, &w.EventTitle, &w.Name, &w.Description, &w.Room, &w.Speaker, &w.ImageUrl,
+			&w.StartDateTime, &w.EndDateTime,
+		)
+		if err != nil {
+			return nil, err
+		}
+		workshops = append(workshops, w)
+	}
+	return workshops, nil
+}
+
+func (r *EventRepository) CreateRegistration(ctx context.Context, reg *domain.Registration) error {
+	query := `
+		INSERT INTO events.registrations (user_id, event_id, payment_status, qr_data, total_paid)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, registration_date
+	`
+	return r.db.QueryRow(ctx, query, reg.UserID, reg.EventID, reg.PaymentStatus, reg.QRData, reg.TotalPaid).
+		Scan(&reg.ID, &reg.RegistrationDate)
+}
+
+func (r *EventRepository) AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error {
+	if len(workshopIDs) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO events.registration_workshops (registration_id, workshop_id) VALUES ($1, $2)`
+	for _, workshopID := range workshopIDs {
+		_, err := r.db.Exec(ctx, query, registrationID, workshopID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error) {
+	query := `
+		SELECT id, user_id, event_id, payment_status, registration_date, qr_data, total_paid, attendance_confirmed
+		FROM events.registrations
+		WHERE user_id = $1 AND event_id = $2
+	`
+	var reg domain.Registration
+	err := r.db.QueryRow(ctx, query, userID, eventID).Scan(
+		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationDate,
+		&reg.QRData, &reg.TotalPaid, &reg.AttendanceConfirmed,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &reg, nil
+}
+
+func (r *EventRepository) CreateEvent(ctx context.Context, e *domain.Event) error {
+	query := `
+		INSERT INTO events.events (category_id, title, description, image_url, location, speaker_main, start_date, end_date, price, is_free, action_status, button_text, attendees_limit, includes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		RETURNING id, created_at, updated_at
+	`
+	return r.db.QueryRow(ctx, query,
+		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes,
+	).Scan(&e.ID, &e.CreatedAt, &e.UpdatedAt)
+}
+
+func (r *EventRepository) UpdateEvent(ctx context.Context, e *domain.Event) error {
+	// Fallback: If CategoryID is empty but Category (name) is present, resolve it
+	if (e.CategoryID == "" || e.CategoryID == "00000000-0000-0000-0000-000000000000") && e.Category != "" {
+		var id string
+		err := r.db.QueryRow(ctx, "SELECT id FROM events.categories WHERE name = $1", e.Category).Scan(&id)
+		if err == nil {
+			e.CategoryID = id
+		}
+	}
+
+	query := `
+		UPDATE events.events 
+		SET category_id = $1, title = $2, description = $3, image_url = $4, location = $5, speaker_main = $6, 
+		    start_date = $7, end_date = $8, price = $9, is_free = $10, action_status = $11, button_text = $12, 
+		    attendees_limit = $13, includes = $14, updated_at = NOW()
+		WHERE id = $15
+	`
+	_, err := r.db.Exec(ctx, query,
+		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes,
+		e.ID,
+	)
+	return err
+}
+
+func (r *EventRepository) DeleteEvent(ctx context.Context, id string) error {
+	query := `DELETE FROM events.events WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, id)
+	return err
+}
+
+func (r *EventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop) error {
+	query := `
+		INSERT INTO events.workshops (event_id, name, description, room, speaker, image_url, start_date_time, end_date_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, created_at
+	`
+	return r.db.QueryRow(ctx, query,
+		w.EventID, w.Name, w.Description, w.Room, w.Speaker, w.ImageUrl, w.StartDateTime, w.EndDateTime,
+	).Scan(&w.ID, &w.CreatedAt)
+}
+
+func (r *EventRepository) DeleteWorkshopsByEventID(ctx context.Context, eventID string) error {
+	query := `DELETE FROM events.workshops WHERE event_id = $1`
+	_, err := r.db.Exec(ctx, query, eventID)
+	return err
+}
+
+func (r *EventRepository) CreateWorkshopRating(ctx context.Context, wr *domain.WorkshopRating) error {
+	query := `
+		INSERT INTO events.workshop_ratings (workshop_id, user_id, rating, comment)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at
+	`
+	return r.db.QueryRow(ctx, query, wr.WorkshopID, wr.UserID, wr.Rating, wr.Comment).Scan(&wr.ID, &wr.CreatedAt)
+}
+
+func (r *EventRepository) GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
+	query := `
+		SELECT wr.id, wr.workshop_id, w.name as workshop_name, wr.user_id, wr.rating, wr.comment, wr.created_at
+		FROM events.workshop_ratings wr
+		JOIN events.workshops w ON wr.workshop_id = w.id
+		WHERE w.event_id = $1
+		ORDER BY wr.created_at DESC
+	`
+	rows, err := r.db.Query(ctx, query, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ratings []domain.WorkshopRating
+	for rows.Next() {
+		var wr domain.WorkshopRating
+		err := rows.Scan(&wr.ID, &wr.WorkshopID, &wr.WorkshopName, &wr.UserID, &wr.Rating, &wr.Comment, &wr.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		ratings = append(ratings, wr)
+	}
+	return ratings, nil
+}
+
+func (r *EventRepository) GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error) {
+	query := `
+		SELECT 
+			w.id, w.event_id, e.title as event_title, w.name, 
+			COALESCE(w.description, '') as description, 
+			COALESCE(w.room, '') as room, 
+			COALESCE(w.speaker, '') as speaker, 
+			COALESCE(w.image_url, '') as image_url, 
+			w.start_date_time, w.end_date_time
+		FROM events.workshops w
+		JOIN events.user_agenda ua ON w.id = ua.workshop_id
+		JOIN events.events e ON w.event_id = e.id
+		WHERE ua.user_id = $1::uuid
+		ORDER BY w.start_date_time ASC
+	`
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workshops []domain.Workshop
+	for rows.Next() {
+		var w domain.Workshop
+		err := rows.Scan(
+			&w.ID, &w.EventID, &w.EventTitle, &w.Name, &w.Description, &w.Room, &w.Speaker, &w.ImageUrl,
+			&w.StartDateTime, &w.EndDateTime,
+		)
+		if err != nil {
+			return nil, err
+		}
+		workshops = append(workshops, w)
+	}
+	return workshops, nil
+}
+
+func (r *EventRepository) AddToAgenda(ctx context.Context, userID, workshopID string) error {
+	query := `
+		INSERT INTO events.user_agenda (user_id, workshop_id)
+		VALUES ($1::uuid, $2::uuid)
+		ON CONFLICT ON CONSTRAINT user_agenda_pkey DO NOTHING
+	`
+	_, err := r.db.Exec(ctx, query, userID, workshopID)
+	return err
+}
+
+func (r *EventRepository) RemoveFromAgenda(ctx context.Context, userID, workshopID string) error {
+	query := `DELETE FROM events.user_agenda WHERE user_id = $1::uuid AND workshop_id = $2::uuid`
+	_, err := r.db.Exec(ctx, query, userID, workshopID)
+	return err
+}
+
+func (r *EventRepository) GetRegistrationByQR(ctx context.Context, qrData string) (*domain.Registration, *domain.CheckInResponse, error) {
+	query := `
+		SELECT 
+			r.id, r.user_id, r.event_id, r.payment_status, r.registration_date, r.qr_data, r.total_paid, r.attendance_confirmed,
+			u.first_name || ' ' || u.last_name as user_name, u.email_encrypted as user_email,
+			e.title as event_title
+		FROM events.registrations r
+		JOIN core.users u ON r.user_id = u.id
+		JOIN events.events e ON r.event_id = e.id
+		WHERE r.qr_data = $1
+	`
+	var reg domain.Registration
+	var resp domain.CheckInResponse
+
+	err := r.db.QueryRow(ctx, query, qrData).Scan(
+		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationDate,
+		&reg.QRData, &reg.TotalPaid, &reg.AttendanceConfirmed,
+		&resp.UserName, &resp.UserEmail, &resp.EventTitle,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp.RegistrationID = reg.ID
+	resp.CheckInTime = time.Now()
+
+	return &reg, &resp, nil
+}
+
+func (r *EventRepository) RecordAttendance(ctx context.Context, registrationID, staffID string) error {
+	// 1. Update registration status
+	updateQuery := `UPDATE events.registrations SET attendance_confirmed = true WHERE id = $1::uuid`
+	_, err := r.db.Exec(ctx, updateQuery, registrationID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Insert attendance log
+	logQuery := `
+		INSERT INTO events.attendance_logs (registration_id, staff_user_id)
+		VALUES ($1::uuid, $2::uuid)
+	`
+	_, err = r.db.Exec(ctx, logQuery, registrationID, staffID)
+	return err
+}
+
+func (r *EventRepository) GetWorkshopsByRegistrationID(ctx context.Context, registrationID string) ([]domain.Workshop, error) {
+	query := `
+		SELECT w.id, w.event_id, e.title as event_title, w.name, 
+			COALESCE(w.description, '') as description, 
+			COALESCE(w.room, '') as room, 
+			COALESCE(w.speaker, '') as speaker, 
+			COALESCE(w.image_url, '') as image_url, 
+			w.start_date_time, w.end_date_time
+		FROM events.workshops w
+		JOIN events.registration_workshops rw ON w.id = rw.workshop_id
+		JOIN events.events e ON w.event_id = e.id
+		WHERE rw.registration_id = $1::uuid
+		ORDER BY w.start_date_time ASC
+	`
+	rows, err := r.db.Query(ctx, query, registrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workshops []domain.Workshop
+	for rows.Next() {
+		var w domain.Workshop
+		err := rows.Scan(
+			&w.ID, &w.EventID, &w.EventTitle, &w.Name, &w.Description, &w.Room, &w.Speaker, &w.ImageUrl,
+			&w.StartDateTime, &w.EndDateTime,
+		)
+		if err != nil {
+			return nil, err
+		}
+		workshops = append(workshops, w)
+	}
+	return workshops, nil
+}

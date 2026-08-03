@@ -1,0 +1,29 @@
+# --- Secretos: NUNCA versionar ---------------------------------------------
+# Estos archivos contienen credenciales reales (SSH del servidor, pasarela de
+# pago, secreto de firma JWT, llave de cifrado, cuenta de servicio de Google).
+# Se conservan en disco pero fuera de git. Ver *.example.* para las plantillas.
+.env
+config.yaml
+config.docker.yaml
+*-service-account.json
+
+# --- Binarios compilados ----------------------------------------------------
+# ~340 MB de ejecutables duplicados. Se regeneran con ./build.sh o ./build-linux.sh
+legacy_backend
+legacy_backend_bin
+main
+server
+server_linux
+tmp_build
+*.exe
+
+# --- Temporales de compilación ----------------------------------------------
+# GOTMPDIR local que usan run.sh y build.sh (~166 MB)
+tmp/
+tmp_tools/
+
+# --- Sistema operativo / editores -------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

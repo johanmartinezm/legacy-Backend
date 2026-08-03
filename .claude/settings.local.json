@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go version *)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(psql --version)",
+      "Bash(docker network *)",
+      "Bash(command -v ssh)",
+      "Bash(ssh -V)",
+      "Bash(command -v sshpass)",
+      "Bash(command -v scp)",
+      "Bash(command -v plink pscp)",
+      "Bash(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 root@143.198.179.55 \"echo CONEXION_OK; hostname\")",
+      "PowerShell(Start-Process \"C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe\"; Write-Output \"Docker Desktop lanzado, esperando daemon...\")",
+      "PowerShell(winget install *)",
+      "Bash(docker info *)",
+      "Bash(docker exec legacy_db *)",
+      "Bash(./tmp/server_win.exe *)",
+      "Bash(curl -s -m 10 -w \"\\\\nHTTP=%{http_code}\\\\n\" http://localhost:8080/health)",
+      "PowerShell(& \".\\\\tmp\\\\create_admin.exe\" 2>&1 | Select-Object -Last 3)",
+      "Bash(./tmp/create_admin.exe)",
+      "Bash(docker run *)",
+      "Bash(curl -s -m 8 -w \"\\\\nHTTP=%{http_code}\\\\n\" http://localhost:8080/health)",
+      "Bash(tasklist //FI \"IMAGENAME eq server_win.exe\")"
+    ]
+  }
+}

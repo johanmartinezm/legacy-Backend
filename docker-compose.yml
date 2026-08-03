@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: legacy_db
+    restart: always
+    environment:
+      POSTGRES_USER: dba
+      POSTGRES_PASSWORD: "123"
+      POSTGRES_DB: applegacy
+    ports:
+      - "5432:5432"
+    volumes:
+      - legacy_db_data:/var/lib/postgresql/data
+    networks:
+      - proxy-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: legacy_backend
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - TZ=America/Bogota
+    networks:
+      - proxy-net
+
+volumes:
+  legacy_db_data:
+
+networks:
+  proxy-net:
+    external: true

@@ -1,0 +1,375 @@
+package http
+
+import (
+	"applegacy/backend/internal/core/domain"
+	"applegacy/backend/internal/core/ports"
+	"encoding/json"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+)
+
+type UserHandler struct {
+	authService ports.AuthService
+}
+
+func NewUserHandler(authService ports.AuthService) *UserHandler {
+	return &UserHandler{
+		authService: authService,
+	}
+}
+
+type RegisterRequest struct {
+	Email                      string `json:"email"`
+	Password                   string `json:"password"`
+	FirstName                  string `json:"first_name"`
+	LastName                   string `json:"last_name"`
+	Phone                      string `json:"phone"`
+	Location                   string `json:"location"`
+	Bio                        string `json:"bio"`
+	CompanyName                string `json:"company_name"`
+	JobTitle                   string `json:"job_title"`
+	Country                    string `json:"country"`
+	IdentificationType         string `json:"identification_type"`
+	IdentificationNumber       string `json:"identification_number"`
+	CustomerStatus             string `json:"customer_status"`
+	Industry                   string `json:"industry"`
+	ProfileImageUrl            string `json:"profile_image_url"`
+	Generation                 string   `json:"generation"`
+	IsPublicProfile            bool     `json:"is_public_profile"`
+	AllowMessagesFromStrangers bool     `json:"allow_messages_from_strangers"`
+	ShowActivity               bool     `json:"show_activity"`
+	BirthDate                  string   `json:"birth_date"`
+	TermsAccepted              bool     `json:"terms_accepted"`
+	DataSharingAccepted        bool     `json:"data_sharing_accepted"`
+	Interests                  []string `json:"interests"`
+	Role                       string   `json:"role"`
+	GoogleID                   string   `json:"google_id,omitempty"`
+	AppleID                    string   `json:"apple_id,omitempty"`
+}
+
+func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	user := &domain.User{
+		Email:                      req.Email,
+		FirstName:                  req.FirstName,
+		LastName:                   req.LastName,
+		Phone:                      req.Phone,
+		Location:                   req.Location,
+		Bio:                        req.Bio,
+		CompanyName:                req.CompanyName,
+		JobTitle:                   req.JobTitle,
+		Country:                    req.Country,
+		IdentificationType:         req.IdentificationType,
+		IdentificationNumber:       req.IdentificationNumber,
+		CustomerStatus:             req.CustomerStatus,
+		Industry:                   req.Industry,
+		ProfileImageUrl:            req.ProfileImageUrl,
+		Generation:                 req.Generation,
+		IsPublicProfile:            req.IsPublicProfile,
+		AllowMessagesFromStrangers: req.AllowMessagesFromStrangers,
+		ShowActivity:               req.ShowActivity,
+		TermsAccepted:              req.TermsAccepted,
+		DataSharingAccepted:        req.DataSharingAccepted,
+		Interests:                  req.Interests,
+		Role:                       req.Role, // From frontend
+	}
+
+	if req.GoogleID != "" {
+		user.GoogleID = &req.GoogleID
+	}
+	if req.AppleID != "" {
+		user.AppleID = &req.AppleID
+	}
+
+	if user.Role == "" {
+		user.Role = "familia" // Default role
+	}
+
+	if req.BirthDate != "" {
+		// Expecting DD/MM/YYYY from Flutter
+		t, err := time.Parse("02/01/2006", req.BirthDate)
+		if err != nil {
+			h.respondWithError(w, http.StatusBadRequest, "Formato de fecha de nacimiento inválido (esperado DD/MM/YYYY)")
+			return
+		}
+		user.BirthDate = &t
+	}
+
+	if err := h.authService.Register(r.Context(), user, req.Password); err != nil {
+		if err.Error() == "user already exists" {
+			h.respondWithError(w, http.StatusConflict, "El usuario ya existe")
+			return
+		}
+		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"message": "User registered successfully", "id": user.ID})
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	token, err := h.authService.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		h.respondWithError(w, http.StatusUnauthorized, "Credenciales inválidas")
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+type SocialLoginRequest struct {
+	Provider string `json:"provider"`
+	IDToken  string `json:"id_token"`
+}
+
+func (h *UserHandler) SocialLogin(w http.ResponseWriter, r *http.Request) {
+	var req SocialLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	token, user, err := h.authService.SocialLogin(r.Context(), req.Provider, req.IDToken)
+	if err != nil {
+		if err.Error() == "user not registered" {
+			// Return 404 to let frontend know it must register, but include social details
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": "user not registered",
+				"email": user.Email,
+				"name":  user.FirstName,
+			})
+			return
+		}
+		h.respondWithError(w, http.StatusUnauthorized, "Credenciales inválidas de red social")
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
+	users, err := h.authService.ListUsers(r.Context())
+	if err != nil {
+		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
+}
+
+func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok {
+		h.respondWithError(w, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	user, err := h.authService.GetProfile(r.Context(), userID)
+	if err != nil {
+		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
+func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		h.respondWithError(w, http.StatusBadRequest, "Missing user ID")
+		return
+	}
+	h.performUpdate(w, r, id)
+}
+
+func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok {
+		h.respondWithError(w, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+	h.performUpdate(w, r, userID)
+}
+
+func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok {
+		h.respondWithError(w, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.authService.ChangePassword(r.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Password updated successfully"})
+}
+
+func (h *UserHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.authService.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		// Even if error is internal, we usually don't reveal too much
+		log.Printf("Error requesting password reset: %v", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "If the email is registered, a reset link will be sent."})
+}
+
+func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email       string `json:"email"`
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.authService.ResetPassword(r.Context(), req.Email, req.Token, req.NewPassword); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Password has been reset successfully"})
+}
+
+func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id string) {
+	user, err := h.authService.GetProfile(r.Context(), id)
+	if err != nil {
+		h.respondWithError(w, http.StatusNotFound, "User not found")
+		return
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(user); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	user.ID = id
+	// Debug logging
+	log.Printf("Updating user %s: %+v", id, user)
+
+	if err := h.authService.UpdateUser(r.Context(), user); err != nil {
+		if err.Error() == "alias_in_use" {
+			h.respondWithError(w, http.StatusConflict, "El alias ya está en uso. Por favor elige otro.")
+			return
+		}
+		if err.Error() == "invalid_alias_format" {
+			h.respondWithError(w, http.StatusBadRequest, "El alias solo puede contener letras y números, sin espacios ni caracteres especiales.")
+			return
+		}
+		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
+}
+
+func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		h.respondWithError(w, http.StatusBadRequest, "Missing user ID")
+		return
+	}
+
+	if err := h.authService.DeleteUser(r.Context(), id); err != nil {
+		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *UserHandler) respondWithError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"message": message})
+}
+
+func (h *UserHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.authService.VerifyEmail(r.Context(), req.Token); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Email verificado exitosamente"})
+}
+
+func (h *UserHandler) ResendVerificationEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.authService.ResendVerificationEmail(r.Context(), req.Email); err != nil {
+		// Log internal errors, but for user feedback it's usually better not to confirm if email exists.
+		// However, since it's a specific action on login failure, we can return the error.
+		h.respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Correo de verificación reenviado"})
+}
