@@ -27,3 +27,6 @@ tmp_tools/
 Thumbs.db
 .idea/
 *.swp
+
+# Configuracion local de Claude Code
+.claude/settings.local.json
