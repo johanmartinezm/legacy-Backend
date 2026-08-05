@@ -46,7 +46,7 @@ func NewGmailService(credentialsFile, impersonateUser string) (*GmailService, er
 func (s *GmailService) sendMessage(to, subject, body string) error {
 	message := []byte("To: " + to + "\r\n" +
 		"From: " + s.from + "\r\n" +
-		"Subject: " + subject + "\r\n" +
+		"Subject: " + encodeHeader(subject) + "\r\n" +
 		"Content-Type: text/html; charset=UTF-8\r\n\r\n" +
 		body)
 

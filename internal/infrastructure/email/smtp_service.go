@@ -39,7 +39,7 @@ func (s *EmailService) SendResetPasswordEmail(to, resetURL string) error {
 		"Subject: %s\r\n"+
 		"Content-Type: text/html; charset=UTF-8\r\n"+
 		"\r\n"+
-		"%s\r\n", to, subject, body))
+		"%s\r\n", to, encodeHeader(subject), body))
 
 	auth := smtp.PlainAuth("", s.username, s.password, s.host)
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
@@ -69,7 +69,7 @@ func (s *EmailService) SendBoardContactEmail(to, senderName, senderEmail, messag
 		"Subject: %s\r\n"+
 		"Content-Type: text/html; charset=UTF-8\r\n"+
 		"\r\n"+
-		"%s\r\n", to, subject, body))
+		"%s\r\n", to, encodeHeader(subject), body))
 
 	auth := smtp.PlainAuth("", s.username, s.password, s.host)
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
@@ -100,7 +100,7 @@ func (s *EmailService) SendAsesoriaEmail(to, senderName, senderEmail, category, 
 		"Subject: %s\r\n"+
 		"Content-Type: text/html; charset=UTF-8\r\n"+
 		"\r\n"+
-		"%s\r\n", to, subject, body))
+		"%s\r\n", to, encodeHeader(subject), body))
 
 	auth := smtp.PlainAuth("", s.username, s.password, s.host)
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
@@ -126,7 +126,7 @@ func (s *EmailService) SendWelcomeEmail(to, userName string) error {
 		"Subject: %s\r\n"+
 		"Content-Type: text/html; charset=UTF-8\r\n"+
 		"\r\n"+
-		"%s\r\n", to, subject, body))
+		"%s\r\n", to, encodeHeader(subject), body))
 
 	auth := smtp.PlainAuth("", s.username, s.password, s.host)
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)

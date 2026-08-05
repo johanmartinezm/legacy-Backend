@@ -162,6 +162,9 @@ func (h *UserHandler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		// El motivo real (audiencia incorrecta, token expirado, firma invalida...) solo
+		// existe aqui: al cliente se le responde un 401 generico a proposito.
+		log.Printf("[SocialLogin] rechazado (provider=%s): %v", req.Provider, err)
 		h.respondWithError(w, http.StatusUnauthorized, "Credenciales inválidas de red social")
 		return
 	}

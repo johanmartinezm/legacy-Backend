@@ -9,12 +9,15 @@ config.docker.yaml
 
 # --- Binarios compilados ----------------------------------------------------
 # ~340 MB de ejecutables duplicados. Se regeneran con ./build.sh o ./build-linux.sh
-legacy_backend
-legacy_backend_bin
-main
-server
-server_linux
-tmp_build
+# Van anclados con "/" a la raiz: sin la barra, "server" tambien casaba con la
+# carpeta cmd/server/ y dejaba main.go —el unico punto de cableado de rutas—
+# fuera del repositorio.
+/legacy_backend
+/legacy_backend_bin
+/main
+/server
+/server_linux
+/tmp_build
 *.exe
 
 # --- Temporales de compilación ----------------------------------------------

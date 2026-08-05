@@ -4,6 +4,21 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-04]: Login social alcanzable en producción, asuntos de correo y `cmd/` fuera de `.gitignore`
+- **Alcance:**
+  - `Rutas`: `cmd/server/main.go` — alias `POST /api/auth/social-login`, `/api/auth/verify-email`, `/api/auth/resend-verification` y `/api/verify-email`. En producción HAProxy solo enruta `/api/...` y una lista fija de paths al backend; `social-login`, `verify-email` y `resend-verification` quedaban fuera de esa lista y morían en nginx con 405. Las rutas antiguas en la raíz se mantienen.
+  - `Diagnóstico`: `internal/handler/http/user_handler.go` — se registra el motivo real del rechazo en `SocialLogin`, que antes se perdía al aplanarlo en un 401 genérico.
+  - `Correo`: `internal/infrastructure/email/mime_header.go` (nuevo), `gmail_service.go`, `smtp_service.go` — asuntos codificados en RFC 2047. Las cabeceras son ASCII: el `charset=UTF-8` del `Content-Type` solo describe el cuerpo, y los acentos llegaban como mojibake.
+  - `Versionado`: `.gitignore` — los patrones de binarios se anclan a la raíz. Sin la barra inicial, `server` casaba con `cmd/server/` y `main.go` nunca había estado en el repositorio.
+  - `Configuración (no versionada)`: `config.docker.yaml` en el servidor recibe `firebase.google_client_id` con el cliente web del proyecto Firebase.
+- **Criterios de QA:**
+  1. **Rutas nuevas alcanzables:** `POST https://legacy.intelyclick.com/api/auth/social-login` con cuerpo `{}` debe responder **401**, no 404 ni 405. Un 405 con cabecera `server: nginx` significa que la petición no llegó al backend.
+  2. **Sin regresión en las antiguas:** `POST /login` y `POST /register` siguen respondiendo desde el backend (401 y 500 con cuerpo `{}` respectivamente), no desde nginx.
+  3. **Panel administrativo:** el enlace de verificación de correo que abre el panel (`/api/verify-email`) responde 400 con cuerpo vacío en vez de 405.
+  4. **Asunto del correo:** registrar un usuario y comprobar en la bandeja de entrada que el asunto se lee `¡Bienvenido a Legacy Network!` y no `Ã‚Â¡Bienvenido...`. Verificar también el correo de restablecimiento de contraseña.
+  5. **Validación de audiencia:** con `firebase.google_client_id` presente, un `id_token` emitido para otra aplicación debe ser rechazado; el motivo concreto queda en `docker compose logs backend` como `[SocialLogin] rechazado`.
+  6. **Integridad del repositorio:** `git ls-files cmd/server/main.go` debe listar el archivo, y `git check-ignore server_linux` debe seguir ignorando el binario compilado.
+
 ### [2026-07-26]: Módulo de Foros Anónimos (Fase 1 y Fase 2 - DB & Backend)
 - **Alcance:**
   - `Base de Datos`: Migraciones para tablas `core.forums`, `core.forum_posts`, `core.forum_post_reports`, adición de `alias` en `core.users`. Actualización de `DATA_DICTIONARY.md`.
