@@ -4,6 +4,58 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-05]: Encuesta general del evento (eventos, fase 3)
+
+- **Alcance:**
+  - `Migración`: `scripts/20260805_add_event_surveys.sql` (nueva) — tabla `events.event_surveys`
+    con `UNIQUE (event_id, user_id)` y `CHECK` de 1..5 en las cuatro calificaciones. **El `UNIQUE`
+    es deliberado y se aparta del precedente:** `events.workshop_ratings` no lo tiene, así que allí
+    un doble toque deja dos filas y sesga el promedio. Es idempotente: se puede aplicar dos veces.
+  - `Dominio`: `internal/core/domain/event.go` — `EventSurvey`, `EventSurveyComment` y
+    `EventSurveySummary`. Las calificaciones opcionales y los promedios del resumen son punteros a
+    propósito: un `0` se leería como "pésimo" en vez de "sin datos".
+  - `Errores`: `internal/core/domain/errors.go` (nuevo) — `ErrUniqueViolation` y `ErrNotFound`, para
+    que el adaptador traduzca los códigos de Postgres y los servicios no tengan que importar pgx ni
+    buscar subcadenas dentro del mensaje de error, como se hace hoy en `user_repository.go:73`.
+  - `Puertos`, `repositorio`, `servicio`, `handler` y **rutas en `cmd/server/main.go`**: el corte
+    vertical completo. `POST /api/events/{id}/survey` y `GET /api/events/{id}/survey/me` bajo
+    `AuthMiddleware`; `GET /api/events/{id}/survey/summary` bajo `AdminOnly`.
+  - `Regla de acceso`: responde solo quien esté registrado en el evento. **No se exige
+    `attendance_confirmed`** a propósito: dejaría fuera a quien sí asistió pero el personal no
+    alcanzó a escanear.
+  - `Tests`: `internal/core/services/event_survey_test.go` (nuevo) — 18 casos.
+  - **Dos correcciones de paso, ambas en `event_repository.go`:**
+    1. `GetRegistrationByUserAndEvent` comparaba con `sql.ErrNoRows` mientras el driver es pgx v4,
+       que devuelve `pgx.ErrNoRows`. La rama nunca casaba y "no hay registro" salía como error. El
+       único llamador descarta el error (`event_service.go:101`), así que no rompía nada, pero
+       dejaba muerta la comprobación.
+    2. `GetEventByID` devolvía el error crudo de pgx; ahora traduce a `domain.ErrNotFound`, que es
+       lo que permite responder 404 en vez de 500.
+- **Criterios de QA:**
+  1. **Aplicar la migración antes de subir el binario.** Si no, el backend nuevo consulta una tabla
+     que no existe y las tres rutas devuelven 500:
+     `docker exec -i legacy_db psql -U dba -d applegacy < scripts/20260805_add_event_surveys.sql`
+  2. **Sin responder:** `GET /api/events/{id}/survey/me` con sesión → **204 sin cuerpo**. No es un
+     error: la app lo usa para decidir si ofrece el formulario.
+  3. **Calificación fuera de rango:** `POST .../survey` con `{"overallRating":9}` → **400**, no un
+     500 con el mensaje de Postgres dentro.
+  4. **Evento inexistente:** `POST` sobre un uuid que no existe → **404**.
+  5. **Sin registro:** `POST` con la sesión de alguien que no se inscribió → **403**.
+  6. **Sin token:** `POST` sin cabecera `Authorization` → **401**.
+  7. **Envío válido:** `POST` con `overallRating` y opcionales → **201** y el cuerpo de la encuesta
+     guardada. Un comentario con espacios sobrantes debe volver recortado; uno en blanco, como
+     `null`.
+  8. **Segundo envío:** repetir el `POST` → **409**, y sigue habiendo una sola fila en la tabla.
+  9. **Resumen con token de usuario:** `GET .../survey/summary` → **403** (`Admin role required`).
+  10. **Resumen con token de administrador:** → **200** con `responses`, los cuatro promedios,
+      `recommendRate` y los comentarios sin el usuario que los escribió.
+  11. **Resumen de un evento sin respuestas:** todos los promedios en `null` —no en `0`—,
+      `responses: 0` y `comments: []`.
+  12. **Pregunta que nadie respondió:** su promedio debe salir `null` aunque haya respuestas de
+      otras preguntas.
+
+---
+
 ### [2026-08-05]: `GET /api/users` devolvía 500 — desajuste de columnas en `FindAll`
 - **Alcance:**
   - `Repositorio`: `internal/adapter/storage/postgres/user_repository.go` — el `SELECT` de `FindAll` pedía 27 columnas y el `rows.Scan` declaraba 26 destinos: faltaba el de `password_hash`. pgx aborta con `number of field descriptions must equal number of destinations, got 27 and 26`, que el handler traduce a 500 (`user_handler.go:178`). Se retira `password_hash` del `SELECT` en vez de añadir el destino: el listado del panel no usa el hash (`domain.User` lo marca `json:"-"`), así que no hay motivo para traer los hashes bcrypt de todos los usuarios a memoria. `FindByID` sí lo necesita y queda igual.

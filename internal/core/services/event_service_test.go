@@ -12,6 +12,9 @@ type MockEventRepository struct {
 	GetRegistrationByUserAndEventFunc func(ctx context.Context, userID, eventID string) (*domain.Registration, error)
 	CreateRegistrationFunc            func(ctx context.Context, registration *domain.Registration) error
 	AddRegistrationWorkshopsFunc      func(ctx context.Context, regID string, workshopIDs []string) error
+	CreateEventSurveyFunc             func(ctx context.Context, survey *domain.EventSurvey) error
+	GetEventSurveyByUserFunc          func(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error)
+	GetEventSurveySummaryFunc         func(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
 }
 
 func (m *MockEventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) { return nil, nil }
@@ -63,6 +66,24 @@ func (m *MockEventRepository) RecordAttendance(ctx context.Context, rID, sID str
 }
 func (m *MockEventRepository) GetWorkshopsByRegistrationID(ctx context.Context, rID string) ([]domain.Workshop, error) {
 	return nil, nil
+}
+func (m *MockEventRepository) CreateEventSurvey(ctx context.Context, s *domain.EventSurvey) error {
+	if m.CreateEventSurveyFunc == nil {
+		return nil
+	}
+	return m.CreateEventSurveyFunc(ctx, s)
+}
+func (m *MockEventRepository) GetEventSurveyByUser(ctx context.Context, eID, uID string) (*domain.EventSurvey, error) {
+	if m.GetEventSurveyByUserFunc == nil {
+		return nil, nil
+	}
+	return m.GetEventSurveyByUserFunc(ctx, eID, uID)
+}
+func (m *MockEventRepository) GetEventSurveySummary(ctx context.Context, eID string) (*domain.EventSurveySummary, error) {
+	if m.GetEventSurveySummaryFunc == nil {
+		return nil, nil
+	}
+	return m.GetEventSurveySummaryFunc(ctx, eID)
 }
 
 func TestEventService_RegisterUser(t *testing.T) {

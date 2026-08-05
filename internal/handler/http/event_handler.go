@@ -3,7 +3,9 @@ package http
 import (
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
+	"applegacy/backend/internal/core/services"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -158,6 +160,101 @@ func (h *EventHandler) SubmitWorkshopRating(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(rating)
+}
+
+// submitEventSurveyRequest es explícito a propósito: decodificar directo sobre
+// domain.EventSurvey dejaría que el cliente mandara su propio id, userId o
+// createdAt. El usuario sale del token y el evento de la URL.
+type submitEventSurveyRequest struct {
+	OverallRating      int     `json:"overallRating"`
+	OrganizationRating *int    `json:"organizationRating"`
+	ContentRating      *int    `json:"contentRating"`
+	SpeakersRating     *int    `json:"speakersRating"`
+	WouldRecommend     *bool   `json:"wouldRecommend"`
+	Comment            *string `json:"comment"`
+}
+
+func (h *EventHandler) SubmitEventSurvey(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req submitEventSurveyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	survey := &domain.EventSurvey{
+		EventID:            eventID,
+		UserID:             userID,
+		OverallRating:      req.OverallRating,
+		OrganizationRating: req.OrganizationRating,
+		ContentRating:      req.ContentRating,
+		SpeakersRating:     req.SpeakersRating,
+		WouldRecommend:     req.WouldRecommend,
+		Comment:            req.Comment,
+	}
+
+	if err := h.service.SubmitEventSurvey(r.Context(), survey); err != nil {
+		switch {
+		case errors.Is(err, services.ErrSurveyInvalidRating):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, services.ErrSurveyEventNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, services.ErrSurveyNotRegistered):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		case errors.Is(err, services.ErrSurveyAlreadySent):
+			http.Error(w, err.Error(), http.StatusConflict)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(survey)
+}
+
+// GetMyEventSurvey responde 204 si el usuario aún no ha contestado. La app lo
+// usa para decidir si ofrece el formulario, así que "no hay" es una respuesta
+// esperada y no un 404 de error.
+func (h *EventHandler) GetMyEventSurvey(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	survey, err := h.service.GetMyEventSurvey(r.Context(), eventID, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if survey == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(survey)
+}
+
+func (h *EventHandler) GetEventSurveySummary(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+	summary, err := h.service.GetEventSurveySummary(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
 }
 
 func (h *EventHandler) GetEventFeedback(w http.ResponseWriter, r *http.Request) {

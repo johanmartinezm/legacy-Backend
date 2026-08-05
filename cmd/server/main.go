@@ -204,6 +204,12 @@ func main() {
 		r.Use(handler.AuthMiddleware([]byte(cfg.Security.JWTSecret)))
 		r.Post("/api/events/{id}/register", eventHandler.Register)
 
+		// Encuesta general del evento. Distinta de /api/workshops/{id}/rating,
+		// que califica una charla suelta. El servicio exige que el usuario este
+		// registrado en el evento y solo admite una respuesta por persona.
+		r.Post("/api/events/{id}/survey", eventHandler.SubmitEventSurvey)
+		r.Get("/api/events/{id}/survey/me", eventHandler.GetMyEventSurvey)
+
 		// Agenda Management
 		r.Get("/api/events/agenda", eventHandler.GetAgenda)
 		r.Post("/api/workshops/{id}/agenda", eventHandler.AddToAgenda)
@@ -277,6 +283,7 @@ func main() {
 		r.Put("/api/events/{id}", eventHandler.UpdateEvent)
 		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
+		r.Get("/api/events/{id}/survey/summary", eventHandler.GetEventSurveySummary)
 		r.Post("/api/events/check-in", eventHandler.CheckIn)
 
 		// Admin Banner Management

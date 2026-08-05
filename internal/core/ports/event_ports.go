@@ -20,6 +20,11 @@ type EventRepository interface {
 	GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error)
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
+
+	// Encuesta general del evento
+	CreateEventSurvey(ctx context.Context, survey *domain.EventSurvey) error
+	GetEventSurveyByUser(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error)
+	GetEventSurveySummary(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
 	GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error)
 	AddToAgenda(ctx context.Context, userID, workshopID string) error
 	RemoveFromAgenda(ctx context.Context, userID, workshopID string) error
@@ -40,6 +45,11 @@ type EventService interface {
 	RegisterUser(ctx context.Context, reg *domain.Registration) error
 	SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
+
+	// Encuesta general del evento
+	SubmitEventSurvey(ctx context.Context, survey *domain.EventSurvey) error
+	GetMyEventSurvey(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error)
+	GetEventSurveySummary(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
 	GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error)
 	AddToAgenda(ctx context.Context, userID, workshopID string) error
 	RemoveFromAgenda(ctx context.Context, userID, workshopID string) error

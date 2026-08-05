@@ -4,7 +4,9 @@ import (
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 type EventService struct {
@@ -153,6 +155,103 @@ func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.
 
 func (s *EventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
 	return s.repo.GetRatingsByEventID(ctx, eventID)
+}
+
+// Errores de la encuesta general. Son centinelas para que el handler distinga
+// 400, 403 y 409 con errors.Is; el resto del repositorio compara errores por
+// texto, que se rompe en cuanto alguien reescribe un mensaje.
+var (
+	ErrSurveyInvalidRating = errors.New("rating out of range")
+	ErrSurveyNotRegistered = errors.New("user is not registered for this event")
+	ErrSurveyAlreadySent   = errors.New("survey already submitted for this event")
+	ErrSurveyEventNotFound = errors.New("event not found")
+)
+
+// SubmitEventSurvey guarda la encuesta general de un evento.
+//
+// Solo puede responder quien esté registrado en el evento. Se exige registro y
+// no asistencia confirmada (registrations.attendance_confirmed) a propósito:
+// dejaría fuera a quien sí fue pero el personal no alcanzó a escanear.
+func (s *EventService) SubmitEventSurvey(ctx context.Context, survey *domain.EventSurvey) error {
+	if err := validateSurveyRatings(survey); err != nil {
+		return err
+	}
+
+	// Distinguir "no existe" de "la consulta falló": traducir todo a un mismo
+	// error escondía averías del repositorio detrás de un 500 con el texto
+	// "event not found", que manda a buscar en el sitio equivocado.
+	if _, err := s.repo.GetEventByID(ctx, survey.EventID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return ErrSurveyEventNotFound
+		}
+		return err
+	}
+
+	registration, err := s.repo.GetRegistrationByUserAndEvent(ctx, survey.UserID, survey.EventID)
+	if err != nil {
+		return err
+	}
+	if registration == nil {
+		return ErrSurveyNotRegistered
+	}
+
+	existing, err := s.repo.GetEventSurveyByUser(ctx, survey.EventID, survey.UserID)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return ErrSurveyAlreadySent
+	}
+
+	if survey.Comment != nil {
+		trimmed := strings.TrimSpace(*survey.Comment)
+		if trimmed == "" {
+			survey.Comment = nil
+		} else {
+			survey.Comment = &trimmed
+		}
+	}
+
+	// La comprobación de arriba cubre el caso normal, pero dos peticiones
+	// simultáneas la pasan las dos y solo el UNIQUE de la tabla las separa. Sin
+	// esta traducción, un doble toque en el botón devolvería un 500.
+	if err := s.repo.CreateEventSurvey(ctx, survey); err != nil {
+		if errors.Is(err, domain.ErrUniqueViolation) {
+			return ErrSurveyAlreadySent
+		}
+		return err
+	}
+	return nil
+}
+
+// GetMyEventSurvey devuelve (nil, nil) si el usuario todavía no ha respondido.
+// La app lo usa para decidir si ofrece el formulario o muestra lo ya enviado.
+func (s *EventService) GetMyEventSurvey(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error) {
+	return s.repo.GetEventSurveyByUser(ctx, eventID, userID)
+}
+
+func (s *EventService) GetEventSurveySummary(ctx context.Context, eventID string) (*domain.EventSurveySummary, error) {
+	return s.repo.GetEventSurveySummary(ctx, eventID)
+}
+
+// validateSurveyRatings no delega en los CHECK de la tabla: un rating fuera de
+// rango es un error del cliente (400), y dejarlo llegar a la base lo convertiría
+// en un 500 con el mensaje de Postgres dentro.
+func validateSurveyRatings(survey *domain.EventSurvey) error {
+	if survey.OverallRating < 1 || survey.OverallRating > 5 {
+		return fmt.Errorf("%w: overallRating must be between 1 and 5", ErrSurveyInvalidRating)
+	}
+	optional := map[string]*int{
+		"organizationRating": survey.OrganizationRating,
+		"contentRating":      survey.ContentRating,
+		"speakersRating":     survey.SpeakersRating,
+	}
+	for name, value := range optional {
+		if value != nil && (*value < 1 || *value > 5) {
+			return fmt.Errorf("%w: %s must be between 1 and 5", ErrSurveyInvalidRating, name)
+		}
+	}
+	return nil
 }
 
 func (s *EventService) populatePriceLabel(e *domain.Event) {

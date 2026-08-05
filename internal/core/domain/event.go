@@ -72,6 +72,45 @@ type WorkshopRating struct {
 	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
 }
 
+// EventSurvey es la encuesta general de un evento: una respuesta por usuario y
+// evento. Distinta de WorkshopRating, que califica una charla suelta.
+//
+// Solo OverallRating es obligatorio; el resto son punteros porque el usuario
+// puede dejarlos en blanco y un 0 no es lo mismo que "sin responder".
+type EventSurvey struct {
+	ID                 string    `json:"id" db:"id"`
+	EventID            string    `json:"eventId" db:"event_id"`
+	UserID             string    `json:"userId" db:"user_id"`
+	OverallRating      int       `json:"overallRating" db:"overall_rating"`
+	OrganizationRating *int      `json:"organizationRating" db:"organization_rating"`
+	ContentRating      *int      `json:"contentRating" db:"content_rating"`
+	SpeakersRating     *int      `json:"speakersRating" db:"speakers_rating"`
+	WouldRecommend     *bool     `json:"wouldRecommend" db:"would_recommend"`
+	Comment            *string   `json:"comment" db:"comment"`
+	CreatedAt          time.Time `json:"createdAt" db:"created_at"`
+}
+
+// EventSurveyComment es un comentario suelto dentro del resumen, sin el usuario
+// que lo escribió: el panel muestra la opinión, no quién la firmó.
+type EventSurveyComment struct {
+	Comment   string    `json:"comment"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// EventSurveySummary es lo que lee el panel. Los promedios son punteros porque
+// las preguntas opcionales pueden no tener ni una sola respuesta, y en ese caso
+// un 0 se leería como "pésimo" en vez de "sin datos".
+type EventSurveySummary struct {
+	EventID             string               `json:"eventId"`
+	Responses           int                  `json:"responses"`
+	OverallAverage      *float64             `json:"overallAverage"`
+	OrganizationAverage *float64             `json:"organizationAverage"`
+	ContentAverage      *float64             `json:"contentAverage"`
+	SpeakersAverage     *float64             `json:"speakersAverage"`
+	RecommendRate       *float64             `json:"recommendRate"`
+	Comments            []EventSurveyComment `json:"comments"`
+}
+
 type CheckInResponse struct {
 	RegistrationID string     `json:"registrationId"`
 	UserName       string     `json:"userName"`

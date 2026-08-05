@@ -3,9 +3,12 @@ package postgres
 import (
 	"applegacy/backend/internal/core/domain"
 	"context"
-	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -84,6 +87,9 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.CategoryOrder,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return &e, nil
@@ -160,7 +166,11 @@ func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, use
 		&reg.QRData, &reg.TotalPaid, &reg.AttendanceConfirmed,
 	)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		// pgx v4 devuelve pgx.ErrNoRows, no sql.ErrNoRows: comparar con este
+		// ultimo nunca casaba y "no hay registro" salia como error. El unico
+		// llamador (event_service.go:99) descarta el error, asi que no rompia
+		// nada, pero dejaba la rama muerta.
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
@@ -259,6 +269,114 @@ func (r *EventRepository) GetRatingsByEventID(ctx context.Context, eventID strin
 		ratings = append(ratings, wr)
 	}
 	return ratings, nil
+}
+
+// CreateEventSurvey guarda la encuesta general. El UNIQUE (event_id, user_id)
+// de events.event_surveys hace de guardia definitiva contra el envio duplicado:
+// el servicio ya comprueba antes, pero dos peticiones simultaneas pasan esa
+// comprobacion a la vez y solo la base de datos las separa.
+func (r *EventRepository) CreateEventSurvey(ctx context.Context, s *domain.EventSurvey) error {
+	query := `
+		INSERT INTO events.event_surveys (
+			event_id, user_id, overall_rating, organization_rating,
+			content_rating, speakers_rating, would_recommend, comment
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, created_at
+	`
+	err := r.db.QueryRow(ctx, query,
+		s.EventID, s.UserID, s.OverallRating, s.OrganizationRating,
+		s.ContentRating, s.SpeakersRating, s.WouldRecommend, s.Comment,
+	).Scan(&s.ID, &s.CreatedAt)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return fmt.Errorf("%w: %s", domain.ErrUniqueViolation, pgErr.ConstraintName)
+	}
+	return err
+}
+
+// GetEventSurveyByUser devuelve (nil, nil) si el usuario aun no ha respondido:
+// no haber contestado no es un error.
+func (r *EventRepository) GetEventSurveyByUser(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error) {
+	query := `
+		SELECT id, event_id, user_id, overall_rating, organization_rating,
+		       content_rating, speakers_rating, would_recommend, comment, created_at
+		FROM events.event_surveys
+		WHERE event_id = $1 AND user_id = $2
+	`
+	var s domain.EventSurvey
+	err := r.db.QueryRow(ctx, query, eventID, userID).Scan(
+		&s.ID, &s.EventID, &s.UserID, &s.OverallRating, &s.OrganizationRating,
+		&s.ContentRating, &s.SpeakersRating, &s.WouldRecommend, &s.Comment, &s.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetEventSurveySummary agrega las respuestas para el panel. Los promedios son
+// punteros: avg() ignora los NULL, asi que una pregunta opcional que nadie
+// respondio devuelve NULL, y eso es "sin datos", no un cero.
+func (r *EventRepository) GetEventSurveySummary(ctx context.Context, eventID string) (*domain.EventSurveySummary, error) {
+	query := `
+		SELECT
+			count(*),
+			avg(overall_rating),
+			avg(organization_rating),
+			avg(content_rating),
+			avg(speakers_rating),
+			avg(CASE
+			      WHEN would_recommend IS NULL THEN NULL
+			      WHEN would_recommend THEN 1.0
+			      ELSE 0.0
+			    END)
+		FROM events.event_surveys
+		WHERE event_id = $1
+	`
+	summary := domain.EventSurveySummary{
+		EventID:  eventID,
+		Comments: []domain.EventSurveyComment{},
+	}
+	err := r.db.QueryRow(ctx, query, eventID).Scan(
+		&summary.Responses, &summary.OverallAverage, &summary.OrganizationAverage,
+		&summary.ContentAverage, &summary.SpeakersAverage, &summary.RecommendRate,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if summary.Responses == 0 {
+		return &summary, nil
+	}
+
+	commentsQuery := `
+		SELECT comment, created_at
+		FROM events.event_surveys
+		WHERE event_id = $1 AND comment IS NOT NULL AND btrim(comment) <> ''
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.Query(ctx, commentsQuery, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var c domain.EventSurveyComment
+		if err := rows.Scan(&c.Comment, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		summary.Comments = append(summary.Comments, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &summary, nil
 }
 
 func (r *EventRepository) GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error) {
