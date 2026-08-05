@@ -204,17 +204,10 @@ func main() {
 		r.Use(handler.AuthMiddleware([]byte(cfg.Security.JWTSecret)))
 		r.Post("/api/events/{id}/register", eventHandler.Register)
 
-		// Admin Event Management
-		r.Post("/api/events", eventHandler.CreateEvent)
-		r.Put("/api/events/{id}", eventHandler.UpdateEvent)
-		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
-		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
-
 		// Agenda Management
 		r.Get("/api/events/agenda", eventHandler.GetAgenda)
 		r.Post("/api/workshops/{id}/agenda", eventHandler.AddToAgenda)
 		r.Delete("/api/workshops/{id}/agenda", eventHandler.RemoveFromAgenda)
-		r.Post("/api/events/check-in", eventHandler.CheckIn)
 
 		// Payments
 		r.Post("/api/payments/intent", paymentHandler.CreatePaymentIntent)
@@ -274,6 +267,17 @@ func main() {
 		r.Get("/api/admin/users", adminHandler.ListAdmins)
 		r.Put("/api/admin/users/{id}", adminHandler.UpdateAdmin)
 		r.Delete("/api/admin/users/{id}", adminHandler.DeleteAdmin)
+
+		// Admin Event Management
+		// Estaban bajo AuthMiddleware pese al comentario "Admin": cualquier usuario
+		// con sesion podia crear, editar y borrar eventos, registrar asistencia por
+		// QR y leer las calificaciones. Los usa solo el panel, que autentica con un
+		// token de rol "admin" (auth_service.go:301).
+		r.Post("/api/events", eventHandler.CreateEvent)
+		r.Put("/api/events/{id}", eventHandler.UpdateEvent)
+		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
+		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
+		r.Post("/api/events/check-in", eventHandler.CheckIn)
 
 		// Admin Banner Management
 		r.Get("/api/admin/banners", bannerHandler.AdminListAll)

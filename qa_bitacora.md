@@ -4,6 +4,17 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-04]: Gestión de eventos restringida a rol admin
+- **Alcance:**
+  - `Rutas`: `cmd/server/main.go` — `POST /api/events`, `PUT /api/events/{id}`, `DELETE /api/events/{id}`, `GET /api/events/{id}/feedback` y `POST /api/events/check-in` pasan del grupo `AuthMiddleware` al grupo `AdminOnly`. Estaban bajo autenticación de usuario pese al comentario "Admin Event Management", así que cualquier cuenta de la app móvil con sesión iniciada podía crear, editar y borrar eventos, registrar asistencia por QR y leer las calificaciones. Verificado antes del cambio: un token de rol `familia` obtenía `204 No Content` en el borrado, es decir, se ejecutaba.
+  - **Sin cambios en las rutas de usuario:** registro a evento, agenda de talleres y calificación siguen bajo `AuthMiddleware`.
+  - **Sin cambios en los clientes:** las cinco rutas solo las consume el panel Angular, que autentica con token de rol `admin` (`internal/core/services/auth_service.go:301`). La app móvil no llama a ninguna (`App-Movil/lib/data/services/event_service.dart`).
+- **Criterios de QA:**
+  1. **Usuario sin privilegios:** con la sesión de un usuario normal de la app, las cinco rutas deben responder **403**. Antes respondían 2xx.
+  2. **Panel administrativo:** iniciar sesión en el panel y comprobar que se puede **crear, editar y eliminar** un evento con normalidad, ver las calificaciones de un evento y registrar una asistencia escaneando un QR.
+  3. **Sin regresión para el usuario final:** desde la app, inscribirse a un evento, añadir y quitar un taller de la agenda y calificar una charla deben seguir funcionando.
+  4. **Rutas públicas:** `GET /api/events`, `GET /api/events/{id}` y `GET /api/categories` siguen respondiendo sin autenticación.
+
 ### [2026-08-04]: Login social alcanzable en producción, asuntos de correo y `cmd/` fuera de `.gitignore`
 - **Alcance:**
   - `Rutas`: `cmd/server/main.go` — alias `POST /api/auth/social-login`, `/api/auth/verify-email`, `/api/auth/resend-verification` y `/api/verify-email`. En producción HAProxy solo enruta `/api/...` y una lista fija de paths al backend; `social-login`, `verify-email` y `resend-verification` quedaban fuera de esa lista y morían en nginx con 405. Las rutas antiguas en la raíz se mantienen.
