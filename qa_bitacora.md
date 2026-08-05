@@ -4,6 +4,18 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-05]: `GET /api/users` devolvía 500 — desajuste de columnas en `FindAll`
+- **Alcance:**
+  - `Repositorio`: `internal/adapter/storage/postgres/user_repository.go` — el `SELECT` de `FindAll` pedía 27 columnas y el `rows.Scan` declaraba 26 destinos: faltaba el de `password_hash`. pgx aborta con `number of field descriptions must equal number of destinations, got 27 and 26`, que el handler traduce a 500 (`user_handler.go:178`). Se retira `password_hash` del `SELECT` en vez de añadir el destino: el listado del panel no usa el hash (`domain.User` lo marca `json:"-"`), así que no hay motivo para traer los hashes bcrypt de todos los usuarios a memoria. `FindByID` sí lo necesita y queda igual.
+  - **El fallo solo se manifiesta con datos:** con la tabla vacía el `Scan` nunca se ejecuta y la ruta responde `200 []`. Por eso no salta en una base recién creada.
+  - **Sin cambios en el panel ni en la app:** el contrato JSON de la respuesta es idéntico; el hash nunca se serializaba.
+- **Criterios de QA:**
+  1. **Listado de usuarios:** en el panel administrativo, abrir la sección de usuarios y comprobar que carga la lista. Antes respondía **500** con el cuerpo `number of field descriptions...`.
+  2. **Contenido correcto:** los nombres y correos se ven en claro (no cifrados) y el listado viene ordenado del más reciente al más antiguo.
+  3. **Sin regresión en el detalle:** editar y guardar un usuario desde el panel (`PUT /api/users/{id}`) y eliminar uno de prueba (`DELETE /api/users/{id}`) siguen funcionando.
+  4. **Sin regresión en la app:** `GET /api/users/me` sigue devolviendo el perfil completo del usuario autenticado.
+  5. **Login intacto:** iniciar sesión con correo y contraseña, y con Google, sigue funcionando (el hash se lee por otras rutas, no por `FindAll`).
+
 ### [2026-08-04]: Gestión de eventos restringida a rol admin
 - **Alcance:**
   - `Rutas`: `cmd/server/main.go` — `POST /api/events`, `PUT /api/events/{id}`, `DELETE /api/events/{id}`, `GET /api/events/{id}/feedback` y `POST /api/events/check-in` pasan del grupo `AuthMiddleware` al grupo `AdminOnly`. Estaban bajo autenticación de usuario pese al comentario "Admin Event Management", así que cualquier cuenta de la app móvil con sesión iniciada podía crear, editar y borrar eventos, registrar asistencia por QR y leer las calificaciones. Verificado antes del cambio: un token de rol `familia` obtenía `204 No Content` en el borrado, es decir, se ejecutaba.

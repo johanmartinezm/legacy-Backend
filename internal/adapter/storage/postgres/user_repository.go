@@ -137,9 +137,8 @@ func (r *UserRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
 			COALESCE(allow_messages_from_strangers, false),
 			COALESCE(show_activity, false),
 			COALESCE(email_verified, false),
-			COALESCE(created_at, CURRENT_TIMESTAMP), 
+			COALESCE(created_at, CURRENT_TIMESTAMP),
 			COALESCE(updated_at, CURRENT_TIMESTAMP),
-			password_hash,
 			COALESCE(alias, '')
 		FROM core.users
 		ORDER BY created_at DESC
