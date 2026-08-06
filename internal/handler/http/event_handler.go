@@ -118,6 +118,27 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Header.Get("Content-Type") == "application/json" {
 		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			// userID y paymentStatus estan para que un administrador inscriba a
+			// mano, por ejemplo a quien pago por transferencia. Hasta ahora los
+			// honraba cualquiera con sesion, y esta ruta esta bajo
+			// AuthMiddleware, no AdminOnly. Es decir:
+			//
+			//   {"paymentStatus":"paid"}  -> entrada gratis a un evento de pago,
+			//                                con QR valido y sin una sola
+			//                                transaccion registrada.
+			//   {"userID":"<otro>"}       -> inscribir a un tercero, dejandole
+			//                                una deuda a su nombre.
+			//
+			// Se rechaza en vez de ignorarlos en silencio: quien los manda cree
+			// que surtieron efecto, y un 201 mudo le daria la razon. La app no
+			// envia cuerpo en esta llamada, asi que esto solo salta ante un
+			// abuso.
+			if !IsAdmin(r.Context()) && (req.UserID != "" || req.PaymentStatus != "") {
+				http.Error(w,
+					"Solo un administrador puede inscribir a otro usuario o fijar el estado de pago",
+					http.StatusForbidden)
+				return
+			}
 			if req.UserID != "" {
 				registration.UserID = req.UserID
 			}

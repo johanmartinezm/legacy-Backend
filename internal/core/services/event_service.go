@@ -102,6 +102,7 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 	if existing != nil {
 		reg.ID = existing.ID
 		reg.PaymentStatus = existing.PaymentStatus
+		reg.RegistrationStatus = existing.RegistrationStatus
 		reg.RegistrationDate = existing.RegistrationDate
 		reg.QRData = existing.QRData
 		reg.TotalPaid = existing.TotalPaid
@@ -120,6 +121,21 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		reg.PaymentStatus = "pending"
 		if event.IsFree {
 			reg.PaymentStatus = "free"
+		}
+	}
+
+	// 4. Estado de la inscripción. Un evento gratuito queda confirmado en el
+	// acto; uno de pago nace pendiente y solo pasa a confirmado cuando la
+	// pasarela aprueba el cobro (ver paymentService.VerifyPayment).
+	//
+	// Se mira el estado de pago y no event.IsFree para que una inscripción que
+	// un administrador crea ya pagada quede confirmada de una vez, sin obligarle
+	// a pasar por la pasarela.
+	if reg.RegistrationStatus == "" {
+		if reg.PaymentStatus == "free" || reg.PaymentStatus == "paid" {
+			reg.RegistrationStatus = domain.RegistrationConfirmed
+		} else {
+			reg.RegistrationStatus = domain.RegistrationPendingPayment
 		}
 	}
 

@@ -131,12 +131,35 @@ func (r *EventRepository) GetWorkshopsByEventID(ctx context.Context, eventID str
 
 func (r *EventRepository) CreateRegistration(ctx context.Context, reg *domain.Registration) error {
 	query := `
-		INSERT INTO events.registrations (user_id, event_id, payment_status, qr_data, total_paid)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO events.registrations (user_id, event_id, payment_status, registration_status, qr_data, total_paid)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, registration_date
 	`
-	return r.db.QueryRow(ctx, query, reg.UserID, reg.EventID, reg.PaymentStatus, reg.QRData, reg.TotalPaid).
+	return r.db.QueryRow(ctx, query, reg.UserID, reg.EventID, reg.PaymentStatus, reg.RegistrationStatus, reg.QRData, reg.TotalPaid).
 		Scan(&reg.ID, &reg.RegistrationDate)
+}
+
+// ConfirmEventRegistration pasa la inscripción a pagada y confirmada. La llama
+// el servicio de pagos cuando la pasarela aprueba la transacción.
+//
+// Devuelve domain.ErrNotFound si no había inscripción que confirmar: eso
+// significa que se pagó sin haberse inscrito antes, y es una incoherencia que
+// el llamador debe poder distinguir de un fallo de base de datos.
+func (r *EventRepository) ConfirmEventRegistration(ctx context.Context, userID, eventID string) error {
+	query := `
+		UPDATE events.registrations
+		   SET payment_status = 'paid',
+		       registration_status = $1
+		 WHERE user_id = $2 AND event_id = $3
+	`
+	tag, err := r.db.Exec(ctx, query, domain.RegistrationConfirmed, userID, eventID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *EventRepository) AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error {
@@ -156,13 +179,13 @@ func (r *EventRepository) AddRegistrationWorkshops(ctx context.Context, registra
 
 func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error) {
 	query := `
-		SELECT id, user_id, event_id, payment_status, registration_date, qr_data, total_paid, attendance_confirmed
+		SELECT id, user_id, event_id, payment_status, registration_status, registration_date, qr_data, total_paid, attendance_confirmed
 		FROM events.registrations
 		WHERE user_id = $1 AND event_id = $2
 	`
 	var reg domain.Registration
 	err := r.db.QueryRow(ctx, query, userID, eventID).Scan(
-		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationDate,
+		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
 		&reg.QRData, &reg.TotalPaid, &reg.AttendanceConfirmed,
 	)
 	if err != nil {
@@ -434,7 +457,7 @@ func (r *EventRepository) RemoveFromAgenda(ctx context.Context, userID, workshop
 func (r *EventRepository) GetRegistrationByQR(ctx context.Context, qrData string) (*domain.Registration, *domain.CheckInResponse, error) {
 	query := `
 		SELECT 
-			r.id, r.user_id, r.event_id, r.payment_status, r.registration_date, r.qr_data, r.total_paid, r.attendance_confirmed,
+			r.id, r.user_id, r.event_id, r.payment_status, r.registration_status, r.registration_date, r.qr_data, r.total_paid, r.attendance_confirmed,
 			u.first_name || ' ' || u.last_name as user_name, u.email_encrypted as user_email,
 			e.title as event_title
 		FROM events.registrations r
@@ -446,7 +469,7 @@ func (r *EventRepository) GetRegistrationByQR(ctx context.Context, qrData string
 	var resp domain.CheckInResponse
 
 	err := r.db.QueryRow(ctx, query, qrData).Scan(
-		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationDate,
+		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
 		&reg.QRData, &reg.TotalPaid, &reg.AttendanceConfirmed,
 		&resp.UserName, &resp.UserEmail, &resp.EventTitle,
 	)

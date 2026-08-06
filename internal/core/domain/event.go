@@ -50,16 +50,34 @@ type Workshop struct {
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
+// Estados de una inscripción. Se corresponden con el CHECK de
+// events.registrations.registration_status.
+const (
+	// RegistrationConfirmed: el evento es gratuito, o el de pago ya se pagó.
+	RegistrationConfirmed = "confirmed"
+	// RegistrationPendingPayment: evento de pago sin pagar todavía. La
+	// inscripción existe —de ahí se sabe quién intentó comprar— pero no da
+	// derecho a entrar.
+	RegistrationPendingPayment = "pending_payment"
+)
+
 type Registration struct {
 	ID                  string     `json:"id" db:"id"`
 	UserID              string     `json:"user_id" db:"user_id"`
 	EventID             string     `json:"event_id" db:"event_id"`
 	PaymentStatus       string     `json:"payment_status" db:"payment_status"`
+	RegistrationStatus  string     `json:"registration_status" db:"registration_status"`
 	RegistrationDate    time.Time  `json:"registration_date" db:"registration_date"`
 	QRData              string     `json:"qr_data" db:"qr_data"`
 	TotalPaid           float64    `json:"total_paid" db:"total_paid"`
 	AttendanceConfirmed bool       `json:"attendance_confirmed" db:"attendance_confirmed"`
 	Workshops           []Workshop `json:"workshops" db:"-"`
+}
+
+// IsPendingPayment indica si la inscripción está a la espera del pago. Se usa
+// para no dar por buena una entrada que nadie ha pagado.
+func (r *Registration) IsPendingPayment() bool {
+	return r.RegistrationStatus == RegistrationPendingPayment
 }
 
 type WorkshopRating struct {

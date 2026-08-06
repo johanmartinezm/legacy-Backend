@@ -223,7 +223,16 @@ func (s *AuthService) SocialLogin(ctx context.Context, provider, idToken string)
 	}
 
 	// Generate JWT
+	// "sub" es el claim que lee AuthMiddleware (middleware.go:52). Este token
+	// solo llevaba "user_id", asi que quien entraba con Google o Apple recibia
+	// un token valido con el que NINGUNA ruta privada funcionaba: respondian 401
+	// "User ID not found in token". Ni inscribirse a un evento, ni la agenda, ni
+	// el chat, ni la encuesta.
+	//
+	// Se conserva "user_id" por si algun cliente ya lo lee; lo que hacia falta
+	// era anadir "sub", no sustituirlo.
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":     user.ID,
 		"user_id": user.ID,
 		"email":   extractedEmail,
 		"role":    user.Role,

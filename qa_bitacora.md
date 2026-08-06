@@ -4,6 +4,56 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-05]: Estado de inscripción y cierre de dos fallos de suplantación
+
+- **Alcance:**
+  - `Migración`: `scripts/20260805_registration_status_pendiente_pago.sql` (nueva) — da uso real a
+    `events.registrations.registration_status`, que **era una columna muerta**: existía con
+    `DEFAULT 'confirmed'` y no aparecía en ningún archivo Go, así que toda inscripción valía
+    `confirmed`. Ahora `NOT NULL` con `CHECK ('confirmed','pending_payment')` e índice
+    `(event_id, registration_status)`.
+  - `Estado de la inscripción`: un evento **gratuito** queda `confirmed` en el acto; uno **de pago**
+    nace `pending_payment` y pasa a `confirmed` cuando la pasarela aprueba el cobro
+    (`payment_service.go`). El estado se decide por `payment_status` y no por `event.IsFree`, para
+    que una inscripción que un administrador crea ya pagada —por transferencia, por ejemplo— quede
+    confirmada sin esperar a una pasarela que nunca la va a confirmar.
+  - `Inscripción en el camino de pago`: la app ahora llama a `/register` **antes** de salir a la
+    pasarela. Hasta hoy no lo hacía nunca, así que de un evento de pago no quedaba ni rastro de
+    quién había intentado comprar.
+  - **Fallos 9 y 10 (`event_handler.go`)**: `userID` y `paymentStatus` del cuerpo los honraba
+    **cualquiera con sesión**, y esta ruta está bajo `AuthMiddleware`, no `AdminOnly`. Con
+    `{"paymentStatus":"paid"}` se entraba gratis a un evento de pago, con QR válido y sin una sola
+    transacción; con `{"userID":"<otro>"}` se le dejaba una deuda a un tercero. Ahora se responde
+    **403** salvo que quien llame sea administrador. Se rechaza en vez de ignorarlos en silencio:
+    un 201 mudo le daría la razón a quien cree que surtieron efecto.
+  - `Middleware`: `UserRoleKey` e `IsAdmin(ctx)` — `AuthMiddleware` no ponía el rol en el contexto,
+    así que un handler bajo esa ruta no tenía forma de saber quién le llamaba.
+  - **Corrección no pedida, verificada**: `SocialLogin` firmaba el token con `user_id` mientras
+    `AuthMiddleware` lee `sub`. Quien entraba con Google o Apple recibía un token válido con el que
+    **ninguna ruta privada funcionaba** (401 `User ID not found in token`): ni inscribirse, ni la
+    agenda, ni el chat, ni la encuesta. Se añade `sub` conservando `user_id`.
+  - `Tests`: `registration_status_test.go` (4 casos) y `event_register_auth_test.go` (6 casos).
+- **Criterios de QA:**
+  1. **Aplicar la migración antes de subir el binario.**
+  2. **Evento gratuito:** `POST /api/events/{gratis}/register` → `payment_status: free`,
+     `registration_status: confirmed`.
+  3. **Evento de pago:** el mismo POST → `payment_status: pending`,
+     `registration_status: pending_payment`, y `total_paid` con el precio del evento.
+  4. **Fallo 9 cerrado:** `POST .../register` con `{"paymentStatus":"paid"}` y sesión de usuario
+     normal → **403**, y **ninguna** fila nueva en `events.registrations`.
+  5. **Fallo 10 cerrado:** el mismo POST con `{"userID":"<otro>"}` → **403**.
+  6. **El administrador sigue pudiendo:** con token de rol `admin`, ese mismo cuerpo → **201**, la
+     inscripción queda a nombre del otro usuario y con `registration_status: confirmed`.
+  7. **No estorba lo normal:** `POST .../register` sin cuerpo → **201**, a nombre del titular del
+     token. Es lo que hace la app.
+  8. **Los talleres siguen libres:** `{"workshops":["id1","id2"]}` sin ser admin → **201**.
+  9. **Token sin claim `role`** → **403** en los casos 4 y 5: se deniega, no se concede por omisión.
+  10. **Login social:** entrar con Google y luego inscribirse a un evento debe funcionar. Antes
+      devolvía 401 en cualquier ruta privada.
+  11. **El `CHECK` protege:** `UPDATE ... SET registration_status='pagado'` debe fallar.
+
+---
+
 ### [2026-08-05]: Encuesta general del evento (eventos, fase 3)
 
 - **Alcance:**

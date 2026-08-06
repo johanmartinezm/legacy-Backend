@@ -19,6 +19,7 @@ config.docker.yaml
 /server_linux
 /tmp_build
 *.exe
+*.exe~
 
 # --- Temporales de compilación ----------------------------------------------
 # GOTMPDIR local que usan run.sh y build.sh (~166 MB)

@@ -12,6 +12,23 @@ type contextKey string
 
 const UserIDKey contextKey = "userID"
 
+// UserRoleKey lleva el claim "role" del token. AdminOnly ya lo comprobaba por su
+// cuenta, pero las rutas que estan bajo AuthMiddleware y aceptan campos
+// reservados a administradores necesitan distinguir tambien: sin esto, un
+// handler no tiene forma de saber quien le esta llamando.
+const UserRoleKey contextKey = "userRole"
+
+// RoleAdmin es el valor que AdminLogin pone en el claim "role"
+// (auth_service.go:301). Los usuarios normales llevan su tipo de cuenta:
+// familia, empresa o profesional.
+const RoleAdmin = "admin"
+
+// IsAdmin indica si quien hace la peticion tiene rol de administrador.
+func IsAdmin(ctx context.Context) bool {
+	role, _ := ctx.Value(UserRoleKey).(string)
+	return role == RoleAdmin
+}
+
 func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +73,11 @@ func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			// El rol viaja en el token desde el login; los handlers que aceptan
+			// campos reservados a administradores lo consultan con IsAdmin.
+			if role, ok := claims["role"].(string); ok {
+				ctx = context.WithValue(ctx, UserRoleKey, role)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

@@ -2,22 +2,29 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 
-	"github.com/google/uuid"
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
+	"github.com/google/uuid"
 )
 
 type paymentService struct {
 	txRepo    ports.TransactionRepository
 	gateway   ports.PaymentGateway
+	eventRepo ports.EventRepository
 }
 
-func NewPaymentService(txRepo ports.TransactionRepository, gateway ports.PaymentGateway) ports.PaymentService {
+// NewPaymentService recibe eventRepo para poder confirmar la inscripción cuando
+// la pasarela aprueba un cobro de tipo EVENT. Admite nil: en ese caso el pago se
+// verifica igual y solo se omite la confirmación de la inscripción.
+func NewPaymentService(txRepo ports.TransactionRepository, gateway ports.PaymentGateway, eventRepo ports.EventRepository) ports.PaymentService {
 	return &paymentService{
-		txRepo:  txRepo,
-		gateway: gateway,
+		txRepo:    txRepo,
+		gateway:   gateway,
+		eventRepo: eventRepo,
 	}
 }
 
@@ -73,6 +80,30 @@ func (s *paymentService) VerifyPayment(ctx context.Context, txID uuid.UUID) (*do
 			return nil, fmt.Errorf("failed to update transaction status: %w", err)
 		}
 		tx.Status = status
+	}
+
+	// Un pago aprobado tiene que confirmar la inscripción: hasta hoy esto no
+	// existía y quien pagaba de verdad se quedaba sin inscribir, con la
+	// transacción en APPROVED y ninguna fila en events.registrations que lo
+	// reflejara.
+	//
+	// Se ejecuta siempre que el estado sea APPROVED, no solo cuando acaba de
+	// cambiar: verificar dos veces debe dejar el mismo resultado, y el UPDATE es
+	// idempotente. Si la primera verificación confirmó el pago pero falló al
+	// tocar la inscripción, la segunda lo arregla.
+	if tx.Status == domain.TxStatusApproved && tx.ReferenceType == domain.RefTypeEvent && s.eventRepo != nil {
+		err := s.eventRepo.ConfirmEventRegistration(ctx, tx.UserID.String(), tx.ReferenceID.String())
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			return nil, fmt.Errorf("payment approved but registration could not be confirmed: %w", err)
+		}
+		// ErrNotFound significa que se pagó sin inscripción previa. No se
+		// inventa una aquí: no hay forma de saber qué talleres eligió ni con qué
+		// datos, y crear una a medias sería peor que dejar constancia. Queda el
+		// pago aprobado y visible para reconciliar a mano.
+		if errors.Is(err, domain.ErrNotFound) {
+			log.Printf("[PAGO] transaccion %s aprobada sin inscripcion previa (usuario %s, evento %s): revisar a mano",
+				tx.ID, tx.UserID, tx.ReferenceID)
+		}
 	}
 
 	return tx, nil

@@ -18,6 +18,9 @@ type EventRepository interface {
 	CreateRegistration(ctx context.Context, registration *domain.Registration) error
 	AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error
 	GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error)
+	// ConfirmEventRegistration la usa el servicio de pagos al aprobarse el
+	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
+	ConfirmEventRegistration(ctx context.Context, userID, eventID string) error
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 
