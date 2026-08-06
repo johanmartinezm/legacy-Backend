@@ -21,6 +21,7 @@ type EventRepository interface {
 	// ConfirmEventRegistration la usa el servicio de pagos al aprobarse el
 	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
 	ConfirmEventRegistration(ctx context.Context, userID, eventID string) error
+	GetRegistrationsByUser(ctx context.Context, userID string) ([]domain.UserRegistration, error)
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 
@@ -46,6 +47,9 @@ type EventService interface {
 	UpdateEvent(ctx context.Context, event *domain.Event) error
 	DeleteEvent(ctx context.Context, id string) error
 	RegisterUser(ctx context.Context, reg *domain.Registration) error
+	// GetMyRegistrations alimenta la pantalla "Mi credencial": todos los eventos
+	// en los que el usuario está inscrito, cada uno con su QR.
+	GetMyRegistrations(ctx context.Context, userID string) ([]domain.UserRegistration, error)
 	SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 

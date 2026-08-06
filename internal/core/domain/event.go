@@ -80,6 +80,25 @@ func (r *Registration) IsPendingPayment() bool {
 	return r.RegistrationStatus == RegistrationPendingPayment
 }
 
+// UserRegistration es una inscripción con los datos del evento que hacen falta
+// para pintarla en la credencial del usuario, sin obligar a pedir cada evento
+// por separado.
+type UserRegistration struct {
+	ID                  string     `json:"id"`
+	EventID             string     `json:"eventId"`
+	EventTitle          string     `json:"eventTitle"`
+	EventLocation       *string    `json:"eventLocation"`
+	EventStartDate      time.Time  `json:"eventStartDate"`
+	EventEndDate        *time.Time `json:"eventEndDate"`
+	EventImageUrl       *string    `json:"eventImageUrl"`
+	PaymentStatus       string     `json:"paymentStatus"`
+	RegistrationStatus  string     `json:"registrationStatus"`
+	RegistrationDate    time.Time  `json:"registrationDate"`
+	QRData              string     `json:"qrData"`
+	TotalPaid           float64    `json:"totalPaid"`
+	AttendanceConfirmed bool       `json:"attendanceConfirmed"`
+}
+
 type WorkshopRating struct {
 	ID           string    `json:"id" db:"id"`
 	WorkshopID   string    `json:"workshopId" db:"workshop_id"`

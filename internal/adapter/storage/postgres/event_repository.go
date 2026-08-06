@@ -162,6 +162,49 @@ func (r *EventRepository) ConfirmEventRegistration(ctx context.Context, userID, 
 	return nil
 }
 
+// GetRegistrationsByUser devuelve las inscripciones del usuario con los datos
+// del evento ya incorporados, para que la credencial se pinte con una sola
+// llamada.
+//
+// Usa LEFT JOIN contra events.categories a propósito: GetEvents hace JOIN y por
+// eso un evento con la categoría nula desaparece del listado sin error. Aquí eso
+// significaría que al usuario le falta una entrada que sí compró.
+func (r *EventRepository) GetRegistrationsByUser(ctx context.Context, userID string) ([]domain.UserRegistration, error) {
+	query := `
+		SELECT r.id, r.event_id, e.title, e.location, e.start_date, e.end_date, e.image_url,
+		       r.payment_status, r.registration_status, r.registration_date,
+		       r.qr_data, r.total_paid, r.attendance_confirmed
+		FROM events.registrations r
+		JOIN events.events e ON r.event_id = e.id
+		WHERE r.user_id = $1
+		ORDER BY e.start_date DESC
+	`
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	registrations := []domain.UserRegistration{}
+	for rows.Next() {
+		var reg domain.UserRegistration
+		var qrData *string
+		if err := rows.Scan(
+			&reg.ID, &reg.EventID, &reg.EventTitle, &reg.EventLocation,
+			&reg.EventStartDate, &reg.EventEndDate, &reg.EventImageUrl,
+			&reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
+			&qrData, &reg.TotalPaid, &reg.AttendanceConfirmed,
+		); err != nil {
+			return nil, err
+		}
+		if qrData != nil {
+			reg.QRData = *qrData
+		}
+		registrations = append(registrations, reg)
+	}
+	return registrations, rows.Err()
+}
+
 func (r *EventRepository) AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error {
 	if len(workshopIDs) == 0 {
 		return nil

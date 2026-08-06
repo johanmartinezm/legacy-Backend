@@ -290,6 +290,25 @@ func (h *EventHandler) GetEventFeedback(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(feedback)
 }
 
+// GetMyRegistrations alimenta la pantalla "Mi credencial": todos los eventos en
+// los que el usuario está inscrito, cada uno con su QR de acceso.
+func (h *EventHandler) GetMyRegistrations(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	registrations, err := h.service.GetMyRegistrations(r.Context(), userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(registrations)
+}
+
 func (h *EventHandler) GetAgenda(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(UserIDKey).(string)
 	if !ok {

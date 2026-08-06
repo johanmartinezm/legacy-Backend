@@ -4,6 +4,43 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-05]: QR impredecible y endpoint de "Mi credencial"
+
+- **Alcance:**
+  - `Migración`: `scripts/20260805_qr_data_impredecible.sql` (nueva) — regenera los `qr_data`
+    predecibles y añade el `UNIQUE` que faltaba.
+  - `QR aleatorio`: `event_service.go` — el código se generaba como `REG-{user_id}-{event_id}`, la
+    concatenación de dos uuid que el propio usuario conoce. **Cualquiera que supiera el id de otra
+    persona y el del evento podía fabricar su código**, y `CheckIn` lo daba por bueno porque
+    `GetRegistrationByQR` busca por `qr_data` sin mirar ni el pago ni el estado. Ahora es
+    `REG-{uuid v4}`, generado con `crypto/rand`.
+  - `UNIQUE en qr_data`: era la clave de búsqueda del control de acceso y **admitía duplicados**;
+    dos filas con el mismo código dejaban el resultado del escaneo a merced del orden de Postgres.
+  - `Endpoint nuevo`: `GET /api/me/registrations` — todas las inscripciones del usuario con los
+    datos del evento incorporados. **Cuelga de `/api/me` y no de `/api/events`**: el patrón
+    `/api/events/{id}` del grupo público captura cualquier segmento, y con
+    `/api/events/my-registrations` la respuesta era
+    `invalid input syntax for type uuid: "my-registrations"`.
+  - `El QR de una inscripción pendiente no sale del servidor`: `GetMyRegistrations` lo vacía. Una
+    credencial que no da derecho a entrar no debería viajar, así el cliente no tiene que acordarse
+    de ocultarla.
+  - `Tests`: `mis_inscripciones_test.go` (nuevo, 5 casos).
+- **Criterios de QA:**
+  1. **Aplicar la migración antes de subir el binario.**
+  2. **Códigos regenerados:** tras la migración, ningún `qr_data` debe contener el `user_id` de su
+     propia fila: `SELECT count(*) FROM events.registrations WHERE qr_data LIKE 'REG-' || user_id::text || '%'` → **0**.
+  3. **Códigos únicos:** `UPDATE` que repita un `qr_data` existente debe fallar por la restricción.
+  4. **Inscripción nueva:** el `qr_data` no contiene ni el id del usuario ni el del evento, y dos
+     inscripciones distintas nunca comparten código.
+  5. **El código no cambia al reinscribirse:** repetir `POST /register` conserva el `qr_data`, o el
+     QR que el usuario tuviera abierto dejaría de servir.
+  6. **`GET /api/me/registrations`** con sesión → 200 con la lista; sin token → 401.
+  7. **Inscripción confirmada** → viaja con `qrData`; **pendiente de pago** → `qrData` vacío y
+     `registrationStatus: pending_payment`, pero **sigue apareciendo** en la lista.
+  8. **Sin inscripciones** → `[]`, no `null` ni error.
+
+---
+
 ### [2026-08-05]: Estado de inscripción y cierre de dos fallos de suplantación
 
 - **Alcance:**

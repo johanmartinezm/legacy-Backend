@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type EventService struct {
@@ -144,7 +146,11 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 	}
 
 	if reg.QRData == "" {
-		reg.QRData = fmt.Sprintf("REG-%s-%s", reg.UserID, reg.EventID)
+		// Aleatorio, no derivado del usuario y el evento. Antes era
+		// "REG-{user_id}-{event_id}": dos uuid que el propio interesado conoce,
+		// asi que cualquiera podia fabricar el codigo de otro y CheckIn lo daba
+		// por bueno. uuid.NewString() usa crypto/rand.
+		reg.QRData = "REG-" + uuid.NewString()
 	}
 
 	// 4. Create Registration in repository
@@ -163,6 +169,25 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 	}
 
 	return nil
+}
+
+// GetMyRegistrations alimenta la pantalla "Mi credencial".
+//
+// Se devuelven también las inscripciones pendientes de pago: al usuario le sirve
+// ver que su cupo está reservado y que le falta pagar. Lo que no se le manda es
+// su QR —una credencial que no da derecho a entrar no debería salir del
+// servidor—, así que el cliente no tiene que acordarse de ocultarlo.
+func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([]domain.UserRegistration, error) {
+	registrations, err := s.repo.GetRegistrationsByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range registrations {
+		if registrations[i].RegistrationStatus == domain.RegistrationPendingPayment {
+			registrations[i].QRData = ""
+		}
+	}
+	return registrations, nil
 }
 
 func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error {

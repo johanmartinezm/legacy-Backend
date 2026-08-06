@@ -212,6 +212,12 @@ func main() {
 		r.Post("/api/events/{id}/survey", eventHandler.SubmitEventSurvey)
 		r.Get("/api/events/{id}/survey/me", eventHandler.GetMyEventSurvey)
 
+		// Mi credencial: los eventos en los que el usuario esta inscrito, con su
+		// QR. Cuelga de /api/me y no de /api/events porque el patron
+		// /api/events/{id} del grupo publico captura cualquier segmento y se
+		// tragaba la ruta: devolvia "invalid input syntax for type uuid".
+		r.Get("/api/me/registrations", eventHandler.GetMyRegistrations)
+
 		// Agenda Management
 		r.Get("/api/events/agenda", eventHandler.GetAgenda)
 		r.Post("/api/workshops/{id}/agenda", eventHandler.AddToAgenda)
