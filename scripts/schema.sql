@@ -1053,6 +1053,14 @@ ALTER TABLE ONLY events.registrations
 
 
 --
+-- Name: registrations registrations_qr_data_key; Type: CONSTRAINT; Schema: events; Owner: -
+--
+
+ALTER TABLE ONLY events.registrations
+    ADD CONSTRAINT registrations_qr_data_key UNIQUE (qr_data);
+
+
+--
 -- Name: user_agenda user_agenda_pkey; Type: CONSTRAINT; Schema: events; Owner: -
 --
 
