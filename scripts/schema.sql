@@ -655,12 +655,13 @@ CREATE TABLE events.registrations (
     user_id uuid NOT NULL,
     event_id uuid,
     payment_status character varying(20) DEFAULT 'pending'::character varying,
-    registration_status character varying(20) DEFAULT 'confirmed'::character varying,
+    registration_status character varying(20) DEFAULT 'confirmed'::character varying NOT NULL,
     registration_date timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     qr_data text,
     total_paid numeric(10,2) DEFAULT 0.00,
     attendance_confirmed boolean DEFAULT false,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT registrations_registration_status_check CHECK (((registration_status)::text = ANY ((ARRAY['confirmed'::character varying, 'pending_payment'::character varying])::text[])))
 );
 
 
@@ -1214,6 +1215,13 @@ CREATE INDEX idx_users_alias ON core.users USING btree (alias) WHERE (alias IS N
 --
 
 CREATE INDEX idx_attendance_registration ON events.attendance_logs USING btree (registration_id);
+
+
+--
+-- Name: idx_registrations_event_status; Type: INDEX; Schema: events; Owner: -
+--
+
+CREATE INDEX idx_registrations_event_status ON events.registrations USING btree (event_id, registration_status);
 
 
 --
