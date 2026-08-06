@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/url"
+	"strings"
 
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
@@ -78,6 +80,14 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, 
 		return "", fmt.Errorf("failed to create transaction: %w", err)
 	}
 
+	// El id de NUESTRA transacción viaja en la URL de retorno.
+	//
+	// Al volver de la pasarela, la app necesita saber qué verificar, y
+	// /api/payments/verify espera este id, no el de CredibanCo. Depender de que
+	// la pasarela añada un parámetro con un nombre concreto sería frágil: aquí
+	// se garantiza que está, se llame como se llame lo que ella agregue.
+	returnUrl = conParametro(returnUrl, "tx_id", tx.ID.String())
+
 	// Call CredibanCo gateway
 	orderId, formUrl, err := s.gateway.CreatePaymentIntent(ctx, amount, tx.ID.String(), returnUrl)
 	if err != nil {
@@ -92,6 +102,24 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, 
 	}
 
 	return formUrl, nil
+}
+
+// conParametro añade una pareja clave=valor a la query de una URL, conservando
+// lo que ya trajera. Si la URL no se puede interpretar se concatena a mano, para
+// no perder el parámetro por un formato inesperado.
+func conParametro(rawURL, clave, valor string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		separador := "?"
+		if strings.Contains(rawURL, "?") {
+			separador = "&"
+		}
+		return rawURL + separador + url.QueryEscape(clave) + "=" + url.QueryEscape(valor)
+	}
+	q := u.Query()
+	q.Set(clave, valor)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // precioDelEvento devuelve el precio que manda: el de la base de datos.

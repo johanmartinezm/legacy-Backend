@@ -4,6 +4,32 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-05]: El `tx_id` viaja en la URL de retorno del pago
+
+- **Alcance:**
+  - `internal/core/services/payment_service.go` — `InitiatePayment` añade `?tx_id={uuid}` a la URL
+    de retorno antes de entregársela a CredibanCo. Al volver de la pasarela, la app necesita saber
+    **qué** verificar, y `/api/payments/verify` espera **nuestro** id de transacción, no el de
+    CredibanCo. Depender de que la pasarela añada un parámetro con un nombre concreto sería frágil;
+    así está garantizado, se llame como se llame lo que ella agregue.
+  - Se conservan los parámetros que la URL ya trajera, y si viene malformada el `tx_id` se
+    concatena a mano en vez de perderse.
+  - `Tests`: `payment_returnurl_test.go` (nuevo, 4 casos), incluido que el `tx_id` coincida con el
+    `orderNumber` que recibe la pasarela: si difirieran, la verificación consultaría una transacción
+    distinta de la que se cobró.
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **La URL de retorno lleva el id:** iniciar un pago y comprobar en el formulario de CredibanCo
+     que la URL de retorno contiene `tx_id=` con un uuid.
+  2. **Coincide con la transacción:** ese `tx_id` debe ser el `id` de la fila recién creada en
+     `core.transactions`.
+  3. **Verificación con token:** `GET /api/payments/verify?tx_id=...` **con** cabecera
+     `Authorization` → 200 con el estado. Sin cabecera → 401.
+  4. **Pago aprobado inscribe:** con una transacción en `APPROVED`, verificar debe dejar la
+     inscripción del evento en `payment_status = paid` y `registration_status = confirmed`.
+
+---
+
 ### [2026-08-05]: El importe y el usuario de un pago los decide el servidor (fallos 4 y 3)
 
 - **Alcance:**
