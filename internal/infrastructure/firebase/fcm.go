@@ -67,6 +67,65 @@ func (c *FCMClient) SendToToken(ctx context.Context, token, title, body string, 
 	return msgID, nil
 }
 
+// maxTokensPorLote es el límite que impone el Admin SDK en una sola llamada de
+// suscripción. Hoy hay una decena de tokens, pero trocear cuesta poco y evita
+// que esto falle en silencio el día que sean miles.
+const maxTokensPorLote = 1000
+
+// SubscribeToTopic suscribe dispositivos a un tópico desde el servidor.
+//
+// Existe porque la app **no llama a subscribeToTopic en ningún sitio**: registra
+// su token en /api/me/fcm-token y nada más. Sin esto, `SendToTopic(..., "all")`
+// —que es como el panel envía a "todos" y como salen los avisos automáticos— no
+// llega a ningún teléfono, aunque haya tokens guardados en la base.
+//
+// Suscribir desde el servidor tiene una ventaja decisiva sobre hacerlo en
+// Flutter: alcanza también a los dispositivos ya registrados, sin esperar a que
+// se publique una versión nueva de la app.
+//
+// Devuelve cuántos tokens quedaron suscritos. Un token caducado hace fallar solo
+// su parte del lote, no la llamada entera.
+func (c *FCMClient) SubscribeToTopic(ctx context.Context, tokens []string, topic string) (int, error) {
+	if topic == "" {
+		return 0, errors.New("el tópico no puede estar vacío")
+	}
+	if len(tokens) == 0 {
+		return 0, nil
+	}
+
+	if c.app == nil {
+		log.Printf("[FCM MOCK] Suscribiendo %d token(s) al tópico %s", len(tokens), topic)
+		return len(tokens), nil
+	}
+
+	client, err := c.app.Messaging(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("error al obtener cliente messaging: %v", err)
+	}
+
+	suscritos := 0
+	for inicio := 0; inicio < len(tokens); inicio += maxTokensPorLote {
+		fin := inicio + maxTokensPorLote
+		if fin > len(tokens) {
+			fin = len(tokens)
+		}
+
+		resp, err := client.SubscribeToTopic(ctx, tokens[inicio:fin], topic)
+		if err != nil {
+			return suscritos, fmt.Errorf("error al suscribir al tópico %s: %v", topic, err)
+		}
+		suscritos += resp.SuccessCount
+		if resp.FailureCount > 0 {
+			// Lo habitual es un token caducado, de una app desinstalada. No es
+			// motivo para dar por fallida la operación, pero conviene verlo.
+			log.Printf("[FCM] %d token(s) no se pudieron suscribir a %s (probablemente caducados)",
+				resp.FailureCount, topic)
+		}
+	}
+
+	return suscritos, nil
+}
+
 func (c *FCMClient) SendToTopic(ctx context.Context, topic, title, body string, data map[string]string) (string, error) {
 	if topic == "" {
 		return "", errors.New("el tópico no puede estar vacío")

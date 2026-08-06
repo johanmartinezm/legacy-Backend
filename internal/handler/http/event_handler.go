@@ -13,10 +13,14 @@ import (
 
 type EventHandler struct {
 	service ports.EventService
+	// notifier avisa a los usuarios de la app cuando se publica un evento
+	// nuevo. Admite nil: sin él, el evento se crea igual y solo se omite el
+	// aviso, que es como funcionó hasta ahora.
+	notifier ports.NotificationService
 }
 
-func NewEventHandler(service ports.EventService) *EventHandler {
-	return &EventHandler{service: service}
+func NewEventHandler(service ports.EventService, notifier ports.NotificationService) *EventHandler {
+	return &EventHandler{service: service, notifier: notifier}
 }
 
 func (h *EventHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +65,19 @@ func (h *EventHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Aviso a los usuarios de la app. Va después de crear el evento y no puede
+	// hacer fallar la respuesta: si el envío falla, queda en el log y el evento
+	// existe igual.
+	//
+	// El admin sale del token —esta ruta está bajo AdminOnly— para que el
+	// historial de notificaciones diga quién publicó la novedad, igual que en un
+	// envío manual desde el panel.
+	adminID, _ := r.Context().Value(UserIDKey).(string)
+	notificarNovedad(r.Context(), h.notifier, adminID,
+		"Nuevo evento: "+event.Title,
+		textoDe(event.Description),
+		map[string]string{"type": "event", "id": event.ID})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

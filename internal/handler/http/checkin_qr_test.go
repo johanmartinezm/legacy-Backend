@@ -22,7 +22,7 @@ func TestRegister_NoDevuelveElQRDeUnaReservaSinPagar(t *testing.T) {
 		reg.QRData = "REG-9f1c3a2e"
 		reg.TotalPaid = 250000
 	}}
-	h := NewEventHandler(svc)
+	h := NewEventHandler(svc, nil)
 
 	req, rec := peticion(nil, "user-1", "familia")
 	h.Register(rec, req)
@@ -59,7 +59,7 @@ func TestRegister_ElEventoGratuitoSiEntregaSuQR(t *testing.T) {
 		reg.RegistrationStatus = domain.RegistrationConfirmed
 		reg.QRData = "REG-4b8d17aa"
 	}}
-	h := NewEventHandler(svc)
+	h := NewEventHandler(svc, nil)
 
 	req, rec := peticion(nil, "user-1", "familia")
 	h.Register(rec, req)
@@ -86,7 +86,7 @@ func TestCheckIn_CodigosDeRespuesta(t *testing.T) {
 
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
-			h := NewEventHandler(&stubEventService{errCheckIn: c.err})
+			h := NewEventHandler(&stubEventService{errCheckIn: c.err}, nil)
 
 			body, _ := json.Marshal(map[string]string{"qrData": "REG-9f1c3a2e"})
 			req := httptest.NewRequest(http.MethodPost, "/api/events/checkin", bytes.NewReader(body))

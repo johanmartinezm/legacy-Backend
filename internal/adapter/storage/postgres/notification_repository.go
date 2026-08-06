@@ -25,6 +25,31 @@ func (r *NotificationRepository) SaveToken(ctx context.Context, token *domain.FC
 	return err
 }
 
+// GetAllTokens devuelve todos los tokens registrados.
+//
+// Lo usa la suscripción en bloque al tópico "all": los dispositivos que ya
+// estaban registrados antes de que existiera la suscripción automática no se
+// suscribirían nunca por sí solos, porque eso solo ocurre al registrar el token
+// y esos usuarios ya lo hicieron.
+func (r *NotificationRepository) GetAllTokens(ctx context.Context) ([]*domain.FCMToken, error) {
+	sql := `SELECT user_id, fcm_token, device_type, created_at, updated_at FROM core.user_fcm_tokens`
+	rows, err := r.db.Query(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tokens := make([]*domain.FCMToken, 0)
+	for rows.Next() {
+		var t domain.FCMToken
+		if err := rows.Scan(&t.UserID, &t.FCMToken, &t.DeviceType, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, &t)
+	}
+	return tokens, rows.Err()
+}
+
 func (r *NotificationRepository) GetTokensByUserID(ctx context.Context, userID string) ([]*domain.FCMToken, error) {
 	sql := `SELECT user_id, fcm_token, device_type, created_at, updated_at FROM core.user_fcm_tokens WHERE user_id = $1`
 	rows, err := r.db.Query(ctx, sql, userID)

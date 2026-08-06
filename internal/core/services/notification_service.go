@@ -21,6 +21,11 @@ func NewNotificationService(repo ports.NotificationRepository, fcmClient *fireba
 	}
 }
 
+// TopicTodos es el tópico al que se envían los avisos generales: el destino
+// "all" del panel y las novedades automáticas. Los dispositivos se suscriben
+// desde el servidor al registrar su token, porque la app no lo hace.
+const TopicTodos = "all"
+
 func (s *NotificationService) RegisterToken(ctx context.Context, userID, token, deviceType string) error {
 	if userID == "" || token == "" || deviceType == "" {
 		return errors.New("userID, token y deviceType no pueden estar vacíos")
@@ -32,7 +37,49 @@ func (s *NotificationService) RegisterToken(ctx context.Context, userID, token, 
 		DeviceType: deviceType,
 	}
 
-	return s.repo.SaveToken(ctx, t)
+	if err := s.repo.SaveToken(ctx, t); err != nil {
+		return err
+	}
+
+	// Suscripción al tópico general. La app registra el token y nada más: sin
+	// esto, el dispositivo queda guardado pero los envíos a "todos" no le
+	// llegan, que es exactamente lo que pasaba hasta ahora.
+	//
+	// Un fallo aquí no invalida el registro del token: el dispositivo queda
+	// guardado y puede recibir envíos dirigidos a él, y la suscripción se puede
+	// reintentar en bloque con SubscribeAllToTopic.
+	if _, err := s.fcmClient.SubscribeToTopic(ctx, []string{token}, TopicTodos); err != nil {
+		fmt.Printf("[FCM] no se pudo suscribir el token del usuario %s al tópico %s: %v\n", userID, TopicTodos, err)
+	}
+
+	return nil
+}
+
+// SubscribeAllToTopic suscribe al tópico general todos los tokens registrados.
+//
+// Hace falta una vez: los dispositivos que ya estaban registrados antes de que
+// existiera la suscripción automática no se suscribirían solos, porque eso solo
+// ocurre al registrar el token y esos usuarios ya lo hicieron. Después queda
+// disponible para reparar suscripciones perdidas sin tocar la base.
+//
+// Es idempotente: suscribir un token ya suscrito no tiene efecto ni error.
+func (s *NotificationService) SubscribeAllToTopic(ctx context.Context) (int, error) {
+	tokens, err := s.repo.GetAllTokens(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("no se pudieron leer los tokens: %w", err)
+	}
+	if len(tokens) == 0 {
+		return 0, nil
+	}
+
+	valores := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		if t.FCMToken != "" {
+			valores = append(valores, t.FCMToken)
+		}
+	}
+
+	return s.fcmClient.SubscribeToTopic(ctx, valores, TopicTodos)
 }
 
 func (s *NotificationService) SendNotification(ctx context.Context, adminID, title, body, targetType, targetValue string, data map[string]string) error {

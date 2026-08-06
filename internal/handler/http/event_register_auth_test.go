@@ -105,7 +105,7 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 		svc := &stubEventService{}
 		req, rec := peticion(map[string]any{"paymentStatus": "paid"}, "user-1", "familia")
 
-		NewEventHandler(svc).Register(rec, req)
+		NewEventHandler(svc, nil).Register(rec, req)
 
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("esperaba 403, llegó %d", rec.Code)
@@ -120,7 +120,7 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 		svc := &stubEventService{}
 		req, rec := peticion(map[string]any{"userID": "otra-persona"}, "user-1", "familia")
 
-		NewEventHandler(svc).Register(rec, req)
+		NewEventHandler(svc, nil).Register(rec, req)
 
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("esperaba 403, llegó %d", rec.Code)
@@ -137,7 +137,7 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 			"admin-1", RoleAdmin,
 		)
 
-		NewEventHandler(svc).Register(rec, req)
+		NewEventHandler(svc, nil).Register(rec, req)
 
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("esperaba 201, llegó %d", rec.Code)
@@ -155,7 +155,7 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 		svc := &stubEventService{}
 		req, rec := peticion(nil, "user-1", "familia")
 
-		NewEventHandler(svc).Register(rec, req)
+		NewEventHandler(svc, nil).Register(rec, req)
 
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("esperaba 201, llegó %d", rec.Code)
@@ -169,7 +169,7 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 		svc := &stubEventService{}
 		req, rec := peticion(map[string]any{"workshops": []string{"w-1", "w-2"}}, "user-1", "familia")
 
-		NewEventHandler(svc).Register(rec, req)
+		NewEventHandler(svc, nil).Register(rec, req)
 
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("esperaba 201, llegó %d", rec.Code)
@@ -185,7 +185,7 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 		svc := &stubEventService{}
 		req, rec := peticion(map[string]any{"paymentStatus": "paid"}, "user-1", "")
 
-		NewEventHandler(svc).Register(rec, req)
+		NewEventHandler(svc, nil).Register(rec, req)
 
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("esperaba 403, llegó %d", rec.Code)

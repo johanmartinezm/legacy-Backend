@@ -73,9 +73,20 @@ func main() {
 	likeService := services.NewLikeService(likeRepo)
 	likeHandler := handler.NewLikeHandler(likeService)
 
+	// Las notificaciones se cablean antes que los eventos y el contenido porque
+	// esos handlers las usan para avisar de una novedad: un evento nuevo o un
+	// contenido recién publicado mandan un push al topic "all".
+	fcmClient, err := firebase.NewFCMClient(cfg.Firebase.CredentialsFile)
+	if err != nil {
+		log.Fatalf("Failed to init FCM client: %v", err)
+	}
+	notificationRepo := postgres.NewNotificationRepository(dbPool)
+	notificationService := services.NewNotificationService(notificationRepo, fcmClient)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
+
 	eventRepo := postgres.NewEventRepository(dbPool)
 	eventService := services.NewEventService(eventRepo, cryptoService)
-	eventHandler := handler.NewEventHandler(eventService)
+	eventHandler := handler.NewEventHandler(eventService, notificationService)
 
 	chatRepo := postgres.NewChatRepository(dbPool)
 	chatService := services.NewChatService(chatRepo, userRepo, cryptoService)
@@ -90,7 +101,7 @@ func main() {
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
-	contentHandler := handler.NewContentHandler(contentService)
+	contentHandler := handler.NewContentHandler(contentService, notificationService)
 
 	statsRepo := postgres.NewStatsRepository(dbPool)
 	statsService := services.NewStatsService(statsRepo, cryptoService)
@@ -105,14 +116,6 @@ func main() {
 
 	asesoriaService := services.NewAsesoriaService(emailService, cfg.AsesoriaEmail)
 	asesoriaHandler := handler.NewAsesoriaHandler(asesoriaService, authService)
-
-	fcmClient, err := firebase.NewFCMClient(cfg.Firebase.CredentialsFile)
-	if err != nil {
-		log.Fatalf("Failed to init FCM client: %v", err)
-	}
-	notificationRepo := postgres.NewNotificationRepository(dbPool)
-	notificationService := services.NewNotificationService(notificationRepo, fcmClient)
-	notificationHandler := handler.NewNotificationHandler(notificationService)
 
 	groupRepo := postgres.NewGroupRepository(dbPool)
 	groupService := services.NewGroupService(groupRepo)
@@ -327,6 +330,9 @@ func main() {
 
 		// Admin Notifications
 		r.Post("/api/admin/notifications/send", notificationHandler.Send)
+		// Suscribe al topico "all" los dispositivos ya registrados. Los nuevos se
+		// suscriben solos al registrar su token; esto arregla los anteriores.
+		r.Post("/api/admin/notifications/subscribe-all", notificationHandler.SubscribeAll)
 		r.Get("/api/admin/notifications/history", notificationHandler.GetHistory)
 
 		// Admin Custom Groups

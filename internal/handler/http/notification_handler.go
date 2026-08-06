@@ -15,6 +15,24 @@ func NewNotificationHandler(service ports.NotificationService) *NotificationHand
 	return &NotificationHandler{service: service}
 }
 
+// SubscribeAll suscribe al tópico general todos los dispositivos ya
+// registrados. Va bajo AdminOnly.
+//
+// Hace falta porque la app nunca llamó a subscribeToTopic: los tokens estaban
+// guardados pero ninguno recibía los envíos a "todos". Los registros nuevos se
+// suscriben solos; esto arregla los anteriores, y sirve después para reparar
+// suscripciones sin tocar la base.
+func (h *NotificationHandler) SubscribeAll(w http.ResponseWriter, r *http.Request) {
+	suscritos, err := h.service.SubscribeAllToTopic(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"subscribed": suscritos})
+}
+
 // RegisterToken registers a new FCM token for the logged-in mobile user
 func (h *NotificationHandler) RegisterToken(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(UserIDKey).(string)

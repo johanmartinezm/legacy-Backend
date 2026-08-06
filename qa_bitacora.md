@@ -4,6 +4,91 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: Suscripción al tópico "all" desde el servidor
+
+- **El problema:** la app **nunca llamó a `subscribeToTopic`** — registra su token en
+  `/api/me/fcm-token` (`auth_provider.dart:410`) y nada más. Como `SendToTopic(..., "all")` solo
+  llega a dispositivos suscritos, **ningún envío a "todos" llegaba a nadie**, ni el manual del panel
+  ni los avisos automáticos nuevos. Con FCM en modo mock no se notaba: no llegaba nada de todos
+  modos. En producción había **11 tokens de 3 usuarios**, todos sin suscribir.
+- **Alcance:**
+  - `infrastructure/firebase/fcm.go` — `SubscribeToTopic`, en lotes de 1000 (límite del Admin SDK).
+    Un token caducado hace fallar solo su parte del lote y queda anotado en el log.
+  - `services/notification_service.go` — `RegisterToken` suscribe el dispositivo al tópico
+    `TopicTodos` justo después de guardarlo. **Un fallo de suscripción no invalida el registro**: el
+    token queda guardado, puede recibir envíos dirigidos y la suscripción se reintenta en bloque.
+  - `SubscribeAllToTopic` (nuevo) y `POST /api/admin/notifications/subscribe-all`, bajo `AdminOnly`:
+    suscribe los tokens ya registrados. Hace falta porque los dispositivos anteriores a este cambio
+    no se suscribirían solos —eso solo ocurre al registrar el token, y esos usuarios ya lo hicieron.
+  - `NotificationRepository.GetAllTokens` (nuevo).
+  - **Se suscribe desde el servidor y no desde Flutter** a propósito: alcanza a los dispositivos ya
+    registrados y no depende de publicar una versión nueva de la app, que hoy está parada.
+  - `Tests`: `suscripcion_topico_test.go` (nuevo, 7 casos).
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **Suscribir los existentes:** `POST /api/admin/notifications/subscribe-all` con token de
+     administrador → 200 con `{"subscribed": N}`. Con los datos de hoy, N debería ser **11**.
+  2. **Sin rol de administrador:** la misma ruta → 403.
+  3. **Envío a todos:** desde el panel, mandar una notificación con destino "todos" → **debe llegar
+     al teléfono**. Es la prueba que dice si el problema quedó resuelto; antes no llegaba.
+  4. **Dispositivo nuevo:** iniciar sesión en la app con otro teléfono y comprobar que recibe el
+     siguiente envío a "todos" sin necesidad de volver a llamar a `subscribe-all`.
+  5. **Idempotencia:** ejecutar `subscribe-all` dos veces seguidas no debe dar error ni duplicar
+     nada.
+  6. **El registro de token sigue funcionando** aunque la suscripción falle: cerrar y abrir sesión
+     en la app no debe dar error.
+
+---
+
+### [2026-08-06]: Avisos automáticos al publicar un evento o un contenido
+
+- **Alcance:**
+  - `handler/http/avisos.go` (nuevo) — `notificarNovedad`, el disparador común. Envía al topic
+    `all`, el mismo del envío manual del panel.
+  - `event_handler.go` — `CreateEvent` avisa tras crear el evento.
+  - `content_handler.go` — `AdminCreateContent` avisa **solo si nace publicado**, y
+    `AdminUpdateContent` **solo en la transición de borrador a publicado**. Sin esa comprobación,
+    corregir una errata en un artículo ya publicado volvería a notificar a todos.
+  - `cmd/server/main.go` — las notificaciones se cablean **antes** que eventos y contenido, porque
+    ahora esos handlers las usan.
+  - **El aviso nunca puede tumbar la operación.** `notificarNovedad` no devuelve error: si FCM está
+    caído —o corre en modo mock por falta de credenciales, que es como está producción hoy— el
+    evento se crea igual y el fallo queda en el log. Un aviso es un efecto secundario; convertirlo
+    en un punto de fallo haría de una molestia una avería.
+  - **El admin sale del token** (las rutas son `AdminOnly`), para que el historial de notificaciones
+    diga quién publicó la novedad, igual que en un envío manual.
+  - `Datos adjuntos`: `{"type": "event"|"content", "id": "..."}`, para que la app pueda abrir la
+    pantalla correspondiente al tocar la notificación. **La app todavía no los usa**: hoy la push
+    abre la aplicación sin navegar a ningún sitio.
+  - `Cuerpo recortado` a 140 caracteres, cortando por el último espacio. Android e iOS truncan de
+    todos modos.
+  - **No se segmenta por grupos.** Los `core.custom_groups` existen para eso, pero decidir a quién
+    interesa cada novedad es una decisión de producto, no una que convenga inventar en el código.
+  - `Tests`: `avisos_test.go` y `avisos_contenido_test.go` (nuevos, 15 casos).
+  - **Sin migración.**
+- **Importante:** en producción **FCM está en modo mock** —falta `firebase-service-account.json` en
+  el servidor—, así que los avisos se escribirán en el log del contenedor y **no llegará ninguna
+  notificación a los teléfonos** hasta que se suba ese archivo. El código queda listo; el archivo es
+  lo que falta.
+- **Criterios de QA:**
+  1. **Con FCM en mock (hoy):** crear un evento desde el panel y comprobar en
+     `docker compose logs backend` que aparece el intento de envío. El evento debe crearse
+     **siempre**, haya o no notificación.
+  2. **Con `firebase-service-account.json` en el servidor:** crear un evento y comprobar que llega
+     la push a un teléfono con la app instalada, con el título "Nuevo evento: ...".
+  3. **Contenido publicado:** crear un contenido con "publicado" activo → llega aviso. Crearlo como
+     borrador → **no** llega.
+  4. **Editar un publicado no repite el aviso:** cambiar el título de un contenido ya publicado y
+     guardar → **no** debe llegar ninguna notificación. Es lo que más fácil se rompe.
+  5. **Publicar un borrador sí avisa:** editar un borrador marcándolo como publicado → llega una
+     notificación, una sola.
+  6. **Historial:** los avisos automáticos deben aparecer en el historial del panel con el
+     administrador que los originó.
+  7. **Cuerpo largo:** un evento con descripción larga debe mostrar el texto recortado, sin cortar
+     una palabra por la mitad.
+
+---
+
 ### [2026-08-06]: Webhook de CredibanCo
 
 - **Alcance:**

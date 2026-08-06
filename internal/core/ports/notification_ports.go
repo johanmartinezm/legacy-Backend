@@ -8,6 +8,8 @@ import (
 type NotificationRepository interface {
 	SaveToken(ctx context.Context, token *domain.FCMToken) error
 	GetTokensByUserID(ctx context.Context, userID string) ([]*domain.FCMToken, error)
+	// GetAllTokens alimenta la suscripción en bloque al tópico "all".
+	GetAllTokens(ctx context.Context) ([]*domain.FCMToken, error)
 	DeleteToken(ctx context.Context, userID, token string) error
 	
 	SaveHistory(ctx context.Context, history *domain.NotificationHistory) error
@@ -18,4 +20,7 @@ type NotificationService interface {
 	RegisterToken(ctx context.Context, userID, token, deviceType string) error
 	SendNotification(ctx context.Context, adminID, title, body, targetType, targetValue string, data map[string]string) error
 	GetHistory(ctx context.Context, limit, offset int) ([]*domain.NotificationHistory, error)
+	// SubscribeAllToTopic suscribe al tópico general los tokens ya registrados.
+	// Devuelve cuántos quedaron suscritos.
+	SubscribeAllToTopic(ctx context.Context) (int, error)
 }
