@@ -4,6 +4,34 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: El botón "Eliminar foro" del panel devolvía 405
+
+- **El problema:** `AdminDeleteForum` estaba escrito desde el módulo de foros y **nunca se registró
+  en `main.go`**. No era un handler huérfano y ya está: **el panel ya llamaba a esa URL**
+  (`forum-admin.service.ts:40`, `deleteForum`), así que el botón "Eliminar" con su diálogo de
+  confirmación estaba roto desde el principio. El patrón `/api/admin/forums/{forumID}` existía para
+  `PUT` pero no para `DELETE`, de ahí el **405** en vez de un 404.
+  - Comprobado contra producción antes del arreglo: `DELETE` → **405**, `PUT` del mismo patrón →
+    401, `DELETE /api/admin/forums/posts/{postID}` → 401. Los dos últimos existen; el primero no.
+- **Alcance:**
+  - `cmd/server/main.go` — `r.Delete("/api/admin/forums/{forumID}", forumHandler.AdminDeleteForum)`
+    en el bloque `AdminOnly`, junto al resto de rutas de foros.
+  - Se retiró una línea **duplicada**: `/api/admin/forums/flagged` estaba registrada dos veces con
+    el mismo handler.
+  - **Sin migración.** No se tocó el panel: ya llamaba a la ruta correcta.
+- **Criterios de QA:**
+  1. **El botón funciona:** en "Administrar Foros", eliminar un foro debe pedir confirmación y
+     desaparecer de la lista. Antes no pasaba nada visible.
+  2. **Sin token o sin rol admin:** `DELETE /api/admin/forums/{id}` → 401 / 403, no 405.
+  3. **Ojo, el borrado arrastra los posts.** `forum_posts_forum_id_fkey` tiene **`ON DELETE
+     CASCADE`** —verificado en el dump y en la base real—, así que eliminar un foro borra **todos
+     sus mensajes**, sin aviso y sin vuelta atrás. El panel solo muestra un `confirm()` genérico.
+     Probar con un foro que tenga posts y confirmar que desaparecen; y valorar si ese diálogo
+     debería advertir de cuántos mensajes se van a perder.
+  4. **El resto de foros no se toca:** los demás siguen en la lista y sus posts intactos.
+
+---
+
 ### [2026-08-06]: CORS deja de aceptar cualquier origen
 
 - **El problema:** `AllowedOrigins: {"*"}` junto con `AllowCredentials: true`. Cualquier página de

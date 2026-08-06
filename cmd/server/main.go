@@ -358,12 +358,19 @@ func main() {
 
 		r.Post("/api/admin/forums", forumHandler.AdminCreateForum)
 		r.Put("/api/admin/forums/{forumID}", forumHandler.AdminUpdateForum)
+		// AdminDeleteForum llevaba escrito desde el modulo de foros y nunca se
+		// registro, asi que el boton "Eliminar" del panel —que ya llama a esta
+		// misma URL desde forum-admin.service.ts— recibia un 405. El patron
+		// existia para PUT pero no para DELETE.
+		r.Delete("/api/admin/forums/{forumID}", forumHandler.AdminDeleteForum)
 		r.Patch("/api/admin/forums/{forumID}/lock", forumHandler.AdminLockForum)
 		r.Patch("/api/admin/forums/{forumID}/unlock", forumHandler.AdminUnlockForum)
+		// /flagged va ANTES que /{forumID}/posts: chi resuelve primero el
+		// segmento literal, pero dejarlos juntos y en este orden lo hace evidente.
+		// Esta linea estaba repetida dos veces; la copia se retiro.
 		r.Get("/api/admin/forums/flagged", forumHandler.AdminListFlaggedPosts)
 		r.Get("/api/admin/forums/{forumID}/posts", forumHandler.AdminGetForumTree)
 		r.Delete("/api/admin/forums/posts/{postID}", forumHandler.AdminDeletePost)
-		r.Get("/api/admin/forums/flagged", forumHandler.AdminListFlaggedPosts)
 	})
 
 	// Health check
