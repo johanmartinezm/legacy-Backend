@@ -11,10 +11,10 @@ import (
 
 type NotificationService struct {
 	repo      ports.NotificationRepository
-	fcmClient *firebase.FCMClient
+	fcmClient ports.PushSender
 }
 
-func NewNotificationService(repo ports.NotificationRepository, fcmClient *firebase.FCMClient) *NotificationService {
+func NewNotificationService(repo ports.NotificationRepository, fcmClient ports.PushSender) *NotificationService {
 	return &NotificationService{
 		repo:      repo,
 		fcmClient: fcmClient,
@@ -121,8 +121,18 @@ func (s *NotificationService) SendNotification(ctx context.Context, adminID, tit
 			_, fcmErr := s.fcmClient.SendToToken(ctx, t.FCMToken, title, body, data)
 			if fcmErr != nil {
 				sendErrors = append(sendErrors, fcmErr)
-				// Si un token ya no es válido, se puede eliminar de la BD aquí
-				_ = s.repo.DeleteToken(ctx, targetValue, t.FCMToken)
+
+				// El token solo se borra si FCM dice que está muerto de verdad
+				// —desinstalado, rotado, mal formado o de otro proyecto—.
+				//
+				// Antes se borraba ante CUALQUIER error, así que un corte
+				// momentáneo con Google se llevaba por delante dispositivos
+				// buenos y esos usuarios dejaban de recibir notificaciones para
+				// siempre, sin rastro de por qué. Ante un fallo pasajero el
+				// token se conserva y el siguiente envío lo intentará de nuevo.
+				if errors.Is(fcmErr, firebase.ErrTokenInvalido) {
+					_ = s.repo.DeleteToken(ctx, targetValue, t.FCMToken)
+				}
 			}
 		}
 		if len(sendErrors) == len(tokens) {

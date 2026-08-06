@@ -16,6 +16,17 @@ type NotificationRepository interface {
 	GetHistory(ctx context.Context, limit, offset int) ([]*domain.NotificationHistory, error)
 }
 
+// PushSender es lo que el servicio necesita de la pasarela de notificaciones.
+//
+// El servicio dependía del tipo concreto *firebase.FCMClient, lo que impedía
+// probar qué hace ante un fallo de envío —justo la parte delicada, porque de
+// ahí depende que un token se borre o se conserve—.
+type PushSender interface {
+	SendToToken(ctx context.Context, token, title, body string, data map[string]string) (string, error)
+	SendToTopic(ctx context.Context, topic, title, body string, data map[string]string) (string, error)
+	SubscribeToTopic(ctx context.Context, tokens []string, topic string) (int, error)
+}
+
 type NotificationService interface {
 	RegisterToken(ctx context.Context, userID, token, deviceType string) error
 	SendNotification(ctx context.Context, adminID, title, body, targetType, targetValue string, data map[string]string) error

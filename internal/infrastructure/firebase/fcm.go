@@ -12,6 +12,29 @@ import (
 	"google.golang.org/api/option"
 )
 
+// ErrTokenInvalido marca los envíos que fallaron porque el token ya no sirve y
+// no volverá a servir: la app se desinstaló, el token rotó, viene mal formado o
+// pertenece a otro proyecto de Firebase.
+//
+// Existe para que quien llama pueda distinguirlo de un fallo pasajero. Sin esa
+// distinción, un corte momentáneo con Google borraría dispositivos buenos y esos
+// usuarios dejarían de recibir notificaciones para siempre, sin que nadie se
+// entere.
+var ErrTokenInvalido = errors.New("el token FCM ya no es válido")
+
+// esTokenInvalido separa los errores definitivos de los transitorios.
+//
+// Definitivos: el token no existe, está mal formado o es de otro proyecto.
+// Transitorios —y por tanto ausentes de esta lista a propósito—: servidor no
+// disponible, error interno, cuota o límite de frecuencia excedidos. En esos
+// casos el token puede seguir siendo perfectamente bueno.
+func esTokenInvalido(err error) bool {
+	return messaging.IsRegistrationTokenNotRegistered(err) ||
+		messaging.IsUnregistered(err) ||
+		messaging.IsInvalidArgument(err) ||
+		messaging.IsSenderIDMismatch(err)
+}
+
 type FCMClient struct {
 	app *firebase.App
 }
@@ -61,7 +84,12 @@ func (c *FCMClient) SendToToken(ctx context.Context, token, title, body string, 
 
 	msgID, err := client.Send(ctx, message)
 	if err != nil {
-		return "", fmt.Errorf("error al enviar mensaje: %v", err)
+		// Se envuelve con %w para no perder la causa: es lo que permite a quien
+		// llama decidir si el token debe borrarse o conservarse.
+		if esTokenInvalido(err) {
+			return "", fmt.Errorf("%w: %v", ErrTokenInvalido, err)
+		}
+		return "", fmt.Errorf("error al enviar mensaje: %w", err)
 	}
 
 	return msgID, nil

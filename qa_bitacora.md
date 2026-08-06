@@ -4,6 +4,38 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: Un fallo pasajero de FCM ya no borra el dispositivo
+
+- **El problema, visto en producción:** `SendNotification` borraba el token ante **cualquier** error
+  de envío. Un corte momentáneo con Google se llevaba por delante dispositivos buenos, y esos
+  usuarios dejaban de recibir notificaciones **para siempre**, sin rastro de por qué. Se detectó al
+  probar un envío dirigido: desaparecieron los 7 tokens de un usuario de una sola llamada.
+- **Alcance:**
+  - `infrastructure/firebase/fcm.go` — `ErrTokenInvalido` (nuevo) y `esTokenInvalido`, que separa
+    los errores **definitivos** (`IsRegistrationTokenNotRegistered`, `IsUnregistered`,
+    `IsInvalidArgument`, `IsSenderIDMismatch`: app desinstalada, token rotado, mal formado o de otro
+    proyecto) de los **transitorios** (servidor no disponible, error interno, cuota o frecuencia
+    excedidas), que quedan fuera de la lista a propósito.
+  - `SendToToken` envuelve el error con `%w` en vez de `%v`. Con `%v` se perdía la causa y era
+    imposible clasificarla.
+  - `services/notification_service.go` — el token solo se borra si `errors.Is(err,
+    firebase.ErrTokenInvalido)`. Ante un fallo pasajero se conserva y el siguiente envío reintenta.
+  - `ports.PushSender` (nuevo): el servicio dependía del tipo concreto `*firebase.FCMClient`, lo que
+    hacía **imposible probar** justo la parte delicada. Ahora depende de la interfaz y `main.go` no
+    cambia, porque `*FCMClient` la satisface.
+  - `Tests`: `borrado_tokens_test.go` (nuevo, 4 casos).
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **Un dispositivo con la app desinstalada** desaparece de `core.user_fcm_tokens` tras un envío
+     dirigido. Ese borrado sí es el correcto.
+  2. **Un dispositivo válido sobrevive** a un envío que falle por causas de red: el token debe
+     seguir en la tabla.
+  3. **Envío a un usuario con varios dispositivos:** si uno está muerto y otro vivo, la respuesta es
+     200, llega al vivo y solo se borra el muerto.
+  4. **Si fallan todos los envíos**, la respuesta sigue siendo 500 con el detalle en el cuerpo.
+
+---
+
 ### [2026-08-06]: Suscripción al tópico "all" desde el servidor
 
 - **El problema:** la app **nunca llamó a `subscribeToTopic`** — registra su token en
