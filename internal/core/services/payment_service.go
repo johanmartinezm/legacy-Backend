@@ -40,6 +40,13 @@ var (
 	// petición. No es un fallo nuestro, y conviene distinguirlo de un 500 para
 	// no mandar a buscar la avería en el sitio equivocado.
 	ErrPaymentGatewayUnavailable = errors.New("payment gateway unavailable")
+	// ErrPaymentNotificationEmpty: la notificación llegó sin ningún
+	// identificador y no hay nada que mirar.
+	ErrPaymentNotificationEmpty = errors.New("notification without a transaction reference")
+	// ErrPaymentNotificationUnknown: el identificador no corresponde a ninguna
+	// transacción nuestra. No es un error del servidor: puede ser una prueba de
+	// la pasarela, un reenvío antiguo o alguien tanteando la URL.
+	ErrPaymentNotificationUnknown = errors.New("notification for an unknown transaction")
 )
 
 // toleranciaImporte: los importes viajan como float y se guardan como
@@ -152,6 +159,70 @@ func (s *paymentService) precioDelEvento(ctx context.Context, eventID uuid.UUID)
 	return event.Price, nil
 }
 
+// ProcessGatewayNotification atiende el aviso que CredibanCo manda cuando una
+// operación cambia de estado. Existe porque hasta ahora la confirmación dependía
+// de que el usuario volviera a la app: quien pagaba y cerraba el navegador
+// dejaba el cobro hecho y la inscripción sin confirmar para siempre.
+//
+// **El contenido de la notificación no decide nada.** Solo se usa para saber qué
+// transacción mirar; el estado se pregunta a la pasarela con nuestras
+// credenciales, igual que hace VerifyPayment. Eso es lo que permite exponer la
+// ruta sin autenticación —la pasarela no tiene un token nuestro— sin que sea un
+// agujero: quien descubra la URL e invente una notificación no puede declarar
+// nada aprobado, solo provocar que consultemos un estado que ya conocemos.
+//
+// La referencia puede ser el id de nuestra transacción (que viaja como
+// orderNumber) o el que asigna CredibanCo (mdOrder). Se aceptan los dos porque
+// no está confirmado cuál enviará.
+func (s *paymentService) ProcessGatewayNotification(ctx context.Context, referencia string) (*domain.Transaction, error) {
+	referencia = strings.TrimSpace(referencia)
+	if referencia == "" {
+		return nil, ErrPaymentNotificationEmpty
+	}
+
+	tx, err := s.transaccionDeLaNotificacion(ctx, referencia)
+	if err != nil {
+		return nil, err
+	}
+
+	// Una transacción ya resuelta no se vuelve a consultar a la pasarela: la
+	// ruta es pública, y sin este corte cualquiera podría hacernos repetir
+	// llamadas salientes indefinidamente con una referencia válida.
+	if tx.Status == domain.TxStatusApproved {
+		// Sí se reintenta la confirmación de la inscripción, que es local,
+		// barata e idempotente: si la primera vez el pago se marcó aprobado pero
+		// falló al tocar events.registrations, este reintento lo repara.
+		if err := s.confirmarInscripcionSiProcede(ctx, tx); err != nil {
+			return nil, err
+		}
+		return tx, nil
+	}
+	if tx.Status == domain.TxStatusDeclined {
+		return tx, nil
+	}
+
+	return s.VerifyPayment(ctx, tx.ID)
+}
+
+// transaccionDeLaNotificacion resuelve la referencia recibida, probando primero
+// como id nuestro y después como id de CredibanCo.
+func (s *paymentService) transaccionDeLaNotificacion(ctx context.Context, referencia string) (*domain.Transaction, error) {
+	if id, err := uuid.Parse(referencia); err == nil {
+		tx, err := s.txRepo.GetTransactionByID(ctx, id)
+		if err == nil && tx != nil {
+			return tx, nil
+		}
+		// Un uuid que no es transacción nuestra todavía puede ser un mdOrder:
+		// se sigue probando por el otro camino antes de darlo por desconocido.
+	}
+
+	tx, err := s.txRepo.GetTransactionByOrderID(ctx, referencia)
+	if err != nil || tx == nil {
+		return nil, fmt.Errorf("%w: %s", ErrPaymentNotificationUnknown, referencia)
+	}
+	return tx, nil
+}
+
 func (s *paymentService) VerifyPayment(ctx context.Context, txID uuid.UUID) (*domain.Transaction, error) {
 	tx, err := s.txRepo.GetTransactionByID(ctx, txID)
 	if err != nil {
@@ -184,20 +255,36 @@ func (s *paymentService) VerifyPayment(ctx context.Context, txID uuid.UUID) (*do
 	// cambiar: verificar dos veces debe dejar el mismo resultado, y el UPDATE es
 	// idempotente. Si la primera verificación confirmó el pago pero falló al
 	// tocar la inscripción, la segunda lo arregla.
-	if tx.Status == domain.TxStatusApproved && tx.ReferenceType == domain.RefTypeEvent && s.eventRepo != nil {
-		err := s.eventRepo.ConfirmEventRegistration(ctx, tx.UserID.String(), tx.ReferenceID.String())
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("payment approved but registration could not be confirmed: %w", err)
-		}
-		// ErrNotFound significa que se pagó sin inscripción previa. No se
-		// inventa una aquí: no hay forma de saber qué talleres eligió ni con qué
-		// datos, y crear una a medias sería peor que dejar constancia. Queda el
-		// pago aprobado y visible para reconciliar a mano.
-		if errors.Is(err, domain.ErrNotFound) {
-			log.Printf("[PAGO] transaccion %s aprobada sin inscripcion previa (usuario %s, evento %s): revisar a mano",
-				tx.ID, tx.UserID, tx.ReferenceID)
-		}
+	if err := s.confirmarInscripcionSiProcede(ctx, tx); err != nil {
+		return nil, err
 	}
 
 	return tx, nil
+}
+
+// confirmarInscripcionSiProcede pasa la inscripción a confirmada cuando el pago
+// está aprobado y la transacción es de un evento.
+//
+// Se ejecuta siempre que el estado sea APPROVED, no solo cuando acaba de
+// cambiar: verificar dos veces debe dejar el mismo resultado, y el UPDATE es
+// idempotente. Si la primera verificación confirmó el pago pero falló al tocar
+// la inscripción, la siguiente lo arregla.
+func (s *paymentService) confirmarInscripcionSiProcede(ctx context.Context, tx *domain.Transaction) error {
+	if tx.Status != domain.TxStatusApproved || tx.ReferenceType != domain.RefTypeEvent || s.eventRepo == nil {
+		return nil
+	}
+
+	err := s.eventRepo.ConfirmEventRegistration(ctx, tx.UserID.String(), tx.ReferenceID.String())
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("payment approved but registration could not be confirmed: %w", err)
+	}
+	// ErrNotFound significa que se pagó sin inscripción previa. No se inventa
+	// una aquí: no hay forma de saber qué talleres eligió ni con qué datos, y
+	// crear una a medias sería peor que dejar constancia. Queda el pago aprobado
+	// y visible para reconciliar a mano.
+	if errors.Is(err, domain.ErrNotFound) {
+		log.Printf("[PAGO] transaccion %s aprobada sin inscripcion previa (usuario %s, evento %s): revisar a mano",
+			tx.ID, tx.UserID, tx.ReferenceID)
+	}
+	return nil
 }

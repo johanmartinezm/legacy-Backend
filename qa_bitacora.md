@@ -4,6 +4,58 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: Webhook de CredibanCo
+
+- **Alcance:**
+  - `GET` y `POST` `/api/payments/credibanco/callback`, **en el bloque de rutas públicas**, sin
+    `AuthMiddleware`: quien llama es la pasarela y no tiene un token nuestro.
+  - **Por qué eso no es un agujero:** el contenido de la notificación **no decide nada**. Solo se usa
+    para saber qué transacción mirar; el estado se pregunta a CredibanCo con nuestras credenciales,
+    igual que hace `VerifyPayment`. Una notificación inventada no puede declarar un pago aprobado —
+    lo cubre `TestWebhook_UnaNotificacionFalsaNoApruebaNada`. Este es el punto que hay que preservar
+    si alguien toca este código: **en cuanto el estado se lea de la notificación, la ruta pasa a ser
+    una vía para regalar inscripciones.**
+  - **Para qué sirve:** hasta ahora la confirmación dependía de que el usuario volviera a la app.
+    Quien pagaba y cerraba el navegador dejaba el cobro hecho y la inscripción sin confirmar **para
+    siempre**.
+  - `Identificador`: se acepta tanto el nuestro (`orderNumber`, que es el id de la transacción) como
+    el de CredibanCo (`mdOrder`), más los alias `tx_id`, `orderId` y `order_id`. No está confirmado
+    cuál enviarán, y probar varios sale más barato que un despliegue para añadir un nombre.
+  - `Repositorio`: `GetTransactionByOrderID` (nuevo), para entrar por el id de la pasarela.
+  - `Límite de abuso`: una transacción ya aprobada o rechazada **no se vuelve a consultar** a la
+    pasarela. Sin ese corte, cualquiera con una referencia válida podría hacernos repetir llamadas
+    salientes indefinidamente. Sí se reintenta la confirmación de la inscripción, que es local e
+    idempotente, y repara el caso en que el pago se marcó aprobado pero la inscripción no llegó a
+    confirmarse.
+  - `Códigos`: **200** al procesar y también ante una referencia desconocida —un error haría que la
+    pasarela reintentara en bucle algo que nunca va a existir—; **400** si no viene ningún
+    identificador; **500** solo ante un fallo nuestro, donde sí interesa que reintenten.
+  - `Log`: se registra **toda** notificación recibida con sus parámetros en crudo. Cuando CredibanCo
+    active el aviso, ese log es lo único que dirá con qué nombres y formato lo manda de verdad.
+  - `Tests`: `payment_webhook_test.go` en services (7 casos) y en handler/http (5 casos). La consulta
+    nueva se ejercitó además contra el Postgres real, incluido el caso de dos filas con el mismo
+    `credibanco_order_id`.
+  - **Sin migración.**
+- **Pendiente que no depende de nosotros:** hay que pedirle a CredibanCo que **configure la URL de
+  notificación** apuntando a `https://legacy.intelyclick.com/api/payments/credibanco/callback`, y
+  confirmar con qué nombre envían el identificador y si firman el aviso. Hasta entonces el endpoint
+  existe pero nadie lo llama.
+- **Criterios de QA:**
+  1. **La ruta responde sin token:** `GET /api/payments/credibanco/callback?mdOrder=x` → **200**
+     (no 401). Es lo primero que hay que ver desplegado.
+  2. **Sin identificador:** la misma ruta sin parámetros → **400**.
+  3. **Referencia desconocida:** con un `mdOrder` inventado → **200**, y en el log del contenedor la
+     línea `[PAGO][webhook] referencia desconocida`.
+  4. **Toda notificación queda registrada:** `docker compose logs backend | grep webhook` debe
+     mostrar el método y los parámetros recibidos.
+  5. **Con un pago real** (cuando CredibanCo desbloquee): pagar y **cerrar el navegador sin volver a
+     la app**. La inscripción debe quedar `confirmed` igualmente, y el QR aparecer en "Mi
+     credencial". Es la prueba que justifica todo el trabajo.
+  6. **Idempotencia:** repetir la misma notificación tres veces no debe duplicar inscripciones ni
+     cambiar el resultado.
+
+---
+
 ### [2026-08-06]: El escáner de la puerta mostraba el nombre en texto cifrado
 
 - **Alcance:**

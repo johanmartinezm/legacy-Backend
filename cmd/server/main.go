@@ -166,6 +166,16 @@ func main() {
 	// Se mantiene como alias para no tener que redesplegar el frontend.
 	r.Post("/api/verify-email", userHandler.VerifyEmail)
 
+	// Webhook de CredibanCo. Va aquí, sin AuthMiddleware, porque quien llama es
+	// la pasarela y no tiene un token nuestro. El handler no se cree el
+	// contenido: consulta el estado a CredibanCo con nuestras credenciales, así
+	// que una notificación inventada no puede aprobar ningún pago.
+	//
+	// GET y POST: esta familia de pasarelas notifica por GET, pero no conviene
+	// depender de ello.
+	r.Get("/api/payments/credibanco/callback", paymentHandler.CredibancoCallback)
+	r.Post("/api/payments/credibanco/callback", paymentHandler.CredibancoCallback)
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(handler.AuthMiddleware([]byte(cfg.Security.JWTSecret)))

@@ -32,6 +32,9 @@ func (r *stubTxRepo) CreateTransaction(ctx context.Context, tx *domain.Transacti
 func (r *stubTxRepo) GetTransactionByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error) {
 	return nil, nil
 }
+func (r *stubTxRepo) GetTransactionByOrderID(ctx context.Context, orderID string) (*domain.Transaction, error) {
+	return nil, domain.ErrNotFound
+}
 func (r *stubTxRepo) UpdateTransactionStatus(ctx context.Context, id uuid.UUID, s domain.TransactionStatus, orderID string) error {
 	return nil
 }
