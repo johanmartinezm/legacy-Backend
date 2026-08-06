@@ -40,14 +40,26 @@ func (r *EventRepository) ListCategories(ctx context.Context) ([]domain.EventCat
 	return categories, nil
 }
 
+// GetEvents devuelve el listado completo de eventos.
+//
+// LEFT JOIN y no JOIN: events.category_id es anulable, y con un JOIN un evento
+// sin categoría —o con una categoría borrada— desaparecía del listado sin ningún
+// error. Nadie se enteraba: la respuesta era un 200 con un evento de menos.
+//
+// Los COALESCE son la contrapartida obligatoria del LEFT JOIN: domain.Event
+// declara CategoryID, Category y CategoryOrder como valores no anulables, así que
+// un nulo rompería el Scan. El 9999 del orden manda los eventos sin categoría al
+// final de la lista, que es donde estorban menos.
 func (r *EventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) {
 	query := `
-		SELECT e.id, e.category_id, c.name as category, e.title, e.description, e.image_url, 
-		       e.location, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free, 
-		       e.action_status, e.button_text, e.attendees_limit, e.includes, c.order_index
+		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
+		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
+		       e.location, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
+		       e.action_status, e.button_text, e.attendees_limit, e.includes,
+		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
-		JOIN events.categories c ON e.category_id = c.id
-		ORDER BY c.order_index ASC, e.start_date ASC
+		LEFT JOIN events.categories c ON e.category_id = c.id
+		ORDER BY COALESCE(c.order_index, 9999) ASC, e.start_date ASC
 	`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
@@ -71,13 +83,20 @@ func (r *EventRepository) GetEvents(ctx context.Context) ([]domain.Event, error)
 	return events, nil
 }
 
+// GetEventByID busca un evento concreto.
+//
+// Mismo LEFT JOIN que GetEvents, y por un motivo peor: con el JOIN, pedir el
+// detalle de un evento sin categoría devolvía ErrNotFound, o sea un 404 sobre un
+// evento que existe. Quien tuviera el enlace veía "no encontrado".
 func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
 	query := `
-		SELECT e.id, e.category_id, c.name as category, e.title, e.description, e.image_url, 
-		       e.location, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free, 
-		       e.action_status, e.button_text, e.attendees_limit, e.includes, c.order_index
+		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
+		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
+		       e.location, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
+		       e.action_status, e.button_text, e.attendees_limit, e.includes,
+		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
-		JOIN events.categories c ON e.category_id = c.id
+		LEFT JOIN events.categories c ON e.category_id = c.id
 		WHERE e.id = $1
 	`
 	var e domain.Event

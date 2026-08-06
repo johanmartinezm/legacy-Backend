@@ -4,6 +4,38 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: Un evento sin categoría ya no desaparece del listado
+
+- **El problema:** `GetEvents` y `GetEventByID` unían con `JOIN events.categories`, y
+  `events.category_id` es **anulable**. Un evento sin categoría —o con una categoría borrada— se
+  caía del listado **sin ningún error**: la respuesta era un 200 con un evento de menos, así que
+  nadie se enteraba. En `GetEventByID` era peor: devolvía `ErrNotFound`, o sea un **404 sobre un
+  evento que existe**, y quien tuviera el enlace veía "no encontrado".
+- **Alcance:**
+  - `postgres/event_repository.go` — `LEFT JOIN` en las dos consultas (líneas 49 y 80 anteriores).
+  - `COALESCE` en las tres columnas que vienen de la categoría, que es la contrapartida obligatoria:
+    `domain.Event` declara `CategoryID`, `Category` y `CategoryOrder` como no anulables, así que un
+    nulo rompería el `Scan` y cambiaríamos un evento invisible por un error 500.
+  - Los eventos sin categoría se ordenan con `COALESCE(c.order_index, 9999)`, es decir **al final**
+    del listado, donde estorban menos.
+  - **Verificado contra el Postgres real** con dos eventos sembrados en una transacción revertida:
+    el `JOIN` antiguo devolvía 1 de 2; el `LEFT JOIN` devuelve los 2, y el detalle por id del
+    evento huérfano pasa de 0 filas a 1.
+  - Los tests con mocks **no cubren esto**: la lógica vive en el SQL y el doble del repositorio no
+    ejecuta consultas. Por eso la comprobación se hizo contra la base.
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **Evento sin categoría visible:** crear un evento dejando la categoría vacía y comprobar que
+     aparece en el listado de la app y del panel. Antes desaparecía sin aviso.
+  2. **Su detalle abre:** entrar a ese evento desde el listado → debe cargar, no dar 404.
+  3. **Va al final:** en el listado aparece después de los que sí tienen categoría.
+  4. **Nada cambia para los demás:** los eventos con categoría se siguen viendo en el mismo orden de
+     siempre, agrupados por categoría.
+  5. **Categoría borrada:** si se elimina una categoría que tenía eventos, esos eventos deben seguir
+     apareciendo en lugar de esfumarse.
+
+---
+
 ### [2026-08-06]: Un fallo pasajero de FCM ya no borra el dispositivo
 
 - **El problema, visto en producción:** `SendNotification` borraba el token ante **cualquier** error
