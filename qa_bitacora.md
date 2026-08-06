@@ -4,6 +4,36 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: CORS deja de aceptar cualquier origen
+
+- **El problema:** `AllowedOrigins: {"*"}` junto con `AllowCredentials: true`. Cualquier página de
+  cualquier dominio podía llamar a la API desde el navegador de quien la visitara. Además esa
+  combinación es **inválida** según la especificación —los navegadores rechazan credenciales con
+  comodín—, así que estaba abierta *y* mal.
+- **Alcance:**
+  - `cmd/server/main.go` — `AllowOriginFunc` en lugar de la lista con `*`. Acepta
+    `https://legacy.intelyclick.com` y **cualquier `localhost`/`127.0.0.1` sin importar el puerto**:
+    `ng serve` usa el 4200 y `flutter run -d chrome` levanta uno aleatorio en cada arranque, así que
+    fijar puertos rompería el desarrollo.
+  - **La app móvil no se ve afectada.** Un cliente nativo no envía cabecera `Origin` y CORS no
+    interviene; esto solo gobierna navegadores, es decir el panel y la app compilada para web.
+  - Si el panel o la app web se publican algún día en otro dominio, hay que añadirlo a
+    `origenesDeConfianza` o dejarán de funcionar con un error de CORS.
+  - `Tests`: `cmd/server/cors_test.go` (nuevo, 11 casos). Los negativos son los que importan:
+    dominios que **imitan** el nuestro (`legacy.intelyclick.com.malicioso.com`,
+    `malicioso-legacy.intelyclick.com`) y el mismo dominio por `http` en vez de `https`.
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **El panel sigue funcionando** en `https://legacy.intelyclick.com`: iniciar sesión, listar
+     usuarios y abrir eventos. Es la comprobación que dice si el cambio rompió algo.
+  2. **Desarrollo local intacto:** `ng serve` en el 4200 contra la API de producción sigue
+     funcionando.
+  3. **La app móvil no cambia**, ni en Android ni en iOS.
+  4. **Un origen ajeno queda bloqueado:** una petición con `Origin: https://malicioso.com` **no**
+     debe recibir cabecera `Access-Control-Allow-Origin`.
+
+---
+
 ### [2026-08-06]: Un evento sin categoría ya no desaparece del listado
 
 - **El problema:** `GetEvents` y `GetEventByID` unían con `JOIN events.categories`, y

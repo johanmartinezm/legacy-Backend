@@ -90,8 +90,23 @@ scp server_linux config.docker.yaml Dockerfile docker-compose.yml \
 FCM arranca en modo mock**: las notificaciones se escriben en la consola del contenedor y nadie
 las recibe.
 
-`.env` guarda hoy la contraseña de root en texto plano. Cambiar a clave SSH (`ssh-copy-id` y
-`PasswordAuthentication no`) elimina el secreto más sensible del proyecto.
+### `SSH_PASS` ya no hace falta
+
+**La clave SSH está autorizada y funciona.** Comprobado el 2026-08-06: todos los despliegues de ese
+día se hicieron con `ssh -o BatchMode=yes`, que desactiva la autenticación por contraseña, y
+`SSH_PASS` no aparece en ningún script del repositorio — solo se mencionaba aquí.
+
+Quedan dos pasos, **ninguno automatizable sin riesgo**, porque los dos pueden dejarte fuera del
+servidor si algo va mal:
+
+1. **Borrar `SSH_PASS` de `.env`.** Antes, guarda la contraseña de root en tu gestor de
+   contraseñas: si algún día pierdes la clave privada, es la única vía de entrada que queda.
+2. **`PasswordAuthentication no` en `/etc/ssh/sshd_config`** del servidor, y recargar `sshd`.
+   Hazlo **con una segunda sesión SSH abierta** para poder revertir si la clave fallara, y
+   asegúrate antes de tener acceso a la consola del proveedor.
+
+El paso 2 es el que de verdad cierra la puerta: mientras `PasswordAuthentication` siga en `yes`,
+cualquiera puede intentar adivinar la contraseña de root por fuerza bruta, esté o no en tu `.env`.
 
 ## 4. Levantar
 

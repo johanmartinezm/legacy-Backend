@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"log"
 	netHttp "net/http"
+	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -135,9 +137,18 @@ func main() {
 	// 4. Router Setup
 	r := chi.NewRouter()
 
-	// CORS Setup
+	// CORS: solo los origenes que de verdad usan esta API desde un navegador.
+	//
+	// Antes era AllowedOrigins: {"*"} junto con AllowCredentials: true, que es
+	// una combinacion que los navegadores rechazan de todos modos, asi que
+	// ademas de abierta era incorrecta. Cualquier pagina de cualquier dominio
+	// podia llamar a la API con el token de quien la visitara.
+	//
+	// La app movil NO se ve afectada: un cliente nativo no manda cabecera Origin
+	// y CORS no interviene. Esto solo gobierna a los navegadores, es decir al
+	// panel administrativo y a la app compilada para web.
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"}, // Allow all for dev
+		AllowOriginFunc:  origenPermitido,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
@@ -365,4 +376,32 @@ func main() {
 	if err := netHttp.ListenAndServe(":"+cfg.Server.Port, r); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+}
+
+// origenesDeConfianza son los sitios que sirven la interfaz web en produccion.
+//
+// Si algun dia el panel o la app web se publican en otro dominio, hay que
+// anadirlo aqui o dejaran de funcionar con un error de CORS en el navegador.
+var origenesDeConfianza = []string{
+	"https://legacy.intelyclick.com",
+}
+
+// origenPermitido decide si un navegador puede llamar a la API desde ese origen.
+//
+// Acepta los dominios de produccion y cualquier localhost, sin importar el
+// puerto: `ng serve` usa el 4200 y `flutter run -d chrome` levanta uno
+// aleatorio en cada arranque, asi que fijar puertos romperia el desarrollo.
+func origenPermitido(r *netHttp.Request, origin string) bool {
+	for _, permitido := range origenesDeConfianza {
+		if strings.EqualFold(origin, permitido) {
+			return true
+		}
+	}
+
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
