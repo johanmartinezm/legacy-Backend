@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
@@ -28,7 +29,41 @@ func NewPaymentService(txRepo ports.TransactionRepository, gateway ports.Payment
 	}
 }
 
+// Errores del inicio de pago, para que el handler distinga 400, 404 y 409.
+var (
+	ErrPaymentEventNotFound  = errors.New("event not found")
+	ErrPaymentEventIsFree    = errors.New("event is free, no payment needed")
+	ErrPaymentAmountMismatch = errors.New("amount does not match the event price")
+)
+
+// toleranciaImporte: los importes viajan como float y se guardan como
+// numeric(10,2). Comparar con == daría falsos negativos por el redondeo, así
+// que se admite menos de un centavo de diferencia.
+const toleranciaImporte = 0.005
+
 func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string) (string, error) {
+	// El importe lo decide el servidor, no el cliente.
+	//
+	// Antes se cobraba tal cual lo que llegaba en el cuerpo de la peticion, sin
+	// contrastarlo nunca con el precio real —que el backend tiene a mano, porque
+	// reference_id ES el id del evento—. Un {"amount": 1000} en lugar de 250000
+	// se cobraba por mil pesos.
+	if refType == domain.RefTypeEvent {
+		precio, err := s.precioDelEvento(ctx, refID)
+		if err != nil {
+			return "", err
+		}
+		if math.Abs(amount-precio) > toleranciaImporte {
+			// Se rechaza en vez de cobrar el precio correcto en silencio: si el
+			// cliente traia otro importe es que su informacion esta obsoleta, y
+			// cobrar algo distinto de lo que el usuario vio en pantalla es peor
+			// que pedirle que lo revise.
+			return "", fmt.Errorf("%w: el cliente envió %.2f y el evento cuesta %.2f",
+				ErrPaymentAmountMismatch, amount, precio)
+		}
+		amount = precio
+	}
+
 	// Create transaction in pending state
 	tx := &domain.Transaction{
 		ID:            uuid.New(),
@@ -57,6 +92,27 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, 
 	}
 
 	return formUrl, nil
+}
+
+// precioDelEvento devuelve el precio que manda: el de la base de datos.
+func (s *paymentService) precioDelEvento(ctx context.Context, eventID uuid.UUID) (float64, error) {
+	if s.eventRepo == nil {
+		return 0, fmt.Errorf("no hay repositorio de eventos para validar el importe")
+	}
+
+	event, err := s.eventRepo.GetEventByID(ctx, eventID.String())
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return 0, ErrPaymentEventNotFound
+		}
+		return 0, err
+	}
+	// Un evento gratuito no pasa por la pasarela: se entra por
+	// POST /api/events/{id}/register, que lo deja confirmado en el acto.
+	if event.IsFree || event.Price <= 0 {
+		return 0, ErrPaymentEventIsFree
+	}
+	return event.Price, nil
 }
 
 func (s *paymentService) VerifyPayment(ctx context.Context, txID uuid.UUID) (*domain.Transaction, error) {

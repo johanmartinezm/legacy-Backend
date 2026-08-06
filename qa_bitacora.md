@@ -4,6 +4,44 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-05]: El importe y el usuario de un pago los decide el servidor (fallos 4 y 3)
+
+- **Alcance:**
+  - **Fallo 4 — el importe lo dictaba el cliente.** `InitiatePayment` tomaba el `amount` del cuerpo
+    de la petición y lo pasaba tal cual a CredibanCo, sin contrastarlo nunca con el precio real
+    —que el backend tiene a mano, porque `reference_id` **es** el id del evento—. Un
+    `{"amount": 1000}` en un evento de 250.000 **se cobraba por mil pesos**. Ahora se consulta el
+    precio en la base y se responde **409** si no coincide. Se rechaza en vez de cobrar el precio
+    correcto en silencio: si el cliente traía otro importe es que su información está obsoleta, y
+    cobrar algo distinto de lo que el usuario vio en pantalla es peor que pedirle que lo revise.
+  - **Fallo 3 — el usuario salía de una cabecera.** `CreatePaymentIntent` leía
+    `r.Header.Get("X-User-ID")`, con un comentario que ya admitía que debía salir del JWT. La ruta
+    está bajo `AuthMiddleware`, así que el `sub` estaba en el contexto y se ignoraba: **cualquiera
+    con sesión podía iniciar una transacción a nombre de otro** cambiando esa cabecera, y quedaba
+    registrada contra la víctima. Ahora se toma del token y la cabecera se ignora.
+  - `Errores nuevos`: `ErrPaymentEventNotFound` (404), `ErrPaymentEventIsFree` (400) y
+    `ErrPaymentAmountMismatch` (409). Un evento gratuito no debe pasar por la pasarela: se entra por
+    `POST /api/events/{id}/register`.
+  - `Comparación de importes` con tolerancia de medio centavo: viajan como `float` y se guardan como
+    `numeric(10,2)`, así que comparar con `==` daría rechazos falsos.
+  - `Tests`: `payment_importe_test.go` (nuevo, 7 casos).
+  - **Sin migración.** Este despliegue no toca el esquema.
+  - **Queda fuera:** `RefTypeCart` no se valida —no hay precio de referencia que consultar— y sigue
+    aceptando el importe del cliente. Anotado en `reports/20260805_flujo_pago_eventos.md`.
+- **Criterios de QA:**
+  1. **Importe menor:** `POST /api/payments/intent` con `amount` 1000 sobre un evento de 250.000 →
+     **409**, y **ninguna** transacción creada.
+  2. **Importe mayor:** el mismo POST con 500.000 → **409**.
+  3. **Importe correcto:** con 250.000 → llega a la pasarela y la transacción se crea con el precio
+     del servidor.
+  4. **Evento gratuito:** iniciar un pago sobre un evento `is_free` → **400**.
+  5. **Evento inexistente:** → **404**, no 500.
+  6. **Sin token:** → **401**.
+  7. **Cabecera `X-User-ID` de otra persona** junto a un token válido → la transacción queda a
+     nombre del **titular del token**, no del de la cabecera. Comprobar en `core.transactions`.
+
+---
+
 ### [2026-08-05]: QR impredecible y endpoint de "Mi credencial"
 
 - **Alcance:**

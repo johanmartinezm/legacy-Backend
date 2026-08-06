@@ -2,11 +2,13 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
-	"github.com/google/uuid"
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
+	"applegacy/backend/internal/core/services"
+	"github.com/google/uuid"
 )
 
 type PaymentHandler struct {
@@ -31,8 +33,16 @@ type CreateIntentResponse struct {
 }
 
 func (h *PaymentHandler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
-	// In a real app, UserID is extracted from JWT
-	userIDStr := r.Header.Get("X-User-ID")
+	// El usuario sale del token, no de la cabecera X-User-ID que llegaba antes:
+	// esta ruta esta bajo AuthMiddleware, asi que el `sub` ya esta en el
+	// contexto. Con la cabecera, cualquiera con una sesion valida podia iniciar
+	// una transaccion a nombre de otra persona con solo cambiar ese valor, y la
+	// transaccion quedaba registrada contra la victima.
+	userIDStr, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userIDStr == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		http.Error(w, "invalid user id", http.StatusUnauthorized)
@@ -47,7 +57,18 @@ func (h *PaymentHandler) CreatePaymentIntent(w http.ResponseWriter, r *http.Requ
 
 	formUrl, err := h.paymentService.InitiatePayment(r.Context(), userID, req.ReferenceType, req.ReferenceID, req.Amount, req.ReturnURL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, services.ErrPaymentEventNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, services.ErrPaymentEventIsFree):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, services.ErrPaymentAmountMismatch):
+			// 409: el precio cambió o el cliente traía otro. Que recargue el
+			// evento y lo intente con el importe correcto.
+			http.Error(w, err.Error(), http.StatusConflict)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
