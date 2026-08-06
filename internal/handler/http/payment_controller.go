@@ -66,6 +66,11 @@ func (h *PaymentHandler) CreatePaymentIntent(w http.ResponseWriter, r *http.Requ
 			// 409: el precio cambió o el cliente traía otro. Que recargue el
 			// evento y lo intente con el importe correcto.
 			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, services.ErrPaymentGatewayUnavailable):
+			// 502: la avería es de la pasarela, no nuestra. El detalle queda en
+			// el log del servidor; al cliente solo se le dice de quién es el
+			// problema, para no filtrar códigos del banco.
+			http.Error(w, "La pasarela de pagos no está disponible", http.StatusBadGateway)
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}

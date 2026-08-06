@@ -36,6 +36,10 @@ var (
 	ErrPaymentEventNotFound  = errors.New("event not found")
 	ErrPaymentEventIsFree    = errors.New("event is free, no payment needed")
 	ErrPaymentAmountMismatch = errors.New("amount does not match the event price")
+	// ErrPaymentGatewayUnavailable: la pasarela rechazó o no atendió la
+	// petición. No es un fallo nuestro, y conviene distinguirlo de un 500 para
+	// no mandar a buscar la avería en el sitio equivocado.
+	ErrPaymentGatewayUnavailable = errors.New("payment gateway unavailable")
 )
 
 // toleranciaImporte: los importes viajan como float y se guardan como
@@ -93,7 +97,12 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, 
 	if err != nil {
 		// Update status to FAILED since gateway failed
 		_ = s.txRepo.UpdateTransactionStatus(ctx, tx.ID, domain.TxStatusFailed, "")
-		return "", fmt.Errorf("failed to initiate gateway payment: %w", err)
+		// El detalle va al log del servidor, no al usuario: puede traer códigos
+		// y mensajes del banco que no le dicen nada y que tampoco conviene
+		// exponer.
+		log.Printf("[PAGO] la pasarela rechazo la transaccion %s (usuario %s, %.2f): %v",
+			tx.ID, userID, amount, err)
+		return "", fmt.Errorf("%w: %v", ErrPaymentGatewayUnavailable, err)
 	}
 
 	// Update with credibanco order id
