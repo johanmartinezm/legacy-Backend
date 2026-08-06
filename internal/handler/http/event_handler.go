@@ -157,9 +157,38 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// El QR de una inscripción sin pagar no sale del servidor, igual que en
+	// GetMyRegistrations. La reserva se crea antes de ir a la pasarela, así que
+	// sin esto la respuesta de "reservar cupo" entregaba una credencial de un
+	// evento todavía impago. Se vacía sobre una copia para no tocar la fila que
+	// el servicio acaba de escribir.
+	//
+	// La app lee el QR de GET /api/me/registrations (campo `qrData`), no de
+	// aquí (`qr_data`), así que no se queda sin nada que mostrar.
+	respuesta := *registration
+	if respuesta.IsPendingPayment() {
+		respuesta.QRData = ""
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(registration)
+	json.NewEncoder(w).Encode(respuesta)
+}
+
+// GetEventRegistrants sirve la lista de inscritos de un evento. Va registrada
+// en el bloque AdminOnly de main.go: son nombres, correos y teléfonos de
+// terceros, además de quién debe dinero.
+func (h *EventHandler) GetEventRegistrants(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+
+	registrants, err := h.service.GetEventRegistrants(r.Context(), eventID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(registrants)
 }
 
 func (h *EventHandler) SubmitWorkshopRating(w http.ResponseWriter, r *http.Request) {
@@ -377,7 +406,18 @@ func (h *EventHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.service.CheckIn(r.Context(), req.QRData, staffID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		// Quien está en la puerta necesita distinguir los dos casos: un código
+		// que no existe es un QR ajeno o inventado, y uno pendiente de pago es
+		// un asistente real al que hay que cobrarle antes de dejarlo entrar.
+		// Antes ambos salían como 404 con el mismo texto.
+		switch {
+		case errors.Is(err, services.ErrCheckInPendingPayment):
+			http.Error(w, "La inscripción está pendiente de pago", http.StatusPaymentRequired)
+		case errors.Is(err, services.ErrCheckInNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

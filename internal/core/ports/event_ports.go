@@ -22,6 +22,10 @@ type EventRepository interface {
 	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
 	ConfirmEventRegistration(ctx context.Context, userID, eventID string) error
 	GetRegistrationsByUser(ctx context.Context, userID string) ([]domain.UserRegistration, error)
+	// GetRegistrationsByEvent devuelve los inscritos de un evento con sus datos
+	// personales todavía cifrados: descifrar es cosa del servicio, que es quien
+	// tiene el CryptoService.
+	GetRegistrationsByEvent(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 
@@ -50,6 +54,9 @@ type EventService interface {
 	// GetMyRegistrations alimenta la pantalla "Mi credencial": todos los eventos
 	// en los que el usuario está inscrito, cada uno con su QR.
 	GetMyRegistrations(ctx context.Context, userID string) ([]domain.UserRegistration, error)
+	// GetEventRegistrants es la lista de inscritos de un evento, para quien lo
+	// organiza. Va bajo AdminOnly: son datos personales de terceros.
+	GetEventRegistrants(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
 	SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 

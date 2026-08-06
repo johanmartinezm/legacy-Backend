@@ -99,6 +99,31 @@ type UserRegistration struct {
 	AttendanceConfirmed bool       `json:"attendanceConfirmed"`
 }
 
+// EventRegistrant es una inscripción vista desde la organización del evento:
+// quién es la persona, en qué estado está su pago y si ya pasó por la puerta.
+//
+// No lleva el qr_data. Quien organiza necesita saber quién viene y quién debe,
+// no el código de entrada de cada asistente; dejarlo fuera evita que una lista
+// que se comparte por correo o se exporta acabe repartiendo credenciales.
+type EventRegistrant struct {
+	RegistrationID string `json:"registrationId"`
+	UserID         string `json:"userId"`
+	// FirstName y LastName no salen al JSON: son el paso intermedio entre el
+	// repositorio, que los lee cifrados y por separado, y el servicio, que los
+	// descifra y compone FullName. Concatenarlos antes de descifrar produciría
+	// un texto que ya no se puede abrir.
+	FirstName           string    `json:"-"`
+	LastName            string    `json:"-"`
+	FullName            string    `json:"fullName"`
+	Email               string    `json:"email"`
+	Phone               string    `json:"phone"`
+	PaymentStatus       string    `json:"paymentStatus"`
+	RegistrationStatus  string    `json:"registrationStatus"`
+	RegistrationDate    time.Time `json:"registrationDate"`
+	TotalPaid           float64   `json:"totalPaid"`
+	AttendanceConfirmed bool      `json:"attendanceConfirmed"`
+}
+
 type WorkshopRating struct {
 	ID           string    `json:"id" db:"id"`
 	WorkshopID   string    `json:"workshopId" db:"workshop_id"`
@@ -149,9 +174,15 @@ type EventSurveySummary struct {
 }
 
 type CheckInResponse struct {
-	RegistrationID string     `json:"registrationId"`
-	UserName       string     `json:"userName"`
-	UserEmail      string     `json:"userEmail"`
+	RegistrationID string `json:"registrationId"`
+	// FirstName y LastName no salen al JSON, igual que en EventRegistrant: son
+	// el paso intermedio entre el repositorio, que los lee cifrados y por
+	// separado, y el servicio, que los descifra y compone UserName. El panel
+	// sigue recibiendo userName y userEmail, solo que legibles.
+	FirstName string     `json:"-"`
+	LastName  string     `json:"-"`
+	UserName  string     `json:"userName"`
+	UserEmail string     `json:"userEmail"`
 	EventTitle     string     `json:"eventTitle"`
 	CheckInTime    time.Time  `json:"checkInTime"`
 	Workshops      []Workshop `json:"workshops"`

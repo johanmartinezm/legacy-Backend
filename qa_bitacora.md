@@ -4,6 +4,114 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: El escáner de la puerta mostraba el nombre en texto cifrado
+
+- **Alcance:**
+  - `postgres/event_repository.go` — `GetRegistrationByQR` deja de hacer
+    `u.first_name || ' ' || u.last_name`. Ambos campos están cifrados, así que esa concatenación
+    unía **dos bloques AES independientes** en una cadena que ya no se puede descifrar ni por
+    partes: `Decrypt` sobre ella falla siempre. El efecto era que al escanear un QR el panel
+    mostraba el nombre del asistente en texto cifrado (`attendance-scanner.component.html:24`), y el
+    correo igual. Ahora las tres columnas salen por separado.
+  - `domain/event.go` — `CheckInResponse` gana `FirstName` y `LastName` con `json:"-"`, el mismo
+    paso intermedio que `EventRegistrant`. **El contrato del panel no cambia:** sigue recibiendo
+    `userName` y `userEmail`, solo que legibles.
+  - `services/event_service.go` — `CheckIn` descifra y compone `UserName`. Como en el resto de
+    servicios, un descifrado fallido conserva el valor original: las filas anteriores al cifrado
+    están en claro y perderlas sería peor que mostrarlas.
+  - `Tests`: 2 casos nuevos en `checkin_pago_test.go` (7 en total).
+  - **La prueba unitaria no basta y por eso se hizo también contra Postgres:** con un doble de
+    `CryptoService`, los tests pasarían igual aunque la consulta siguiera concatenando. Se verificó
+    con una fila sembrada dentro de una transacción revertida que las tres columnas llegan separadas
+    y con su valor intacto.
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **El nombre se lee:** escanear el QR de un asistente en "Escáner de Asistencia" debe mostrar su
+     nombre y su correo legibles. Es el punto entero de este cambio.
+  2. **Nombre completo:** debe verse "Nombre Apellido", con un solo espacio y sin espacios sobrantes
+     si alguno de los dos falta.
+  3. **Usuarios antiguos:** un asistente cuyos datos estén sin cifrar debe seguir viéndose igual que
+     antes, no en blanco.
+  4. **Nada más cambia:** la respuesta del escáner sigue trayendo `registrationId`, `eventTitle`,
+     `checkInTime` y los talleres.
+  5. **Sigue rechazando lo que debe:** un QR pendiente de pago → 402; uno inventado → 404.
+
+---
+
+### [2026-08-06]: Lista de inscritos por evento
+
+- **Alcance:**
+  - `GET /api/events/{id}/registrations`, **bajo `AdminOnly`** — son nombres, correos y teléfonos
+    de terceros, además de quién debe dinero. Corte vertical completo: `domain/event.go`
+    (`EventRegistrant`), `ports/event_ports.go`, `postgres/event_repository.go`
+    (`GetRegistrationsByEvent`), `services/event_service.go` (`GetEventRegistrants`),
+    `handler/http/event_handler.go` y **la ruta registrada en `cmd/server/main.go`**.
+  - **El nombre y el correo se descifran en el servicio.** Están cifrados con AES-256 en la base,
+    así que una consulta que los devolviera directos entregaría texto cifrado. Por eso el
+    repositorio los trae **por separado y sin concatenar**: un `first_name || ' ' || last_name` en
+    SQL junta dos textos cifrados en uno que ya no se puede abrir por partes —que es exactamente lo
+    que le pasa hoy a `GetRegistrationByQR`, ver "Pendiente" al final.
+  - `NewEventService` ahora recibe el `CryptoService`. Único cambio de firma; `main.go` ya lo tenía
+    instanciado.
+  - **El orden alfabético se hace en Go, no en SQL:** un `ORDER BY` sobre nombres cifrados ordenaría
+    por el texto cifrado. La consulta ordena por fecha y el servicio reordena ya en claro, sin
+    distinguir mayúsculas y desempatando por fecha de inscripción.
+  - **No devuelve `qr_data`**: quien organiza necesita saber quién viene y quién debe, no el código
+    de entrada de cada asistente. Así una lista que se exporte o se reenvíe no reparte credenciales.
+  - `Sin paginación`, como el resto de listados del repositorio. Un evento con miles de inscritos
+    devuelve miles de filas de una vez; queda anotado en el código.
+  - `Tests`: `inscritos_evento_test.go` (nuevo, 5 casos). La consulta se ejercitó además **contra el
+    Postgres real** con tres filas sembradas dentro de una transacción revertida: teléfono nulo,
+    correo nulo y `payment_status` nulo.
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **Solo administradores:** `GET /api/events/{id}/registrations` con token de usuario normal →
+     **403**; sin token → **401**; con token de administrador → **200**.
+  2. **Los datos se leen:** el nombre y el correo salen legibles, no como texto cifrado. Es el punto
+     que más fácil se rompe.
+  3. **Estados visibles:** un evento con una inscripción pagada y otra pendiente debe mostrar
+     `paid`/`confirmed` y `pending`/`pending_payment` respectivamente.
+  4. **Orden alfabético** por nombre completo, sin que "ana" en minúscula caiga al final.
+  5. **Evento sin inscritos** → `200` con `[]`, no `null` ni 404.
+  6. **Ningún `qrData`** en la respuesta.
+
+---
+
+### [2026-08-06]: El QR de una reserva sin pagar ya no abre la puerta
+
+- **Alcance:**
+  - `services/event_service.go` — `CheckIn` rechaza una inscripción en `pending_payment` antes de
+    registrar la asistencia. El QR se genera al **reservar el cupo**, o sea antes de pasar por la
+    pasarela, así que existía desde el primer momento y `CheckIn` no miraba el estado: reservar sin
+    pagar daba un código que abría la puerta de un evento de 250.000.
+  - Se comprueba en la puerta y no solo al entregar el código: es el único punto por el que pasan
+    todos los caminos, y no depende de que ningún cliente se acuerde de ocultar nada.
+  - `handler/http/event_handler.go` — `CheckIn` distingue ahora **402** (pendiente de pago) de
+    **404** (QR inexistente); antes ambos salían como 404 con el mismo texto. En la puerta son dos
+    situaciones distintas: un código inventado, o un asistente real al que hay que cobrarle.
+  - `handler/http/event_handler.go` — la respuesta **201 de `POST /api/events/{id}/register`** deja
+    de incluir `qr_data` cuando la inscripción nace pendiente de pago. Era la vía por la que el
+    código seguía saliendo del servidor: `GET /api/me/registrations` ya lo ocultaba desde el 05,
+    pero la respuesta de la propia reserva no. La app lee el QR de `/api/me/registrations` (campo
+    `qrData`), no de aquí (`qr_data`), así que no se queda sin nada que mostrar.
+  - `Errores nuevos`: `ErrCheckInPendingPayment` y `ErrCheckInNotFound`, centinelas para que el
+    handler los separe con `errors.Is`.
+  - `Tests`: `checkin_pago_test.go` (nuevo, 4 casos) y `checkin_qr_test.go` (nuevo, 5 casos).
+  - **Sin migración.**
+- **Criterios de QA:**
+  1. **Reserva sin pagar en la puerta:** reservar cupo en un evento de pago y escanear ese QR →
+     **402** con "La inscripción está pendiente de pago". **La asistencia no debe quedar marcada**:
+     comprobar que `attendance_confirmed` sigue en `false`.
+  2. **Tras pagar sí entra:** con la inscripción en `confirmed`, el mismo QR → **200** y
+     `attendance_confirmed = true`.
+  3. **Evento gratuito:** el QR funciona igual que siempre; ese camino no pasa por la pasarela.
+  4. **QR inventado** → **404**, no 402.
+  5. **La reserva no entrega el código:** el 201 de reservar cupo en un evento de pago **no** debe
+     traer `qr_data`, pero sí el estado y el importe. En un evento gratuito sí lo trae.
+  6. **"Mi credencial" no cambia:** los eventos pagados siguen mostrando su QR.
+
+---
+
 ### [2026-08-05]: El `tx_id` viaja en la URL de retorno del pago
 
 - **Alcance:**

@@ -162,6 +162,54 @@ func (r *EventRepository) ConfirmEventRegistration(ctx context.Context, userID, 
 	return nil
 }
 
+// GetRegistrationsByEvent devuelve los inscritos de un evento para el panel.
+//
+// Los nombres y el correo salen tal como están en la base, es decir cifrados:
+// quien descifra es EventService, que es el que tiene el CryptoService. Por eso
+// tampoco se concatena el nombre en SQL —un `first_name || ' ' || last_name`
+// junta dos textos cifrados en uno que ya no se puede descifrar por partes, que
+// es justo lo que le pasa hoy a GetRegistrationByQR.
+//
+// Sin LIMIT ni OFFSET, como el resto de listados del repositorio. Un evento con
+// miles de inscritos devolverá miles de filas de una vez; el día que se añada
+// paginación, este es uno de los sitios a tocar.
+func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID string) ([]domain.EventRegistrant, error) {
+	query := `
+		SELECT r.id, r.user_id,
+		       COALESCE(u.first_name, ''), COALESCE(u.last_name, ''),
+		       COALESCE(u.email_encrypted, ''), COALESCE(u.phone, ''),
+		       COALESCE(r.payment_status, ''), COALESCE(r.registration_status, ''),
+		       r.registration_date, r.total_paid, r.attendance_confirmed
+		FROM events.registrations r
+		JOIN core.users u ON r.user_id = u.id
+		WHERE r.event_id = $1
+		ORDER BY r.registration_date DESC
+	`
+	rows, err := r.db.Query(ctx, query, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Se inicializa vacío y no nil para que un evento sin inscritos serialice
+	// como [] y no como null: el panel recorre la lista sin comprobar nada.
+	registrants := []domain.EventRegistrant{}
+	for rows.Next() {
+		var reg domain.EventRegistrant
+		if err := rows.Scan(
+			&reg.RegistrationID, &reg.UserID,
+			&reg.FirstName, &reg.LastName,
+			&reg.Email, &reg.Phone,
+			&reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
+			&reg.TotalPaid, &reg.AttendanceConfirmed,
+		); err != nil {
+			return nil, err
+		}
+		registrants = append(registrants, reg)
+	}
+	return registrants, rows.Err()
+}
+
 // GetRegistrationsByUser devuelve las inscripciones del usuario con los datos
 // del evento ya incorporados, para que la credencial se pinte con una sola
 // llamada.
@@ -497,11 +545,19 @@ func (r *EventRepository) RemoveFromAgenda(ctx context.Context, userID, workshop
 	return err
 }
 
+// GetRegistrationByQR busca la inscripción de un código QR para el check-in.
+//
+// El nombre y el apellido salen en columnas separadas y sin concatenar. Antes
+// la consulta hacía `u.first_name || ' ' || u.last_name`, y como ambos están
+// cifrados el resultado era la unión de dos bloques AES independientes: una
+// cadena que ya no se puede descifrar ni por partes. El efecto era que el
+// escáner del panel mostraba el nombre del asistente en texto cifrado. Quien
+// descifra es EventService.CheckIn, que tiene el CryptoService.
 func (r *EventRepository) GetRegistrationByQR(ctx context.Context, qrData string) (*domain.Registration, *domain.CheckInResponse, error) {
 	query := `
 		SELECT 
 			r.id, r.user_id, r.event_id, r.payment_status, r.registration_status, r.registration_date, r.qr_data, r.total_paid, r.attendance_confirmed,
-			u.first_name || ' ' || u.last_name as user_name, u.email_encrypted as user_email,
+			COALESCE(u.first_name, ''), COALESCE(u.last_name, ''), COALESCE(u.email_encrypted, ''),
 			e.title as event_title
 		FROM events.registrations r
 		JOIN core.users u ON r.user_id = u.id
@@ -514,7 +570,7 @@ func (r *EventRepository) GetRegistrationByQR(ctx context.Context, qrData string
 	err := r.db.QueryRow(ctx, query, qrData).Scan(
 		&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
 		&reg.QRData, &reg.TotalPaid, &reg.AttendanceConfirmed,
-		&resp.UserName, &resp.UserEmail, &resp.EventTitle,
+		&resp.FirstName, &resp.LastName, &resp.UserEmail, &resp.EventTitle,
 	)
 	if err != nil {
 		return nil, nil, err

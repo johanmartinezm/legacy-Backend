@@ -17,6 +17,16 @@ type MockEventRepository struct {
 	CreateEventSurveyFunc             func(ctx context.Context, survey *domain.EventSurvey) error
 	GetEventSurveyByUserFunc          func(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error)
 	GetEventSurveySummaryFunc         func(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
+	GetRegistrationByQRFunc           func(ctx context.Context, qr string) (*domain.Registration, *domain.CheckInResponse, error)
+	RecordAttendanceFunc              func(ctx context.Context, regID, staffID string) error
+	GetRegistrationsByEventFunc       func(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
+}
+
+func (m *MockEventRepository) GetRegistrationsByEvent(ctx context.Context, eID string) ([]domain.EventRegistrant, error) {
+	if m.GetRegistrationsByEventFunc == nil {
+		return nil, nil
+	}
+	return m.GetRegistrationsByEventFunc(ctx, eID)
 }
 
 func (m *MockEventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) { return nil, nil }
@@ -61,10 +71,16 @@ func (m *MockEventRepository) RemoveFromAgenda(ctx context.Context, uID, wID str
 	return nil
 }
 func (m *MockEventRepository) GetRegistrationByQR(ctx context.Context, qr string) (*domain.Registration, *domain.CheckInResponse, error) {
-	return nil, nil, nil
+	if m.GetRegistrationByQRFunc == nil {
+		return nil, nil, nil
+	}
+	return m.GetRegistrationByQRFunc(ctx, qr)
 }
 func (m *MockEventRepository) RecordAttendance(ctx context.Context, rID, sID string) error {
-	return nil
+	if m.RecordAttendanceFunc == nil {
+		return nil
+	}
+	return m.RecordAttendanceFunc(ctx, rID, sID)
 }
 func (m *MockEventRepository) GetWorkshopsByRegistrationID(ctx context.Context, rID string) ([]domain.Workshop, error) {
 	return nil, nil
@@ -123,7 +139,7 @@ func TestEventService_RegisterUser(t *testing.T) {
 			},
 		}
 
-		service := NewEventService(mockRepo)
+		service := NewEventService(mockRepo, nil)
 		reg := &domain.Registration{
 			EventID:       "event-1",
 			UserID:        "user-1",
@@ -152,7 +168,7 @@ func TestEventService_RegisterUser(t *testing.T) {
 			},
 		}
 
-		service := NewEventService(mockRepo)
+		service := NewEventService(mockRepo, nil)
 		reg := &domain.Registration{
 			EventID: "event-1",
 			UserID:  "user-1",

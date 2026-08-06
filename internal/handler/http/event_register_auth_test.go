@@ -16,11 +16,21 @@ import (
 // handler de inscripción: guarda lo que le llega y no toca ninguna base.
 type stubEventService struct {
 	recibida *domain.Registration
+	// alRegistrar deja que cada test decida cómo queda la inscripción, para
+	// imitar lo que hace el servicio real según el evento sea gratuito o de
+	// pago. Si es nil, la inscripción sale tal cual llegó.
+	alRegistrar func(reg *domain.Registration)
+	// errCheckIn es el error que devuelve CheckIn, para ejercitar la traducción
+	// a códigos HTTP del handler.
+	errCheckIn error
 }
 
 func (s *stubEventService) RegisterUser(ctx context.Context, reg *domain.Registration) error {
 	s.recibida = reg
 	reg.ID = "reg-nueva"
+	if s.alRegistrar != nil {
+		s.alRegistrar(reg)
+	}
 	return nil
 }
 
@@ -44,6 +54,9 @@ func (s *stubEventService) SubmitWorkshopRating(ctx context.Context, r *domain.W
 func (s *stubEventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
 	return nil, nil
 }
+func (s *stubEventService) GetEventRegistrants(ctx context.Context, eventID string) ([]domain.EventRegistrant, error) {
+	return nil, nil
+}
 func (s *stubEventService) SubmitEventSurvey(ctx context.Context, sv *domain.EventSurvey) error {
 	return nil
 }
@@ -59,7 +72,10 @@ func (s *stubEventService) GetAgenda(ctx context.Context, userID string) ([]doma
 func (s *stubEventService) AddToAgenda(ctx context.Context, uID, wID string) error      { return nil }
 func (s *stubEventService) RemoveFromAgenda(ctx context.Context, uID, wID string) error { return nil }
 func (s *stubEventService) CheckIn(ctx context.Context, qr, staff string) (*domain.CheckInResponse, error) {
-	return nil, nil
+	if s.errCheckIn != nil {
+		return nil, s.errCheckIn
+	}
+	return &domain.CheckInResponse{RegistrationID: "reg-nueva", EventTitle: "LEGACY SUMMIT"}, nil
 }
 
 // peticion arma un POST /api/events/{id}/register con el cuerpo, el usuario y el

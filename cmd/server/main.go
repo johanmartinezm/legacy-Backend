@@ -74,7 +74,7 @@ func main() {
 	likeHandler := handler.NewLikeHandler(likeService)
 
 	eventRepo := postgres.NewEventRepository(dbPool)
-	eventService := services.NewEventService(eventRepo)
+	eventService := services.NewEventService(eventRepo, cryptoService)
 	eventHandler := handler.NewEventHandler(eventService)
 
 	chatRepo := postgres.NewChatRepository(dbPool)
@@ -291,6 +291,7 @@ func main() {
 		r.Put("/api/events/{id}", eventHandler.UpdateEvent)
 		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
+		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
 		r.Get("/api/events/{id}/survey/summary", eventHandler.GetEventSurveySummary)
 		r.Post("/api/events/check-in", eventHandler.CheckIn)
 

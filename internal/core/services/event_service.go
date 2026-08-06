@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -13,10 +14,14 @@ import (
 
 type EventService struct {
 	repo ports.EventRepository
+	// crypto descifra los datos personales de los inscritos. Puede ser nil: solo
+	// lo usa GetEventRegistrants, y así los tests que no tocan esa lista siguen
+	// construyendo el servicio con el repositorio a secas.
+	crypto ports.CryptoService
 }
 
-func NewEventService(repo ports.EventRepository) *EventService {
-	return &EventService{repo: repo}
+func NewEventService(repo ports.EventRepository, crypto ports.CryptoService) *EventService {
+	return &EventService{repo: repo, crypto: crypto}
 }
 
 func (s *EventService) ListCategories(ctx context.Context) ([]domain.EventCategory, error) {
@@ -190,6 +195,50 @@ func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([
 	return registrations, nil
 }
 
+// GetEventRegistrants lista los inscritos de un evento para quien lo organiza.
+//
+// El nombre y el correo se guardan cifrados (AES-256), así que hay que abrirlos
+// aquí: una consulta que los devolviera directos entregaría texto cifrado. Se
+// sigue el patrón del resto de servicios —StatsService, SynergyService—: si el
+// descifrado falla se deja el valor tal cual, porque las filas anteriores al
+// cifrado están en claro y perderlas sería peor que mostrarlas.
+func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string) ([]domain.EventRegistrant, error) {
+	registrants, err := s.repo.GetRegistrationsByEvent(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range registrants {
+		nombre, apellido := registrants[i].FirstName, registrants[i].LastName
+		if s.crypto != nil {
+			if v, err := s.crypto.Decrypt(nombre); err == nil {
+				nombre = v
+			}
+			if v, err := s.crypto.Decrypt(apellido); err == nil {
+				apellido = v
+			}
+			if v, err := s.crypto.Decrypt(registrants[i].Email); err == nil {
+				registrants[i].Email = v
+			}
+		}
+		registrants[i].FullName = strings.TrimSpace(nombre + " " + apellido)
+	}
+
+	// Se ordena aquí y no en la consulta porque en la base los nombres están
+	// cifrados: un ORDER BY los ordenaría por su texto cifrado, que no guarda
+	// ninguna relación con el alfabeto. El desempate por fecha deja el orden
+	// estable cuando dos personas se llaman igual.
+	sort.SliceStable(registrants, func(i, j int) bool {
+		a, b := registrants[i], registrants[j]
+		if strings.EqualFold(a.FullName, b.FullName) {
+			return a.RegistrationDate.Before(b.RegistrationDate)
+		}
+		return strings.ToLower(a.FullName) < strings.ToLower(b.FullName)
+	})
+
+	return registrants, nil
+}
+
 func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error {
 	return s.repo.CreateWorkshopRating(ctx, rating)
 }
@@ -197,6 +246,14 @@ func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.
 func (s *EventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
 	return s.repo.GetRatingsByEventID(ctx, eventID)
 }
+
+// Errores del check-in. Centinelas por el mismo motivo que los de la encuesta:
+// el handler tiene que separar "ese QR no existe" de "ese QR es de una reserva
+// sin pagar", y son dos respuestas distintas para el personal de la puerta.
+var (
+	ErrCheckInNotFound       = errors.New("invalid QR data or registration not found")
+	ErrCheckInPendingPayment = errors.New("registration is pending payment")
+)
 
 // Errores de la encuesta general. Son centinelas para que el handler distinga
 // 400, 403 y 409 con errors.Is; el resto del repositorio compara errores por
@@ -319,20 +376,57 @@ func (s *EventService) CheckIn(ctx context.Context, qrData, staffID string) (*do
 	// 1. Find registration by QR
 	reg, resp, err := s.repo.GetRegistrationByQR(ctx, qrData)
 	if err != nil {
-		return nil, fmt.Errorf("invalid QR data or registration not found")
+		return nil, ErrCheckInNotFound
 	}
 
-	// 2. Record attendance (updates confirmation and logs)
+	// 2. Una inscripción pendiente de pago no da derecho a entrar. El QR se
+	// genera al reservar el cupo —antes de salir a la pasarela—, así que existe
+	// desde el primer momento y sirve para identificar la reserva; lo que no
+	// puede es abrir la puerta de un evento que nadie ha pagado.
+	//
+	// Se comprueba aquí y no solo al entregar el código: la puerta es el único
+	// punto por el que pasan todos los caminos, y no depende de que ningún
+	// cliente se acuerde de ocultar nada.
+	if reg.IsPendingPayment() {
+		return nil, ErrCheckInPendingPayment
+	}
+
+	// 3. Record attendance (updates confirmation and logs)
 	err = s.repo.RecordAttendance(ctx, reg.ID, staffID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to record attendance: %v", err)
 	}
 
-	// 3. Get workshops for this registration
+	// 4. Get workshops for this registration
 	workshops, err := s.repo.GetWorkshopsByRegistrationID(ctx, reg.ID)
 	if err == nil {
 		resp.Workshops = workshops
 	}
 
+	// 5. El nombre y el correo están cifrados en la base. Sin esto, quien está
+	// en la puerta ve el nombre del asistente en texto cifrado, que es lo que
+	// pasaba hasta ahora. Como en el resto de servicios, un descifrado fallido
+	// conserva el valor: las filas anteriores al cifrado están en claro.
+	s.descifrarAsistente(resp)
+
 	return resp, nil
+}
+
+// descifrarAsistente abre el nombre y el correo de una respuesta de check-in y
+// compone UserName. Se apoya en que el repositorio los trae por separado: si
+// alguien vuelve a concatenarlos en SQL, esto deja de funcionar en silencio.
+func (s *EventService) descifrarAsistente(resp *domain.CheckInResponse) {
+	nombre, apellido := resp.FirstName, resp.LastName
+	if s.crypto != nil {
+		if v, err := s.crypto.Decrypt(nombre); err == nil {
+			nombre = v
+		}
+		if v, err := s.crypto.Decrypt(apellido); err == nil {
+			apellido = v
+		}
+		if v, err := s.crypto.Decrypt(resp.UserEmail); err == nil {
+			resp.UserEmail = v
+		}
+	}
+	resp.UserName = strings.TrimSpace(nombre + " " + apellido)
 }

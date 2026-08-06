@@ -30,7 +30,7 @@ func TestGetMyRegistrations(t *testing.T) {
 			},
 		}
 
-		regs, err := NewEventService(mock).GetMyRegistrations(ctx, "user-1")
+		regs, err := NewEventService(mock, nil).GetMyRegistrations(ctx, "user-1")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
@@ -57,7 +57,7 @@ func TestGetMyRegistrations(t *testing.T) {
 			},
 		}
 
-		regs, err := NewEventService(mock).GetMyRegistrations(ctx, "user-1")
+		regs, err := NewEventService(mock, nil).GetMyRegistrations(ctx, "user-1")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
@@ -89,7 +89,7 @@ func TestQRDataEsImpredecible(t *testing.T) {
 		// Antes era "REG-{user_id}-{event_id}": cualquiera que conociera ambos
 		// uuid podía fabricar el código de otra persona.
 		reg := &domain.Registration{EventID: "event-1", UserID: "user-1"}
-		if err := NewEventService(nuevoMock()).RegisterUser(ctx, reg); err != nil {
+		if err := NewEventService(nuevoMock(), nil).RegisterUser(ctx, reg); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
 
@@ -108,7 +108,7 @@ func TestQRDataEsImpredecible(t *testing.T) {
 		uno := &domain.Registration{EventID: "event-1", UserID: "user-1"}
 		otro := &domain.Registration{EventID: "event-1", UserID: "user-2"}
 
-		service := NewEventService(nuevoMock())
+		service := NewEventService(nuevoMock(), nil)
 		if err := service.RegisterUser(ctx, uno); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
@@ -133,7 +133,7 @@ func TestQRDataEsImpredecible(t *testing.T) {
 		}
 
 		reg := &domain.Registration{EventID: "event-1", UserID: "user-1"}
-		if err := NewEventService(mock).RegisterUser(ctx, reg); err != nil {
+		if err := NewEventService(mock, nil).RegisterUser(ctx, reg); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
 

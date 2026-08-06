@@ -34,7 +34,7 @@ func TestRegisterUser_EstadoDeInscripcion(t *testing.T) {
 		}
 
 		reg := &domain.Registration{EventID: "event-1", UserID: "user-1"}
-		if err := NewEventService(mock).RegisterUser(ctx, reg); err != nil {
+		if err := NewEventService(mock, nil).RegisterUser(ctx, reg); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
 
@@ -58,7 +58,7 @@ func TestRegisterUser_EstadoDeInscripcion(t *testing.T) {
 		}
 
 		reg := &domain.Registration{EventID: "event-1", UserID: "user-1"}
-		if err := NewEventService(mock).RegisterUser(ctx, reg); err != nil {
+		if err := NewEventService(mock, nil).RegisterUser(ctx, reg); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
 
@@ -91,7 +91,7 @@ func TestRegisterUser_EstadoDeInscripcion(t *testing.T) {
 		reg := &domain.Registration{
 			EventID: "event-1", UserID: "user-1", PaymentStatus: "paid",
 		}
-		if err := NewEventService(mock).RegisterUser(ctx, reg); err != nil {
+		if err := NewEventService(mock, nil).RegisterUser(ctx, reg); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
 
@@ -118,7 +118,7 @@ func TestRegisterUser_EstadoDeInscripcion(t *testing.T) {
 		}
 
 		reg := &domain.Registration{EventID: "event-1", UserID: "user-1"}
-		if err := NewEventService(mock).RegisterUser(ctx, reg); err != nil {
+		if err := NewEventService(mock, nil).RegisterUser(ctx, reg); err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
 

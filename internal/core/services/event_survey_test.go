@@ -41,7 +41,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		survey := &domain.EventSurvey{
 			EventID:       "event-1",
 			UserID:        "user-1",
@@ -67,7 +67,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		err := service.SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 5,
 		})
@@ -85,7 +85,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		err := service.SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 5,
 		})
@@ -103,7 +103,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return domain.ErrUniqueViolation
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		err := service.SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 4,
 		})
@@ -119,7 +119,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil, domain.ErrNotFound
 		}
 
-		err := NewEventService(mock).SubmitEventSurvey(ctx, &domain.EventSurvey{
+		err := NewEventService(mock, nil).SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "no-existe", UserID: "user-1", OverallRating: 5,
 		})
 
@@ -137,7 +137,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil, averia
 		}
 
-		err := NewEventService(mock).SubmitEventSurvey(ctx, &domain.EventSurvey{
+		err := NewEventService(mock, nil).SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 5,
 		})
 
@@ -170,7 +170,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 					return nil
 				}
 
-				service := NewEventService(mock)
+				service := NewEventService(mock, nil)
 				survey := caso.survey
 				survey.EventID, survey.UserID = "event-1", "user-1"
 
@@ -191,7 +191,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		err := service.SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 3,
 		})
@@ -213,7 +213,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		err := service.SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 4,
 			Comment: strPtr("   \n  "),
@@ -235,7 +235,7 @@ func TestSubmitEventSurvey(t *testing.T) {
 			return nil
 		}
 
-		service := NewEventService(mock)
+		service := NewEventService(mock, nil)
 		err := service.SubmitEventSurvey(ctx, &domain.EventSurvey{
 			EventID: "event-1", UserID: "user-1", OverallRating: 4,
 			Comment: strPtr("  Todo excelente  "),
@@ -260,7 +260,7 @@ func TestGetMyEventSurvey(t *testing.T) {
 			},
 		}
 
-		survey, err := NewEventService(mock).GetMyEventSurvey(ctx, "event-1", "user-1")
+		survey, err := NewEventService(mock, nil).GetMyEventSurvey(ctx, "event-1", "user-1")
 		if err != nil {
 			t.Fatalf("no responder aún no es un error: %v", err)
 		}
@@ -276,7 +276,7 @@ func TestGetMyEventSurvey(t *testing.T) {
 			},
 		}
 
-		survey, err := NewEventService(mock).GetMyEventSurvey(ctx, "event-1", "user-1")
+		survey, err := NewEventService(mock, nil).GetMyEventSurvey(ctx, "event-1", "user-1")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
