@@ -460,3 +460,31 @@ func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string)
 
 	return nil
 }
+
+// DeleteMyAccount atiende "eliminar mi cuenta" desde la app.
+//
+// Es un requisito de tienda, no una mejora: Apple lo exige desde junio de 2022
+// (directriz 5.1.1(v)) a toda app que permita registrarse, y Google Play
+// también. Sin esto la app no se puede publicar.
+//
+// La cuenta se anonimiza en lugar de borrarse. El motivo está en el esquema:
+// catorce tablas dependen de core.users con ON DELETE CASCADE, así que un
+// borrado real destruiría los mensajes de OTRAS personas —cada conversación
+// perdería su otra mitad—, las transacciones de eventos ya cobrados y las
+// respuestas de encuestas. Anonimizar cumple igual con el RGPD y con las dos
+// tiendas: la persona desaparece, los registros contables se quedan.
+//
+// Tras esto, el correo queda libre para volver a registrarse.
+func (s *AuthService) DeleteMyAccount(ctx context.Context, userID string) error {
+	if userID == "" {
+		return errors.New("se necesita el usuario que pide el borrado")
+	}
+
+	// El usuario sale del token en el handler, nunca del cuerpo de la petición:
+	// aceptarlo de fuera permitiría borrar la cuenta de cualquiera.
+	if err := s.repo.AnonymizeUser(ctx, userID); err != nil {
+		return err
+	}
+
+	return nil
+}

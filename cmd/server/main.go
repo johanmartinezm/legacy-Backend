@@ -255,6 +255,9 @@ func main() {
 		r.Get("/api/me", userHandler.Me)
 		r.Put("/api/me", userHandler.UpdateMe)
 		r.Post("/api/me/change-password", userHandler.ChangePassword)
+		// Eliminar la propia cuenta. Lo exigen App Store y Google Play a toda
+		// app con registro; sin esta ruta no se puede publicar.
+		r.Delete("/api/me", userHandler.DeleteMe)
 
 		// Board contact route
 		r.Post("/api/board/contact", boardHandler.Contact)

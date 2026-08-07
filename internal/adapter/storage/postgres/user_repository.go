@@ -321,6 +321,85 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// AnonymizeUser deja la cuenta sin ningún dato personal, pero conserva la fila.
+//
+// No se borra porque catorce tablas referencian core.users con ON DELETE
+// CASCADE: un DELETE se llevaría por delante los mensajes de chat —incluida la
+// mitad de las conversaciones de OTRAS personas—, las transacciones de eventos
+// ya cobrados y las respuestas de encuestas. Y events.registrations ni siquiera
+// tiene clave foránea: sus filas quedarían apuntando a un id inexistente.
+//
+// Qué se hace con cada cosa:
+//   - El correo se libera con un valor único inventado. email_blind_index es
+//     UNIQUE y NOT NULL, así que no puede quedar vacío; ponerlo derivado del id
+//     garantiza que no choque y permite que esa persona vuelva a registrarse
+//     mañana con el mismo correo.
+//   - password_hash queda vacío. Es NOT NULL, y una cadena vacía no es un hash
+//     válido de bcrypt, así que ninguna contraseña puede coincidir.
+//   - first_name y last_name se guardan EN CLARO a propósito. El resto de la
+//     tabla va cifrada, y los servicios descifran con el patrón "si falla, deja
+//     el valor tal cual": así estos dos salen legibles como "Usuario eliminado"
+//     sin necesidad de que el repositorio conozca la clave de cifrado.
+//   - alias se libera por el mismo motivo que el correo: también es UNIQUE.
+//   - Las preferencias de visibilidad se cierran, para que el perfil no siga
+//     apareciendo en búsquedas ni acepte mensajes.
+func (r *UserRepository) AnonymizeUser(ctx context.Context, id string) error {
+	sql := `
+		UPDATE core.users SET
+			email_blind_index = 'deleted-' || id::text,
+			email_encrypted = NULL,
+			password_hash = '',
+			first_name = 'Usuario',
+			last_name = 'eliminado',
+			phone = NULL,
+			location = NULL,
+			bio = NULL,
+			industry = NULL,
+			profile_image_url = NULL,
+			generation = NULL,
+			company_name = NULL,
+			job_title = NULL,
+			alias = NULL,
+			identification_type = NULL,
+			identification_number = NULL,
+			customer_status = NULL,
+			birth_date = NULL,
+			refresh_token = NULL,
+			is_public_profile = false,
+			allow_messages_from_strangers = false,
+			show_activity = false,
+			deleted_at = COALESCE(deleted_at, now()),
+			updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	// En transacción con el borrado de los tokens de notificación: si se
+	// anonimizara la cuenta pero fallara lo segundo, esa persona seguiría
+	// recibiendo push de una cuenta que cree eliminada. Un token FCM identifica
+	// un dispositivo, así que es un dato personal más.
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	etiqueta, err := tx.Exec(ctx, sql, id)
+	if err != nil {
+		return err
+	}
+	// Cero filas significa que no existe o que ya estaba eliminada. Se trata
+	// como "no encontrado" para que el handler no responda 200 sobre algo que
+	// no ha ocurrido.
+	if etiqueta.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM core.user_fcm_tokens WHERE user_id = $1`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *UserRepository) UpdatePassword(ctx context.Context, userID, newHash string) error {
 	sql := "UPDATE core.users SET password_hash = $1, updated_at = $2 WHERE id = $3"
 	_, err := r.db.Exec(ctx, sql, newHash, time.Now(), userID)

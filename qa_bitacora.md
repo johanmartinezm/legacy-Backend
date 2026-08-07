@@ -4,6 +4,45 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-06]: Eliminar mi cuenta — `DELETE /api/me`
+
+- **Por qué:** App Store lo exige desde junio de 2022 (directriz 5.1.1(v)) a toda app que permita
+  registrarse, y Google Play también. **Sin esto la app no se puede publicar en ninguna tienda.**
+  Hoy la app solo ofrecía cerrar sesión.
+- **La cuenta se ANONIMIZA, no se borra.** El motivo está en el esquema: **catorce tablas**
+  referencian `core.users` con `ON DELETE CASCADE`. Un borrado real destruiría los mensajes de chat
+  —incluida la mitad de las conversaciones de **otras** personas—, las transacciones de eventos ya
+  cobrados y las respuestas de encuestas. Y `events.registrations` ni siquiera tiene clave foránea:
+  sus filas quedarían apuntando a un id inexistente. Anonimizar cumple igual con el RGPD y con las
+  dos tiendas.
+- **Alcance:**
+  - `scripts/20260806_borrado_de_cuenta.sql` — **migración**: añade `core.users.deleted_at` y un
+    índice parcial. **Aplicada y probada dos veces: es idempotente.**
+  - `postgres/user_repository.go` — `AnonymizeUser`, **en transacción** con el borrado de los tokens
+    FCM: si se anonimizara la cuenta pero fallara lo segundo, esa persona seguiría recibiendo push
+    de una cuenta que cree eliminada.
+  - El correo se libera con un valor derivado del id (`email_blind_index` es UNIQUE y NOT NULL), así
+    que **esa persona puede volver a registrarse con el mismo correo**. `alias` se libera igual.
+  - `first_name`/`last_name` quedan **en claro** con "Usuario"/"eliminado": el resto de la tabla va
+    cifrada y los servicios descifran con el patrón "si falla, conserva el valor", así que salen
+    legibles sin que el repositorio necesite la clave.
+  - `services/auth_service.go` — `DeleteMyAccount`; `handler/http/user_handler.go` — `DeleteMe`, con
+    **el usuario tomado del token, nunca del cuerpo**; ruta registrada en `main.go`.
+  - `Tests`: `borrado_cuenta_test.go` (3 casos). Y **verificado contra Postgres real** con una
+    cuenta sembrada, en transacción revertida.
+- **Criterios de QA:**
+  1. **Los datos personales desaparecen:** tras eliminar, la fila de `core.users` debe mostrar
+     `Usuario eliminado`, sin teléfono, alias, bio ni correo, y con `deleted_at` puesto.
+  2. **El historial se conserva:** sus inscripciones a eventos siguen en `events.registrations` y
+     los mensajes de chat siguen visibles para la otra persona.
+  3. **Deja de recibir push:** no quedan filas suyas en `core.user_fcm_tokens`.
+  4. **No puede volver a entrar** con su correo y contraseña anteriores.
+  5. **Puede volver a registrarse** con ese mismo correo, y sale una cuenta nueva y vacía.
+  6. **Solo se borra a sí mismo:** con el token de A, la cuenta de B queda intacta.
+  7. **Sin token** → 401. **Cuenta ya eliminada** → 404, no 204.
+
+---
+
 ### [2026-08-06]: El botón "Eliminar foro" del panel devolvía 405
 
 - **El problema:** `AdminDeleteForum` estaba escrito desde el módulo de foros y **nunca se registró

@@ -4,6 +4,7 @@ import (
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -375,4 +376,34 @@ func (h *UserHandler) ResendVerificationEmail(w http.ResponseWriter, r *http.Req
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Correo de verificación reenviado"})
+}
+
+// DeleteMe atiende DELETE /api/me: la persona elimina su propia cuenta.
+//
+// El usuario sale SIEMPRE del token, nunca del cuerpo ni de la URL. Si se
+// aceptara de fuera, cualquiera con sesión podría borrar la cuenta de otro, que
+// es el mismo error que ya se corrigió en el registro a eventos y en el inicio
+// de pagos.
+//
+// La cuenta se anonimiza, no se borra: ver AuthService.DeleteMyAccount.
+func (h *UserHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		h.respondWithError(w, http.StatusUnauthorized, "User ID not found in context")
+		return
+	}
+
+	if err := h.authService.DeleteMyAccount(r.Context(), userID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			// La cuenta no existe o ya estaba eliminada. Se responde 404 y no
+			// 200 para no dar por hecho un borrado que no ha ocurrido.
+			h.respondWithError(w, http.StatusNotFound, "La cuenta no existe o ya fue eliminada")
+			return
+		}
+		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// 204: no hay nada que devolver, y el cliente debe cerrar sesión al recibirlo.
+	w.WriteHeader(http.StatusNoContent)
 }

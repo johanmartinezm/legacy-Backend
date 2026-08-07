@@ -13,6 +13,10 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id string) error
+	// AnonymizeUser vacía los datos personales conservando la fila. Es lo que
+	// hay detrás de "eliminar mi cuenta": borrarla de verdad arrastraría en
+	// cascada los chats, transacciones y encuestas de otras personas.
+	AnonymizeUser(ctx context.Context, id string) error
 	UpdatePassword(ctx context.Context, userID, newHash string) error
 	UpdatePasswordByEmail(ctx context.Context, email, newHash string) error
 	MarkEmailAsVerified(ctx context.Context, emailBlindIndex string) error
@@ -60,6 +64,9 @@ type AuthService interface {
 	UpdateUser(ctx context.Context, user *domain.User) error
 	DeleteUser(ctx context.Context, id string) error
 	GetProfile(ctx context.Context, id string) (*domain.User, error)
+	// DeleteMyAccount es "eliminar mi cuenta" desde la app: anonimiza al usuario
+	// que lo pide. Distinto de DeleteUser, que es la baja administrativa.
+	DeleteMyAccount(ctx context.Context, userID string) error
 	ChangePassword(ctx context.Context, id string, oldPassword, newPassword string) error
 	RequestPasswordReset(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, email, token, newPassword string) error
