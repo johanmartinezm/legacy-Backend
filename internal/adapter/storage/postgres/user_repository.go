@@ -33,10 +33,16 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 			country, identification_type, identification_number, customer_status,
 			generation, is_public_profile, allow_messages_from_strangers, show_activity,
 			terms_accepted, data_sharing_accepted, email_verified,
-			created_at, updated_at, alias
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+			created_at, updated_at, alias,
+			terms_version, terms_accepted_at, data_sharing_version, data_sharing_accepted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, NULLIF($28, ''), $29, $30, $31, $32)
 		RETURNING id
 	`
+	// NULLIF sobre el alias: users_alias_key es UNIQUE y la cadena vacía SÍ
+	// colisiona consigo misma, mientras que NULL no. Sin esto, la segunda cuenta
+	// que se registrara sin alias violaba la restricción, y como el registro no
+	// pedía alias eso era literalmente la segunda cuenta de la base. El índice
+	// parcial idx_users_alias ya asume NULL para "sin alias".
 
 	err = tx.QueryRow(ctx, sql,
 		user.EmailBlindIndex,
@@ -67,11 +73,23 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		user.CreatedAt,
 		user.UpdatedAt,
 		user.Alias,
+		user.TermsVersion,
+		user.TermsAcceptedAt,
+		user.DataSharingVersion,
+		user.DataSharingAcceptedAt,
 	).Scan(&user.ID)
 
 	if err != nil {
-		if err.Error() != "" && (strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "users_alias_key")) {
+		// Cada restricción única significa una cosa distinta. Antes cualquier
+		// 23505 se traducía a "alias_in_use", así que un correo repetido —o
+		// cualquier otro choque— mandaba a la persona a cambiar un alias que ni
+		// siquiera había escrito.
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "users_alias_key"):
 			return errors.New("alias_in_use")
+		case strings.Contains(msg, "users_email_key"):
+			return errors.New("user already exists")
 		}
 		return err
 	}
@@ -412,8 +430,12 @@ func (r *UserRepository) UpdatePasswordByEmail(ctx context.Context, emailBlindIn
 	return err
 }
 
-func (r *UserRepository) MarkEmailAsVerified(ctx context.Context, emailBlindIndex string) error {
-	sql := "UPDATE core.users SET email_verified = true, updated_at = $1 WHERE email_blind_index = $2"
-	_, err := r.db.Exec(ctx, sql, time.Now(), emailBlindIndex)
+// MarkEmailAsVerified marca por id. Se excluyen las cuentas eliminadas: el
+// borrado de cuenta sustituye el correo por un valor derivado del id, y un
+// enlace de verificación pendiente no debe reactivar nada de una cuenta que su
+// dueño dio por eliminada.
+func (r *UserRepository) MarkEmailAsVerified(ctx context.Context, userID string) error {
+	sql := "UPDATE core.users SET email_verified = true, updated_at = $1 WHERE id = $2 AND deleted_at IS NULL"
+	_, err := r.db.Exec(ctx, sql, time.Now(), userID)
 	return err
 }

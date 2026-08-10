@@ -9,23 +9,39 @@ import (
 )
 
 type ChatService struct {
-	repo     ports.ChatRepository
-	userRepo ports.UserRepository
-	crypto   *security.CryptoService
+	repo      ports.ChatRepository
+	userRepo  ports.UserRepository
+	blockRepo ports.BlockRepository
+	crypto    *security.CryptoService
 }
 
-func NewChatService(repo ports.ChatRepository, userRepo ports.UserRepository, crypto *security.CryptoService) *ChatService {
+func NewChatService(repo ports.ChatRepository, userRepo ports.UserRepository, blockRepo ports.BlockRepository, crypto *security.CryptoService) *ChatService {
 	return &ChatService{
-		repo:     repo,
-		userRepo: userRepo,
-		crypto:   crypto,
+		repo:      repo,
+		userRepo:  userRepo,
+		blockRepo: blockRepo,
+		crypto:    crypto,
 	}
 }
+
+// errBloqueado es el mismo mensaje para las dos direcciones del bloqueo, a
+// propósito: si dijera "te han bloqueado" estaría revelando una decisión de la
+// otra persona, y quien busca acosar sabría que debe cambiar de cuenta.
+var errBloqueado = errors.New("no es posible contactar con esta persona")
 
 func (s *ChatService) SendInvite(ctx context.Context, requesterID, receiverID string) error {
 	if requesterID == receiverID {
 		return errors.New("cannot invite yourself")
 	}
+
+	bloqueado, err := s.blockRepo.AreBlocked(ctx, requesterID, receiverID)
+	if err != nil {
+		return err
+	}
+	if bloqueado {
+		return errBloqueado
+	}
+
 	// Check if a connection already exists
 	existing, _ := s.repo.FindConnectionBetweenUsers(ctx, requesterID, receiverID)
 	if existing != nil {
@@ -110,6 +126,17 @@ func (s *ChatService) GetChatHistory(ctx context.Context, connectionID, userID s
 		return nil, errors.New("unauthorized to view these messages")
 	}
 
+	// La conversación desaparece de la lista al bloquear, pero el id sigue
+	// siendo válido: sin este guarda se podría seguir leyendo pidiéndolo
+	// directamente.
+	bloqueado, err := s.blockRepo.AreBlocked(ctx, conn.RequesterID, conn.ReceiverID)
+	if err != nil {
+		return nil, err
+	}
+	if bloqueado {
+		return nil, errBloqueado
+	}
+
 	messages, err := s.repo.GetMessages(ctx, connectionID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -142,6 +169,17 @@ func (s *ChatService) SendMessage(ctx context.Context, senderID, connectionID, c
 		return nil, errors.New("unauthorized to send messages to this connection")
 	}
 
+	// El guarda va aquí y no solo en la lista de conversaciones: quien tenga la
+	// pantalla de chat abierta cuando le bloquean conserva el connectionID y
+	// podría seguir enviando. Esconder la conversación no basta.
+	bloqueado, err := s.blockRepo.AreBlocked(ctx, conn.RequesterID, conn.ReceiverID)
+	if err != nil {
+		return nil, err
+	}
+	if bloqueado {
+		return nil, errBloqueado
+	}
+
 	encrypted, err := s.crypto.Encrypt(content)
 	if err != nil {
 		return nil, err
@@ -163,8 +201,10 @@ func (s *ChatService) SendMessage(ctx context.Context, senderID, connectionID, c
 	return msg, nil
 }
 
-func (s *ChatService) ListMembers(ctx context.Context) ([]*domain.User, error) {
-	users, err := s.repo.ListMembers(ctx)
+// ListMembers devuelve el directorio tal como lo ve viewerID: sin él mismo, sin
+// cuentas eliminadas y sin las personas con las que hay un bloqueo.
+func (s *ChatService) ListMembers(ctx context.Context, viewerID string) ([]*domain.User, error) {
+	users, err := s.repo.ListMembers(ctx, viewerID)
 	if err != nil {
 		return nil, err
 	}

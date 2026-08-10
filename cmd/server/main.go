@@ -90,8 +90,14 @@ func main() {
 	eventService := services.NewEventService(eventRepo, cryptoService)
 	eventHandler := handler.NewEventHandler(eventService, notificationService)
 
+	// El repositorio de bloqueos lo usan dos servicios: el suyo propio y el de
+	// chat, que consulta el bloqueo antes de dejar invitar, escribir o leer.
+	blockRepo := postgres.NewBlockRepository(dbPool)
+	blockService := services.NewBlockService(blockRepo, cryptoService)
+	blockHandler := handler.NewBlockHandler(blockService)
+
 	chatRepo := postgres.NewChatRepository(dbPool)
-	chatService := services.NewChatService(chatRepo, userRepo, cryptoService)
+	chatService := services.NewChatService(chatRepo, userRepo, blockRepo, cryptoService)
 	chatHub := websocket.NewHub(chatService, chatRepo)
 	go chatHub.Run()
 	chatHandler := handler.NewChatHandler(chatService, chatHub)
@@ -284,6 +290,14 @@ func main() {
 			r.Post("/message", chatHandler.SendMessage)
 		})
 
+		// Bloquear y reportar personas. Requisito de la directriz 1.2 de Apple:
+		// una app con chat y foros necesita que se pueda reportar contenido Y
+		// bloquear a quien abusa, desde la propia app.
+		r.Get("/api/blocks", blockHandler.ListBlocked)
+		r.Post("/api/blocks/{userID}", blockHandler.BlockUser)
+		r.Delete("/api/blocks/{userID}", blockHandler.UnblockUser)
+		r.Post("/api/users/{userID}/report", blockHandler.ReportUser)
+
 		// Forum interaction routes
 		r.Post("/api/forums", forumHandler.CreateUserForum)
 		r.Post("/api/forums/{forumID}/posts", forumHandler.PublishPost)
@@ -374,6 +388,12 @@ func main() {
 		r.Get("/api/admin/forums/flagged", forumHandler.AdminListFlaggedPosts)
 		r.Get("/api/admin/forums/{forumID}/posts", forumHandler.AdminGetForumTree)
 		r.Delete("/api/admin/forums/posts/{postID}", forumHandler.AdminDeletePost)
+
+		// Bandeja de reportes de personas, la que atiende las denuncias del
+		// chat. Los reportes de publicaciones de foro tienen la suya aparte,
+		// en /api/admin/forums/flagged.
+		r.Get("/api/admin/user-reports", blockHandler.ListReports)
+		r.Patch("/api/admin/user-reports/{reportID}", blockHandler.ResolveReport)
 	})
 
 	// Health check

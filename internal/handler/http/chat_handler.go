@@ -95,7 +95,9 @@ func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
-	members, err := h.chatService.ListMembers(r.Context())
+	// El directorio se filtra por bloqueos, así que depende de quién pregunta.
+	userID := r.Context().Value(UserIDKey).(string)
+	members, err := h.chatService.ListMembers(r.Context(), userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

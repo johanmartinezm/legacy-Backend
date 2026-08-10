@@ -109,6 +109,27 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	return s.tokenRepo.DeleteToken(ctx, email)
 }
 
+// sellarConsentimiento deja constancia de QUÉ versión de cada texto legal se
+// aceptó y CUÁNDO. Sin esto solo queda un booleano, que prueba que hubo
+// aceptación pero no de qué, y el Decreto 1377 de 2013 exige lo segundo.
+//
+// La versión sale de domain, no del cuerpo de la petición: si la enviara el
+// cliente, una app antigua o manipulada podría declarar una versión que nunca
+// mostró. Y no se sella lo que no se aceptó — marcar una fecha sobre un
+// consentimiento negado sería fabricar prueba de lo contrario de lo ocurrido.
+func sellarConsentimiento(user *domain.User, cuando time.Time) {
+	if user.TermsAccepted {
+		v := domain.TermsVersionVigente
+		user.TermsVersion = &v
+		user.TermsAcceptedAt = &cuando
+	}
+	if user.DataSharingAccepted {
+		v := domain.PrivacyVersionVigente
+		user.DataSharingVersion = &v
+		user.DataSharingAcceptedAt = &cuando
+	}
+}
+
 func (s *AuthService) Register(ctx context.Context, user *domain.User, password string) error {
 	// 1. Check if user exists (using Blind Index)
 	blindIndex := s.crypto.BlindIndex(user.Email)
@@ -156,6 +177,8 @@ func (s *AuthService) Register(ctx context.Context, user *domain.User, password 
 	isSocial := user.GoogleID != nil || user.AppleID != nil
 	user.EmailVerified = isSocial
 
+	sellarConsentimiento(user, user.CreatedAt)
+
 	// 4. Save to Repo
 	err = s.repo.Create(ctx, user)
 	if err != nil {
@@ -168,7 +191,8 @@ func (s *AuthService) Register(ctx context.Context, user *domain.User, password 
 		rand.Read(b)
 		token := hex.EncodeToString(b)
 		
-		err = s.verifyRepo.StoreToken(ctx, blindIndex, token, time.Now().Add(24*time.Hour))
+		// user.ID lo devuelve el INSERT del repositorio.
+		err = s.verifyRepo.StoreToken(ctx, user.ID, token, time.Now().Add(24*time.Hour))
 		if err != nil {
 			return err
 		}
@@ -418,12 +442,12 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID, oldPassword, n
 }
 
 func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
-	blindIndex, err := s.verifyRepo.ValidateToken(ctx, token)
+	userID, err := s.verifyRepo.ValidateToken(ctx, token)
 	if err != nil {
 		return err
 	}
 
-	err = s.repo.MarkEmailAsVerified(ctx, blindIndex)
+	err = s.repo.MarkEmailAsVerified(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -434,8 +458,7 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 }
 
 func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string) error {
-	blindIndex := s.crypto.BlindIndex(email)
-	user, err := s.repo.FindByEmailBlindIndex(ctx, blindIndex)
+	user, err := s.repo.FindByEmailBlindIndex(ctx, s.crypto.BlindIndex(email))
 	if err != nil || user == nil {
 		return errors.New("user not found")
 	}
@@ -448,7 +471,7 @@ func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string)
 	rand.Read(b)
 	token := hex.EncodeToString(b)
 	
-	err = s.verifyRepo.StoreToken(ctx, blindIndex, token, time.Now().Add(24*time.Hour))
+	err = s.verifyRepo.StoreToken(ctx, user.ID, token, time.Now().Add(24*time.Hour))
 	if err != nil {
 		return err
 	}

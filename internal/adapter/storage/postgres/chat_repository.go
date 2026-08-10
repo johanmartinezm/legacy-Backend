@@ -84,7 +84,15 @@ func (r *ChatRepository) ListConnections(ctx context.Context, userID string) ([]
 			c.id, c.requester_id, c.receiver_id, c.status, c.created_at, c.updated_at,
 			(SELECT COUNT(*) FROM chat.messages m WHERE m.connection_id = c.id AND m.is_read = FALSE AND m.sender_id != $1) as unread_count
 		FROM chat.connections c
-		WHERE c.requester_id = $1 OR c.receiver_id = $1
+		WHERE (c.requester_id = $1 OR c.receiver_id = $1)
+		  -- La conversación con alguien bloqueado desaparece de la lista, en
+		  -- cualquiera de las dos direcciones del bloqueo. Los mensajes no se
+		  -- borran: si se desbloquea, la conversación vuelve intacta.
+		  AND NOT EXISTS (
+			SELECT 1 FROM core.user_blocks b
+			WHERE (b.blocker_id = c.requester_id AND b.blocked_id = c.receiver_id)
+			   OR (b.blocker_id = c.receiver_id AND b.blocked_id = c.requester_id)
+		  )
 		ORDER BY c.updated_at DESC
 	`
 	rows, err := r.db.Query(ctx, sql, userID)
@@ -173,14 +181,28 @@ func (r *ChatRepository) MarkAsRead(ctx context.Context, connectionID, userID st
 	return err
 }
 
-func (r *ChatRepository) ListMembers(ctx context.Context) ([]*domain.User, error) {
-	// For now, list all users. In a real scenario, we would filter by 'community' status/role
+// ListMembers devuelve el directorio de la comunidad tal como lo ve viewerID.
+//
+// Se excluyen tres cosas: uno mismo, las cuentas eliminadas —que tras
+// anonimizarse aparecían en el listado como "Usuario eliminado"— y las personas
+// con las que hay un bloqueo en cualquier dirección. Este último filtro es la
+// mitad que de verdad importa del bloqueo: si quien bloquea sigue viendo a
+// quien bloqueó en el directorio, puede volver a invitarle y el bloqueo no
+// protege de nada.
+func (r *ChatRepository) ListMembers(ctx context.Context, viewerID string) ([]*domain.User, error) {
 	sql := `
 		SELECT id, first_name, last_name, email_encrypted, company_name, job_title
-		FROM core.users
+		FROM core.users u
+		WHERE u.id <> $1
+		  AND u.deleted_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM core.user_blocks b
+			WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
+			   OR (b.blocker_id = u.id AND b.blocked_id = $1)
+		  )
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(ctx, sql)
+	rows, err := r.db.Query(ctx, sql, viewerID)
 	if err != nil {
 		return nil, err
 	}

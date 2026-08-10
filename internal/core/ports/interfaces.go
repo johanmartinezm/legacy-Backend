@@ -19,7 +19,9 @@ type UserRepository interface {
 	AnonymizeUser(ctx context.Context, id string) error
 	UpdatePassword(ctx context.Context, userID, newHash string) error
 	UpdatePasswordByEmail(ctx context.Context, email, newHash string) error
-	MarkEmailAsVerified(ctx context.Context, emailBlindIndex string) error
+	// MarkEmailAsVerified recibe el id, no el blind index: quien lo llama viene
+	// de validar un token, que ya identifica a la persona por id.
+	MarkEmailAsVerified(ctx context.Context, userID string) error
 }
 
 type PasswordResetRepository interface {
@@ -88,8 +90,14 @@ type EmailService interface {
 	SendVerificationEmail(to, link string) error
 }
 
+// EmailVerificationRepository identifica a la persona por su id, que es lo que
+// core.email_verification_tokens guarda de verdad (user_id, con clave foránea a
+// core.users). Hasta el 2026-08-10 la interfaz hablaba de emailBlindIndex y las
+// consultas iban contra una columna que no existe: todo registro con correo y
+// contraseña moría con SQLSTATE 42703.
 type EmailVerificationRepository interface {
-	StoreToken(ctx context.Context, emailBlindIndex, token string, expiresAt time.Time) error
+	StoreToken(ctx context.Context, userID, token string, expiresAt time.Time) error
+	// ValidateToken devuelve el id de la persona dueña del token.
 	ValidateToken(ctx context.Context, token string) (string, error)
 	DeleteToken(ctx context.Context, token string) error
 }
@@ -103,7 +111,9 @@ type ChatRepository interface {
 	SaveMessage(ctx context.Context, msg *domain.Message) error
 	GetMessages(ctx context.Context, connectionID string, limit, offset int) ([]*domain.Message, error)
 	MarkAsRead(ctx context.Context, connectionID, userID string) error
-	ListMembers(ctx context.Context) ([]*domain.User, error)
+	// ListMembers recibe quién mira: el directorio se filtra por bloqueos, así
+	// que no hay una única lista de miembros igual para todos.
+	ListMembers(ctx context.Context, viewerID string) ([]*domain.User, error)
 }
 
 type ChatService interface {
@@ -113,7 +123,7 @@ type ChatService interface {
 	ListMyConnections(ctx context.Context, userID string) ([]*domain.ChatConnection, error)
 	GetChatHistory(ctx context.Context, connectionID, userID string, limit, offset int) ([]*domain.Message, error)
 	SendMessage(ctx context.Context, senderID, connectionID, content string) (*domain.Message, error)
-	ListMembers(ctx context.Context) ([]*domain.User, error)
+	ListMembers(ctx context.Context, viewerID string) ([]*domain.User, error)
 }
 
 type BannerRepository interface {

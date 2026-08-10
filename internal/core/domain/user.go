@@ -38,6 +38,13 @@ type User struct {
 	ShowActivity               bool       `json:"show_activity" db:"show_activity"`
 	TermsAccepted              bool       `json:"terms_accepted" db:"terms_accepted"`
 	DataSharingAccepted        bool       `json:"data_sharing_accepted" db:"data_sharing_accepted"`
+	// Qué texto se aceptó y cuándo. Punteros porque las cuentas anteriores a
+	// 2026-08-10 tienen el consentimiento sin versión: consta que aceptaron,
+	// no qué leyeron. Ver domain/legal.go.
+	TermsVersion          *string    `json:"terms_version" db:"terms_version"`
+	TermsAcceptedAt       *time.Time `json:"terms_accepted_at" db:"terms_accepted_at"`
+	DataSharingVersion    *string    `json:"data_sharing_version" db:"data_sharing_version"`
+	DataSharingAcceptedAt *time.Time `json:"data_sharing_accepted_at" db:"data_sharing_accepted_at"`
 	Interests                  []string   `json:"interests" db:"-"` // Handled separately
 	Alias                      string     `json:"alias" db:"alias"`
 

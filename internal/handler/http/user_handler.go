@@ -43,6 +43,7 @@ type RegisterRequest struct {
 	AllowMessagesFromStrangers bool     `json:"allow_messages_from_strangers"`
 	ShowActivity               bool     `json:"show_activity"`
 	BirthDate                  string   `json:"birth_date"`
+	Alias                      string   `json:"alias"`
 	TermsAccepted              bool     `json:"terms_accepted"`
 	DataSharingAccepted        bool     `json:"data_sharing_accepted"`
 	Interests                  []string `json:"interests"`
@@ -77,6 +78,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		IsPublicProfile:            req.IsPublicProfile,
 		AllowMessagesFromStrangers: req.AllowMessagesFromStrangers,
 		ShowActivity:               req.ShowActivity,
+		Alias:                      req.Alias,
 		TermsAccepted:              req.TermsAccepted,
 		DataSharingAccepted:        req.DataSharingAccepted,
 		Interests:                  req.Interests,

@@ -4,6 +4,166 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-10]: Bloquear y reportar personas — API (directriz 1.2 de Apple)
+
+- **Por qué:** Apple exige, para toda app con contenido generado por usuarios, poder **reportar
+  contenido y bloquear a quien abusa desde la propia app**. Esta tiene chat 1:1, foros y
+  publicaciones, y no había nada: solo se podían reportar publicaciones de foro. Mensajería directa
+  entre desconocidos sin bloqueo es uno de los rechazos más frecuentes de la App Store.
+- **Esto es solo la API.** Faltan la interfaz en la app Flutter y la bandeja en el panel.
+- **Alcance:**
+  - `scripts/20260810_bloqueo_y_reporte_usuarios.sql` — **migración**: `core.user_blocks` y
+    `core.user_reports`. Aplicada y probada dos veces: es idempotente.
+  - `domain/block.go`, `ports/block_ports.go`, `postgres/block_repository.go`,
+    `services/block_service.go`, `handler/http/block_handler.go`.
+  - **Rutas registradas en `main.go`** —comprobadas contra el servidor en marcha, las seis dan 401 y
+    no 404—:
+    `GET/POST/DELETE /api/blocks`, `POST /api/users/{userID}/report`, y en el bloque `AdminOnly`
+    `GET /api/admin/user-reports` y `PATCH /api/admin/user-reports/{reportID}`.
+  - `Tests`: `bloqueo_usuarios_test.go` (9 casos).
+- **El bloqueo filtra, que es la mitad que importa.** Se aplica en cuatro sitios, no solo al
+  guardarse:
+  1. `ListMembers` — el directorio excluye a los bloqueados **en ambas direcciones**. Si quien
+     bloquea siguiera viendo a quien bloqueó, podría volver a invitarle.
+  2. `ListConnections` — la conversación desaparece de la lista.
+  3. `GetChatHistory` — **y también al pedirla directamente**: esconderla de la lista no basta,
+     porque el `connectionID` sigue siendo válido.
+  4. `SendMessage` y `SendInvite` — quien tenga la pantalla abierta cuando le bloquean no puede
+     seguir escribiendo.
+- **El bloqueo es dirigido pero simétrico en sus efectos:** ninguno de los dos ve ni escribe al
+  otro. Un bloqueo que dejara al bloqueado seguir enviando no protegería de nada.
+- **El mensaje de error es el mismo en las dos direcciones** ("no es posible contactar con esta
+  persona"): decir "te han bloqueado" revelaría una decisión de la otra persona y avisaría a quien
+  acosa de que le conviene cambiar de cuenta.
+- **Los mensajes no se borran al bloquear.** Si se desbloquea, la conversación vuelve intacta.
+- **De paso:** `ListMembers` tampoco excluía las cuentas eliminadas, así que las cuentas
+  anonimizadas aparecían en el directorio como "Usuario eliminado". Ahora filtra por `deleted_at`.
+- **Criterios de QA:**
+  1. **Bloquear desde el chat:** la conversación desaparece de la lista de quien bloquea.
+  2. **La otra persona tampoco ve la conversación** ni puede escribir en ella.
+  3. **El directorio de miembros** deja de mostrar a la persona bloqueada, **a los dos**.
+  4. **No se puede invitar** a alguien con quien hay bloqueo, en ninguna de las dos direcciones.
+  5. **Abrir el historial a la fuerza** (con el id de la conversación) tampoco funciona.
+  6. **Desbloquear devuelve todo:** la conversación reaparece **con sus mensajes intactos**.
+  7. **Bloquear dos veces** a la misma persona no da error ni duplica nada.
+  8. **Nadie puede bloquear en nombre de otro:** quien bloquea sale del token, no del cuerpo.
+  9. **Reportar exige motivo**; el reporte aparece en `GET /api/admin/user-reports?status=pending`.
+  10. **Las cuentas eliminadas no aparecen** en el directorio de miembros.
+
+---
+
+### [2026-08-10]: El registro con correo y contraseña devolvía 500
+
+- **El problema:** `email_verification_repository.go` consultaba, insertaba y borraba por
+  `email_blind_index` en `core.email_verification_tokens`, y **esa columna no existe**: la tabla
+  identifica por `user_id`, con clave foránea a `core.users`. Las tres consultas del archivo iban
+  contra un esquema que no es el real.
+- **Qué se veía:** al registrarse con correo, **la cuenta sí se creaba**, pero guardar el token de
+  verificación fallaba y la API respondía `500 ERROR: column "email_blind_index" does not exist
+  (SQLSTATE 42703)`. No se enviaba el correo, y el enlace tampoco habría servido porque
+  `ValidateToken` consultaba la misma columna inexistente.
+- **Por qué no se había visto:** el registro social no pasa por ahí. `auth_service.go` marca
+  `EmailVerified = isSocial`, así que con Google o Apple todo el bloque de verificación se salta.
+  Solo fallaba el registro con correo y contraseña.
+- **Alcance:**
+  - `ports/interfaces.go` — `EmailVerificationRepository` pasa a hablar de `userID`, y
+    `MarkEmailAsVerified` también.
+  - `postgres/email_verification_repository.go` — las tres consultas contra `user_id`.
+  - `postgres/user_repository.go` — `MarkEmailAsVerified` marca por id y **excluye las cuentas
+    eliminadas** (`deleted_at IS NULL`): un enlace pendiente no debe reactivar una cuenta que su
+    dueño dio por eliminada.
+  - `services/auth_service.go` — los tres puntos de llamada usan el id.
+  - **Se descartó** añadir `email_blind_index` a la tabla: duplicaría la identidad de la persona en
+    un sitio más y dejaría un rastro que el borrado de cuenta tendría que perseguir.
+  - `Tests`: `verificacion_correo_test.go` (2 casos).
+- **Verificado de extremo a extremo** contra la base local: registro → token guardado con `user_id`
+  → `POST /verify-email` → la cuenta queda verificada y el token se consume.
+- **Sin migración.** La tabla ya era correcta; lo que estaba mal era el código.
+- **Criterios de QA:**
+  1. **Registrarse con correo y contraseña** devuelve éxito, no 500.
+  2. **Llega el correo de verificación** y su enlace marca la cuenta como verificada.
+  3. **El token se consume:** el mismo enlace no sirve dos veces.
+  4. **Reenviar la verificación** funciona y **invalida el enlace anterior**: solo debe haber un
+     token vivo por persona.
+  5. **El registro con Google y con Apple sigue funcionando** y no pide verificación.
+  6. **Una cuenta eliminada no se puede verificar** con un enlace pendiente de antes.
+
+---
+
+### [2026-08-10]: El segundo registro de cada base fallaba por el alias
+
+- **El problema:** `RegisterRequest` **no tenía campo `alias`**, así que todo registro insertaba
+  `alias = ''`. Como `users_alias_key` es UNIQUE y en Postgres dos cadenas vacías **sí** colisionan
+  —dos NULL no—, la segunda cuenta sin alias de cada base violaba la restricción.
+- **Y el mensaje despistaba:** el repositorio traducía **cualquier** violación 23505 a
+  `alias_in_use`, de modo que un correo repetido mandaba a cambiar un alias que nadie había escrito.
+- **Alcance:**
+  - `handler/http/user_handler.go` — `alias` en `RegisterRequest` y pasado al dominio.
+  - `postgres/user_repository.go` — el INSERT guarda el alias con `NULLIF($28, '')`, para que "sin
+    alias" sea NULL y no cadena vacía. El índice parcial `idx_users_alias` ya asumía NULL.
+  - `postgres/user_repository.go` — los errores se distinguen por restricción: `users_alias_key` →
+    `alias_in_use`, `users_email_key` → `user already exists`, y cualquier otro se propaga tal cual
+    en vez de disfrazarse.
+  - `scripts/20260810_alias_vacio_a_null.sql` — **migración**: pasa a NULL los alias vacíos que
+    quedaron. Aplicada y probada dos veces: es idempotente. Sin ella, la primera cuenta nueva sin
+    alias volvería a chocar con la fila que tenga `''`.
+- **Verificado contra la base local:** dos registros seguidos sin alias conviven; un alias repetido
+  da `alias_in_use`; un correo repetido da 409 "El usuario ya existe".
+- **Criterios de QA:**
+  1. **Dos cuentas nuevas sin alias** se registran sin error.
+  2. **Alias repetido** → mensaje de alias en uso, y se puede corregir y reintentar.
+  3. **Correo repetido** → mensaje de usuario ya existente, **no** de alias.
+  4. **En producción, comprobar cuántas cuentas tienen el alias vacío** antes de desplegar: si hay
+     una, la migración la deja en NULL; si hubiera más, algo más raro está pasando y conviene mirarlo.
+
+---
+
+### [2026-08-10]: Queda constancia de qué versión de los textos legales se aceptó
+
+- **Por qué:** `core.users` guardaba el consentimiento en dos booleanos. Un booleano prueba que hubo
+  aceptación, pero no **de qué texto** ni en qué fecha, y el Decreto 1377 de 2013 exige conservar
+  prueba del modo, la fecha y el contenido de la autorización.
+- **Por qué ahora y no después.** Los textos legales se están reescribiendo para poder publicar en
+  las tiendas (`reports/20260810_documentacion_privacidad_contenido.md`). En cuanto se publique la
+  redacción nueva, quien la acepte queda indistinguible de quien aceptó la anterior, y **ese corte no
+  se puede reconstruir hacia atrás**. Por eso va antes del cambio de textos.
+- **Alcance:**
+  - `scripts/20260810_version_consentimiento.sql` — **migración**: cuatro columnas
+    (`terms_version`, `terms_accepted_at`, `data_sharing_version`, `data_sharing_accepted_at`) más
+    el backfill. **Aplicada y verificada en local contra Postgres real, y probada dos veces: es
+    idempotente.** Pendiente de aplicar en producción con el próximo despliegue.
+  - `domain/legal.go` (nuevo) — `TermsVersionVigente` y `PrivacyVersionVigente`, por fecha de entrada
+    en vigor del documento. **Hay que subirlas cada vez que se publique una redacción nueva**; si el
+    texto cambia y la constante no, todo el mundo queda registrado aceptando algo que no leyó.
+  - `services/auth_service.go` — `sellarConsentimiento`. **La versión la fija el servidor, no el
+    cliente**: si viniera en el cuerpo de la petición, una app antigua o manipulada podría declarar
+    una versión que nunca mostró.
+  - `postgres/user_repository.go` — las cuatro columnas en el INSERT.
+  - `Tests`: `version_consentimiento_test.go` (3 casos). `go build`, `go vet` y los tests pasan.
+- **Verificado de extremo a extremo** contra la base local: un registro nuevo aceptando ambas
+  casillas quedó con `terms_version = 2026-04-01`, `data_sharing_version = 2026-06-02` y las dos
+  fechas puestas; la cuenta anterior quedó con la fecha de su registro y la versión en NULL. Los
+  datos de prueba se retiraron después.
+- **El backfill deja la versión en NULL a propósito.** De las cuentas anteriores sabemos cuándo
+  aceptaron —al registrarse— pero no qué texto vieron: la app muestra su propio aviso legal
+  embebido, que no coincide con los T&C que la empresa considera vigentes. Escribir una versión
+  supuesta convertiría una laguna conocida en un dato falso con apariencia de prueba.
+- **Criterios de QA:**
+  1. **Aplicar la migración** y comprobar que las cuatro columnas existen en `core.users`.
+  2. **Idempotencia:** aplicarla dos veces seguidas no debe fallar ni duplicar nada.
+  3. **Backfill:** las cuentas anteriores con `terms_accepted = true` deben quedar con
+     `terms_accepted_at = created_at` y `terms_version` **en NULL**.
+  4. **Registro nuevo aceptando ambas casillas:** `terms_version` = `2026-04-01`,
+     `data_sharing_version` = `2026-06-02`, y las dos fechas puestas.
+  5. **Registro aceptando solo los términos:** la política queda en NULL. Son dos casillas
+     independientes; sellar la segunda por arrastre registraría una autorización comercial que nadie
+     dio.
+  6. **La app no cambia:** el registro sigue funcionando igual desde el móvil, sin enviar nada nuevo.
+  7. **Eliminar la cuenta no borra el consentimiento:** al anonimizar, la versión y la fecha se
+     conservan. Son prueba legal y no identifican a nadie.
+
+---
+
 ### [2026-08-06]: Eliminar mi cuenta — `DELETE /api/me`
 
 - **Por qué:** App Store lo exige desde junio de 2022 (directriz 5.1.1(v)) a toda app que permita

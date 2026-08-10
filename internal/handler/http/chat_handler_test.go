@@ -16,7 +16,7 @@ type MockChatService struct {
 	ListMyConnectionsFunc func(ctx context.Context, userID string) ([]*domain.ChatConnection, error)
 	GetChatHistoryFunc    func(ctx context.Context, connectionID, userID string, limit, offset int) ([]*domain.Message, error)
 	SendMessageFunc       func(ctx context.Context, senderID, connectionID, content string) (*domain.Message, error)
-	ListMembersFunc       func(ctx context.Context) ([]*domain.User, error)
+	ListMembersFunc       func(ctx context.Context, viewerID string) ([]*domain.User, error)
 }
 
 func (m *MockChatService) SendInvite(ctx context.Context, reqID, resID string) error {
@@ -37,8 +37,8 @@ func (m *MockChatService) GetChatHistory(ctx context.Context, id, uID string, l,
 func (m *MockChatService) SendMessage(ctx context.Context, sID, id, c string) (*domain.Message, error) {
 	return m.SendMessageFunc(ctx, sID, id, c)
 }
-func (m *MockChatService) ListMembers(ctx context.Context) ([]*domain.User, error) {
-	return m.ListMembersFunc(ctx)
+func (m *MockChatService) ListMembers(ctx context.Context, viewerID string) ([]*domain.User, error) {
+	return m.ListMembersFunc(ctx, viewerID)
 }
 
 func TestChatHandler_ListConnections(t *testing.T) {
