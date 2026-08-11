@@ -26,11 +26,18 @@ services:
       - db
     environment:
       - TZ=America/Bogota
+    # Las imagenes que suben los foros. Sin este volumen viven dentro del
+    # contenedor y desaparecen enteras en el siguiente despliegue, porque el
+    # contenedor se recrea. La ruta coincide con storage.uploads_dir de
+    # config.docker.yaml.
+    volumes:
+      - legacy_uploads:/data/uploads
     networks:
       - proxy-net
 
 volumes:
   legacy_db_data:
+  legacy_uploads:
 
 networks:
   proxy-net:

@@ -4,6 +4,53 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-11]: La subida de imágenes de los foros nunca estuvo enrutada
+
+- **El problema:** `ImageHandler` existía completo —subir, servir, redimensionar— con sus dos tests,
+  pero **nunca se instanció en `main.go` ni se registró ninguna de sus rutas**. Adjuntar una imagen a
+  un hilo respondía 404 y la app lo mostraba como un fallo al subir. Es el caso que el `CLAUDE.md`
+  advierte: el paso que más se olvida de los seis del corte vertical es registrar la ruta.
+- **Dónde se guardaban:** el handler tenía `UploadDir = "/tmp"` fijo. Esa ruta **no existe en
+  Windows** y **dentro del contenedor la borra cada despliegue**, porque el contenedor se recrea. Aun
+  arreglando el enrutado, las imágenes habrían desaparecido solas.
+- **Rutas bajo `/api/` además de la forma antigua:** en producción HAProxy solo enruta `/api/...` al
+  backend, así que `/images/...` desde la raíz habría seguido sin llegar, igual que pasó con
+  `/social-login`. Se registran las dos formas y **la app pasa a pedir `/api/images/...`**; la forma
+  antigua queda como alias para los builds ya instalados.
+- **Ver es público, subir exige sesión:** la app pinta la imagen con `Image.network`, que no manda
+  `Authorization`, así que `GET` no puede estar tras el middleware. El nombre lo genera el servidor
+  con un UUID y `GetImage` lo recorta con `filepath.Base`, de modo que no se puede adivinar ni salir
+  del directorio. `POST` sí va con `AuthMiddleware`: sin eso, cualquiera podría llenar el disco.
+- **Alcance:**
+  - `cmd/server/main.go` — instancia `NewImageHandler(cfg.Storage.UploadsDir)` y registra
+    `POST /api/images/upload` y `/images/upload` (privadas) y `GET /api/images/{fileName}` y
+    `/images/{fileName}` (públicas).
+  - `internal/handler/http/image_handler.go` — el directorio pasa a ser configurable; se corrige que
+    **un archivo sin extensión rompía el guardado** (`imaging.Save` elige el formato por la
+    extensión y devolvía `unsupported image format` como 500); se elimina el nombre de archivo que
+    se calculaba dos veces.
+  - `internal/config/config.go`, `config.yaml`, `config.docker.yaml` — `storage.uploads_dir`.
+  - `docker-compose.yml` — volumen `legacy_uploads` en `/data/uploads`.
+- **Sin migración.** No toca la base: `forum_posts.image_url` ya guardaba el nombre del archivo.
+- ⚠️ **No se pudieron ejecutar los tests en el equipo de desarrollo:** una política de control de
+  aplicaciones de Windows bloquea cualquier binario recién compilado, así que `go test` y `go run`
+  no arrancan. Sí pasan `go build ./...` y `go vet ./...`. **Ejecutar `go test
+  ./internal/handler/http/ -run TestImageHandler -v` antes de dar esto por bueno.**
+- **Criterios de QA:**
+  1. **Adjuntar una imagen a un mensaje de foro** desde la app: se sube y se ve en el hilo.
+  2. **La imagen sigue viéndose al reabrir la app** y desde otra cuenta distinta a la que la subió.
+  3. **Subir sin sesión** (sin cabecera `Authorization`) responde 401, no 200.
+  4. **Un archivo que no sea imagen** —un PDF renombrado a `.jpg`— se rechaza con 400.
+  5. **Un archivo de más de 10 MB** se rechaza con 400.
+  6. **Una imagen ancha se reduce a 600 px**: subir una de 2000 px y comprobar el tamaño servido.
+  7. **`GET /api/images/../algo`** no devuelve ningún archivo de fuera del directorio de subidas.
+  8. **Tras recrear el contenedor** (`docker compose up -d --build backend`), las imágenes subidas
+     antes **siguen viéndose**. Es la comprobación que verifica el volumen.
+  9. **En el servidor**, `docker volume ls` muestra `legacy_uploads` y el directorio
+     `/data/uploads` existe dentro del contenedor.
+
+---
+
 ### [2026-08-10]: Bloquear y reportar personas — API (directriz 1.2 de Apple)
 
 - **Por qué:** Apple exige, para toda app con contenido generado por usuarios, poder **reportar

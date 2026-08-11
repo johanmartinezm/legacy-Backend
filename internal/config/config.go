@@ -50,6 +50,14 @@ type Config struct {
 	} `yaml:"credibanco"`
 
 
+	// Storage.UploadsDir es donde se guardan las imagenes que suben los foros.
+	// Vacio equivale a "uploads" (relativo a Backend/). En produccion tiene que
+	// ser un directorio montado como volumen: si vive dentro del contenedor, se
+	// pierde entero en cada despliegue.
+	Storage struct {
+		UploadsDir string `yaml:"uploads_dir"`
+	} `yaml:"storage"`
+
 	BoardContacts map[string]string `yaml:"board_contacts"`
 	AsesoriaEmail string            `yaml:"asesoria_email"`
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,20 +19,34 @@ import (
 const (
 	MaxUploadSize = 10 << 20 // 10 MB
 	MaxWidth      = 600
-	UploadDir     = "/tmp"
+
+	// DefaultUploadDir es relativo al directorio de arranque, que siempre es
+	// Backend/ porque main.go carga config.yaml con ruta relativa.
+	//
+	// Antes era "/tmp", que fallaba por los dos lados: en Windows esa ruta no
+	// existe, y en el contenedor la borra cualquier reinicio, asi que las
+	// imagenes subidas desaparecian en el siguiente despliegue. El directorio
+	// real se configura con storage.uploads_dir y en produccion debe apuntar a
+	// un volumen montado.
+	DefaultUploadDir = "uploads"
 )
 
 type ImageHandler struct {
 	uploadDir string
 }
 
-func NewImageHandler() *ImageHandler {
-	// Ensure upload directory exists
-	if _, err := os.Stat(UploadDir); os.IsNotExist(err) {
-		_ = os.MkdirAll(UploadDir, 0755)
+func NewImageHandler(uploadDir string) *ImageHandler {
+	if strings.TrimSpace(uploadDir) == "" {
+		uploadDir = DefaultUploadDir
+	}
+	// MkdirAll no falla si ya existe. Si falla de verdad —permisos, disco— se
+	// registra aqui: descubrirlo en el primer intento de subida, con un 500 y
+	// sin contexto, cuesta mucho mas.
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		log.Printf("[IMAGENES] no se pudo crear el directorio de subidas %q: %v", uploadDir, err)
 	}
 	return &ImageHandler{
-		uploadDir: UploadDir,
+		uploadDir: uploadDir,
 	}
 }
 
@@ -80,34 +95,20 @@ func (h *ImageHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		finalImg = imaging.Resize(img, MaxWidth, 0, imaging.Lanczos)
 	}
 
-	// 4. Generate Filename & Save
-	ext := filepath.Ext(header.Filename)
-	if ext == "" {
-		ext = ".jpg" // Default to jpg if no extension (or infer from content type)
+	// 4. Nombre del archivo y guardado.
+	//
+	// filepath.Base descarta cualquier ruta que venga en el nombre original,
+	// que es la via clasica para escribir fuera del directorio de subidas, y el
+	// UUID delante evita que dos personas que suban "foto.jpg" se pisen.
+	nombre := filepath.Base(header.Filename)
+	if filepath.Ext(nombre) == "" {
+		// imaging.Save elige el formato por la extension: sin ella devuelve
+		// "unsupported image format" y la subida moria con un 500 opaco.
+		nombre += ".jpg"
 	}
-
-	newFileName := uuid.New().String() + "_" + header.Filename
-	// Clean filename to remove directory paths just in case, though uuid + original should be safe-ish
-	// Better: Use just UUID + extension to be totally safe, but requirements say UUID + OriginalName.
-	// We sanitize original name effectively by prepending UUID and taking basename if we wanted to be strict,
-	// but here we follow the Java logic: uuid + original.
-	// Let's ensure no path traversal in the "original" part if it interprets paths?
-	// actually filepath.Base is good practice.
-	newFileName = uuid.New().String() + "_" + filepath.Base(header.Filename)
+	newFileName := uuid.New().String() + "_" + nombre
 
 	destPath := filepath.Join(h.uploadDir, newFileName)
-
-	// Save as JPEG if it was resized or just generally to normalize?
-	// The Java code saves as JPG if resized used ImageIO.write(..., "jpg", ...).
-	// If it wasn't resized, it just did Files.copy().
-	// To match Java logic exactly: Copy if <= 600, Resize & Save as JPG if > 600.
-	// BUT, mixing formats is annoying. Let's stick to saving whatever we have, OR enforce JPG for resized.
-	// The prompt asked for optimizations. Converting everything to a consistent format (like JPG or WebP) is usually better.
-	// But let's respect the input format for small images to avoid unnecessary re-encoding loss,
-	// and use JPEG for resized ones to ensure compression.
-
-	// Actually, `imaging.Save` handles formats based on extension.
-	// Let's just save.
 
 	err = imaging.Save(finalImg, destPath)
 	if err != nil {

@@ -140,6 +140,11 @@ func main() {
 	forumService := services.NewForumService(forumRepo, userRepo)
 	forumHandler := handler.NewForumHandler(forumService, nil)
 
+	// Las imagenes de los foros. El handler existia con sus tests desde hacia
+	// meses, pero nunca se instancio ni se enruto: adjuntar una imagen a un hilo
+	// respondia 404 y la app lo mostraba como un fallo al subir.
+	imageHandler := handler.NewImageHandler(cfg.Storage.UploadsDir)
+
 	// 4. Router Setup
 	r := chi.NewRouter()
 
@@ -186,6 +191,17 @@ func main() {
 	// Se mantiene como alias para no tener que redesplegar el frontend.
 	r.Post("/api/verify-email", userHandler.VerifyEmail)
 
+	// Servir una imagen de foro es publico a proposito: la app la pinta con
+	// Image.network, que no manda la cabecera Authorization. El nombre lo genera
+	// el servidor con un UUID, asi que no se puede adivinar, y GetImage recorta
+	// el nombre con filepath.Base para que nadie salga del directorio.
+	//
+	// Se registran las dos formas por lo mismo que las rutas de auth de arriba:
+	// en produccion HAProxy solo enruta /api/... al backend, pero los builds de
+	// la app ya instalados piden /images/... directamente.
+	r.Get("/api/images/{fileName}", imageHandler.GetImage)
+	r.Get("/images/{fileName}", imageHandler.GetImage)
+
 	// Webhook de CredibanCo. Va aquí, sin AuthMiddleware, porque quien llama es
 	// la pasarela y no tiene un token nuestro. El handler no se cree el
 	// contenido: consulta el estado a CredibanCo con nuestras credenciales, así
@@ -201,6 +217,12 @@ func main() {
 		r.Use(handler.AuthMiddleware([]byte(cfg.Security.JWTSecret)))
 		r.Post("/api/posts/{id}/like", likeHandler.ToggleLike)
 		r.Post("/api/workshops/{id}/rating", eventHandler.SubmitWorkshopRating)
+
+		// Subir exige sesion aunque ver no la exija: sin esto cualquiera podria
+		// llenar el disco del servidor. La app ya manda el Bearer al subir
+		// (forum_thread_screen.dart:88).
+		r.Post("/api/images/upload", imageHandler.UploadImage)
+		r.Post("/images/upload", imageHandler.UploadImage)
 	})
 
 	// Public routes (with optional auth)

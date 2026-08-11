@@ -54,6 +54,13 @@ No está versionado. Antes de subirlo, revisa que:
 | `security.encryption_key` | **32 caracteres exactos** (AES-256) y el mismo con el que se cifraron los datos |
 | `security.jwt_secret` | secreto propio, no el de ejemplo |
 | `firebase.google_client_id` | ver la advertencia de abajo |
+| `storage.uploads_dir` | **`/data/uploads`**, que es el volumen `legacy_uploads` del `docker-compose.yml` |
+
+**`storage.uploads_dir` tiene que apuntar al volumen.** Ahí se guardan las imágenes que suben los
+foros. Si apunta a cualquier ruta interna del contenedor —`/tmp`, o vacío, que equivale a `uploads`
+junto al binario—, las imágenes **se pierden enteras en el siguiente despliegue**, porque el
+contenedor se recrea. No hay aviso: las subidas siguen respondiendo 200 y las imágenes viejas pasan
+a dar 404.
 
 **Cambiar `encryption_key` inutiliza todos los datos ya cifrados** (usuarios, mensajes de chat,
 sinergias): quedan ilegibles y no hay forma de recuperarlos. No la toques sin migrar antes.
