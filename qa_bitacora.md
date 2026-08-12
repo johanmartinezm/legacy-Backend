@@ -4,6 +4,35 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-12]: Postgres deja de estar publicado a Internet
+
+- **El problema:** el 5432 respondía desde cualquier parte (`0.0.0.0:5432` y también IPv6) y el
+  servidor no tiene `ufw` activo. Estaba anotado como hallazgo abierto desde el 2026-08-11 y se
+  volvió a comprobar hoy desde fuera antes de tocar nada.
+- **Qué se hizo:** en el compose **del servidor** —no el del repositorio, que es el de
+  desarrollo—, `ports: - "5432:5432"` pasa a `- "127.0.0.1:5432:5432"`, y se recreó solo el
+  contenedor `legacy_db`. Respaldo previo en `docker-compose.yml.bak.20260812_2304`; el `diff`
+  contra él muestra esa única línea.
+- **Por qué atarlo a local en vez de retirar la publicación:** quitarla del todo habría cerrado
+  también pgAdmin, DBeaver y `psql`, que la guía advertía de no romper sin decidirlo. Con
+  `127.0.0.1` siguen sirviendo por túnel SSH.
+- **`ufw` no habría servido:** Docker escribe sus reglas en la cadena `DOCKER` de iptables, fuera
+  del gobierno de `ufw`; un puerto publicado sigue abierto con el firewall activo.
+- **Verificado desde fuera, después del cambio:** el 5432 da *Connection refused*; `docker ps`
+  muestra `127.0.0.1:5432->5432/tcp`; `/health` 200; el panel 200; y
+  `POST /api/admin/login` con credenciales falsas devuelve **401 `invalid credentials`**, que es la
+  prueba de que el backend sigue consultando la base y no un 500 de conexión.
+- **Sin pérdida de datos:** el volumen `legacy_db_data` no se tocó; solo se recreó el contenedor.
+- **Criterios de QA:**
+  1. **Entrar al panel** con un usuario real y ver que carga el listado de miembros.
+  2. **Iniciar sesión en la app** y abrir eventos: los datos vienen de la base.
+  3. **Desde fuera**, `psql -h legacy.intelyclick.com -p 5432` debe fallar por conexión rechazada.
+  4. **Con túnel SSH** (`ssh -L 5432:127.0.0.1:5432 …`), pgAdmin o DBeaver deben conectar a
+     `localhost:5432` con normalidad.
+  5. **El respaldo diario de las 03:30** debe seguir generándose mañana.
+
+---
+
 ### [2026-08-11]: Despliegue de la subida de imágenes — y un tropiezo con el compose
 
 - **Desplegado y verificado en producción.** `go test ./...` se ejecutó dentro de un contenedor

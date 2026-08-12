@@ -116,14 +116,33 @@ Pero el archivo quedó mintiendo, y si alguien recreara el volumen la base nacer
 diff docker-compose.yml.bak.AAAAMMDD_HHMM docker-compose.yml
 ```
 
-### Hallazgo abierto: Postgres publica el 5432 a Internet
+### Postgres ya no publica el 5432 a Internet — cerrado el 2026-08-12
 
-Comprobado el 2026-08-11 **desde fuera del servidor**: el puerto responde, y `ufw` está inactivo.
-Viene del `ports: - "5432:5432"` del compose de producción, que es anterior a esa fecha.
+Estuvo abierto en `0.0.0.0:5432` (y en IPv6) con `ufw` inactivo, comprobado desde fuera el
+2026-08-11 y de nuevo el 2026-08-12. Venía del `ports: - "5432:5432"` del compose de producción.
 
-El backend **no lo necesita**: se conecta por la red `proxy-net` usando el host `db`. Quitar esa
-publicación cerraría el acceso sin afectar a la aplicación, pero **rompería cualquier conexión
-directa** con pgAdmin, DBeaver o `psql` desde fuera. Decidir antes de tocarlo.
+**Se ató a la interfaz local** en vez de retirar la publicación entera:
+
+```yaml
+    ports:
+      - "127.0.0.1:5432:5432"
+```
+
+Así deja de ser alcanzable desde Internet —comprobado: la conexión da *Connection refused*— pero
+**pgAdmin, DBeaver y `psql` siguen sirviendo a través de un túnel SSH**, que es lo que se habría
+perdido quitando el `ports` del todo:
+
+```bash
+ssh -L 5432:127.0.0.1:5432 <usuario>@<servidor>   # y conectar a localhost:5432
+```
+
+Ojo con `ufw`: **no habría bastado**. Docker escribe sus reglas en la cadena `DOCKER` de iptables,
+que `ufw` no gobierna, así que un puerto publicado sigue abierto aunque el firewall esté activo. El
+cierre tiene que venir del binding, como aquí.
+
+El backend no se vio afectado en ningún momento: se conecta por `proxy-net` con el host `db`, no
+por el puerto publicado. Recrear `legacy_db` corta las conexiones abiertas del pool y pgx
+reconecta solo.
 
 `firebase-service-account.json` es opcional en el `Dockerfile` (se copia con comodín). **Sin él,
 FCM arranca en modo mock**: las notificaciones se escriben en la consola del contenedor y nadie
