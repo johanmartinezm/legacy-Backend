@@ -1,5 +1,12 @@
 version: '3.8'
 
+# ⚠️ Este archivo es para DESARROLLO LOCAL. No lo subas al servidor.
+#
+# La contraseña de abajo es "123" y en produccion es otra, fuera de git: subir
+# este archivo la sobrescribe. Paso el 2026-08-11 y quedo documentado en
+# DESPLIEGUE.md, seccion "NO subas docker-compose.yml". El compose de produccion
+# se edita en el servidor.
+
 services:
   db:
     image: postgres:17-alpine

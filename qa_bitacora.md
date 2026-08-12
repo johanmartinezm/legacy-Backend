@@ -4,6 +4,33 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-11]: Despliegue de la subida de imágenes — y un tropiezo con el compose
+
+- **Desplegado y verificado en producción.** `go test ./...` se ejecutó dentro de un contenedor
+  `golang:1.25-alpine`, porque en el equipo de desarrollo una política de Windows impide ejecutar
+  binarios de Go. Pasan todos salvo `TestExhaustiveUserUpdate`, el fallo conocido de
+  `test_update_test.go` (cadena de conexión con el usuario `postgres` en vez de `dba`).
+- **Verificado contra el dominio público:** `/health` 200; `GET /api/images/noexiste.jpg` responde
+  `{"error":"Image not found"}` —el JSON del handler, no el `404 page not found` de chi que devuelve
+  una ruta inventada, así que la ruta está registrada—; `POST /api/images/upload` sin token da 401.
+  El volumen `legacy_legacy_uploads` está montado en `/data/uploads` dentro del contenedor.
+- ⚠️ **Se subió por error el `docker-compose.yml` del repositorio**, que es el de desarrollo y lleva
+  `POSTGRES_PASSWORD: "123"`. **La contraseña efectiva de la base no cambió**: Postgres ignora esa
+  variable cuando el volumen de datos ya está inicializado, y el backend siguió conectando con la
+  original. Se restauró el compose de producción desde el respaldo, conservando el volumen nuevo, y
+  se comprobó por hash que la contraseña volvió a ser la de antes. **`DESPLIEGUE.md` ya advierte de
+  no subir ese archivo**, y el compose del repo lleva ahora un aviso en la cabecera.
+- **Respaldos en el servidor** antes de tocar nada: `server_linux.bak.20260811_1846`,
+  `config.docker.yaml.bak.20260811_1846` y `docker-compose.yml.bak.20260811_1846`.
+- 🔴 **Hallazgo abierto, anterior a este despliegue:** el 5432 de Postgres está **publicado a
+  Internet** (`0.0.0.0:5432`) y el servidor **no tiene firewall** (`ufw` inactivo). Comprobado desde
+  fuera. La contraseña es fuerte, pero la base no debería ser alcanzable. El backend no necesita esa
+  publicación: se conecta por `proxy-net`.
+- **Sin probar todavía:** una subida real con sesión. Requiere el token de un usuario; queda para la
+  prueba desde la app.
+
+---
+
 ### [2026-08-11]: La subida de imágenes de los foros nunca estuvo enrutada
 
 - **El problema:** `ImageHandler` existía completo —subir, servir, redimensionar— con sus dos tests,

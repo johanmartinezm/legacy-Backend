@@ -88,10 +88,42 @@ Ningún script automatiza este paso. Los datos de conexión están en `.env` (no
 ```bash
 set -a; source .env; set +a
 
-scp server_linux config.docker.yaml Dockerfile docker-compose.yml \
+scp server_linux config.docker.yaml Dockerfile \
     google-mailer-service-account.json firebase-service-account.json \
     "$SSH_USER@$SERVER_IP:$DEPLOY_DIR"
 ```
+
+### ⚠️ NO subas `docker-compose.yml` — comprobado el 2026-08-11
+
+**El `docker-compose.yml` versionado es el de desarrollo local y NO sirve para producción.** Difiere
+en dos cosas del que vive en el servidor:
+
+| | Repositorio (desarrollo) | Servidor (producción) |
+|---|---|---|
+| `POSTGRES_PASSWORD` | `"123"` | contraseña real, fuera de git |
+| Resto | igual | igual |
+
+Subirlo sobrescribe la contraseña de Postgres con `"123"` en el archivo. **Pasó el 2026-08-11**: el
+daño fue limitado porque Postgres **ignora `POSTGRES_PASSWORD` cuando el volumen de datos ya está
+inicializado**, así que la contraseña efectiva de la base no cambió y el backend siguió conectando.
+Pero el archivo quedó mintiendo, y si alguien recreara el volumen la base nacería con `"123"`.
+
+**Si hay que cambiar el compose de producción** —por ejemplo para añadir un volumen—, edítalo
+**en el servidor** partiendo del que ya está, o copia solo el fragmento nuevo. Haz antes
+`cp docker-compose.yml docker-compose.yml.bak.$(date +%Y%m%d_%H%M)` y compara después:
+
+```bash
+diff docker-compose.yml.bak.AAAAMMDD_HHMM docker-compose.yml
+```
+
+### Hallazgo abierto: Postgres publica el 5432 a Internet
+
+Comprobado el 2026-08-11 **desde fuera del servidor**: el puerto responde, y `ufw` está inactivo.
+Viene del `ports: - "5432:5432"` del compose de producción, que es anterior a esa fecha.
+
+El backend **no lo necesita**: se conecta por la red `proxy-net` usando el host `db`. Quitar esa
+publicación cerraría el acceso sin afectar a la aplicación, pero **rompería cualquier conexión
+directa** con pgAdmin, DBeaver o `psql` desde fuera. Decidir antes de tocarlo.
 
 `firebase-service-account.json` es opcional en el `Dockerfile` (se copia con comodín). **Sin él,
 FCM arranca en modo mock**: las notificaciones se escriben en la consola del contenedor y nadie
