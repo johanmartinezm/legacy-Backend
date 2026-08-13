@@ -2,9 +2,13 @@ package http
 
 import (
 	"applegacy/backend/internal/core/ports"
+	"applegacy/backend/internal/core/services"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type ContactoHandler struct {
@@ -55,10 +59,14 @@ func (h *ContactoHandler) Enviar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nombre := remitente.FirstName + " " + remitente.LastName
-	if err := h.contactoService.EnviarMensaje(r.Context(), req.Asunto, nombre, remitente.Email, req.Mensaje); err != nil {
-		// Lo que rechaza el servicio son datos del cliente —mensaje vacío o
-		// demasiado largo—, así que es un 400 y no un 500. La única excepción
-		// es la falta de configuración, que el arranque ya deja en el log.
+	err = h.contactoService.EnviarMensaje(r.Context(), userID, req.Asunto, nombre, remitente.Email, req.Mensaje)
+	if err != nil {
+		// Haber escrito demasiado seguido no es un error del mensaje: merece su
+		// propio código para que la app pueda decir "espera un momento".
+		if errors.Is(err, services.ErrDemasiadosMensajes) {
+			http.Error(w, err.Error(), http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -66,4 +74,31 @@ func (h *ContactoHandler) Enviar(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Mensaje enviado con éxito"})
+}
+
+// Listar atiende GET /api/admin/contacto?estado=nuevo (bajo AdminOnly).
+func (h *ContactoHandler) Listar(w http.ResponseWriter, r *http.Request) {
+	mensajes, err := h.contactoService.Listar(r.Context(), r.URL.Query().Get("estado"))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, mensajes)
+}
+
+// CambiarEstado atiende PATCH /api/admin/contacto/{id} (bajo AdminOnly).
+func (h *ContactoHandler) CambiarEstado(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Estado string `json:"estado"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"message": "Cuerpo de la petición no válido"})
+		return
+	}
+
+	if err := h.contactoService.CambiarEstado(r.Context(), chi.URLParam(r, "id"), req.Estado); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Estado actualizado"})
 }

@@ -148,7 +148,8 @@ func main() {
 	asesoriaService := services.NewAsesoriaService(emailService, cfg.AsesoriaEmail)
 	asesoriaHandler := handler.NewAsesoriaHandler(asesoriaService, authService)
 
-	contactoService := services.NewContactoService(emailService, cfg.BuzonDeContacto())
+	contactoRepo := postgres.NewContactoRepository(dbPool)
+	contactoService := services.NewContactoService(contactoRepo, emailService, cryptoService, cfg.BuzonDeContacto())
 	contactoHandler := handler.NewContactoHandler(contactoService, authService)
 
 	groupRepo := postgres.NewGroupRepository(dbPool)
@@ -466,6 +467,11 @@ func main() {
 		// Bandeja de reportes de personas, la que atiende las denuncias del
 		// chat. Los reportes de publicaciones de foro tienen la suya aparte,
 		// en /api/admin/forums/flagged.
+		// Bandeja de "Contactenos". El mensaje se guarda siempre, asi que aqui
+		// esta tambien lo que no se pudo enviar por correo.
+		r.Get("/api/admin/contacto", contactoHandler.Listar)
+		r.Patch("/api/admin/contacto/{id}", contactoHandler.CambiarEstado)
+
 		r.Get("/api/admin/user-reports", blockHandler.ListReports)
 		r.Patch("/api/admin/user-reports/{reportID}", blockHandler.ResolveReport)
 	})

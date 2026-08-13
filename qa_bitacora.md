@@ -4,6 +4,54 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-13]: Los mensajes de Contáctenos ya no se pierden — bandeja en el panel
+
+- **El problema:** la pantalla se estrenó hoy enviando solo un correo, como los otros dos canales.
+  Eso dejaba tres agujeros: **si el SMTP fallaba el mensaje se perdía entero**, nadie podía ver en el
+  panel qué se había preguntado ni si algo quedó sin responder, y no había forma de frenar a quien
+  escribiera en bucle porque no se sabía cuántos mensajes llevaba.
+- **Migración:** `scripts/20260813_contacto_mensajes.sql`, idempotente —comprobado aplicándola dos
+  veces seguidas—. Tabla `core.contact_messages` con dos índices: uno para la bandeja y otro para
+  contar los envíos recientes de una persona.
+- **Alcance:**
+  - `internal/core/domain/contacto.go`, `internal/core/ports/contacto_ports.go`,
+    `internal/adapter/storage/postgres/contacto_repository.go` — nuevos.
+  - `internal/core/services/contacto_service.go` — guarda, cifra y limita la frecuencia.
+  - `internal/handler/http/contacto_handler.go` — `Listar` y `CambiarEstado`.
+  - `cmd/server/main.go` — `GET /api/admin/contacto` y `PATCH /api/admin/contacto/{id}`, ambas bajo
+    `AdminOnly`.
+  - Panel: `core/models/contacto.model.ts`, `core/services/contacto.service.ts`,
+    `features/admin/contacto/` y la entrada "Mensajes de Contacto" en el menú.
+- **El orden importa y es la razón de la tabla: se guarda ANTES de intentar el correo.** Si el envío
+  falla, el mensaje queda con `email_enviado = false` y la bandeja lo destaca en rojo; **la persona
+  recibe confirmación porque su mensaje sí llegó**. Antes ese caso devolvía error y perdía el texto.
+  Si lo que falla es guardar, entonces sí se avisa: sin base ni correo, el mensaje se perdería.
+- **Asunto y cuerpo van cifrados** (AES-256), el mismo trato que los mensajes de chat: es texto libre
+  y puede contener cualquier cosa. **Verificado en producción**: la bandeja los muestra en claro y un
+  `SELECT` directo devuelve base64.
+- **El remitente no se copia a la tabla:** se guarda `user_id` y el nombre y el correo se leen de
+  `core.users`. Duplicar datos personales sería tener el mismo dato en dos sitios y que uno envejezca.
+  **Nombre y apellido se devuelven separados** porque están cifrados por separado: unirlos antes de
+  descifrar produce una cadena que ya no se puede descifrar.
+- **Límite de frecuencia:** 5 mensajes por hora y persona, con **429** en vez de 400 para que la app
+  pueda decir "espera un momento". No es contra un ataque —hace falta sesión— sino contra el envío
+  repetido por nervios o por un botón que se queda pulsado.
+- **Verificado en producción, circuito completo:** enviar desde la API guarda y entrega el correo
+  (`email_enviado: true`), la bandeja lo devuelve descifrado con su remitente, la base lo guarda
+  cifrado, y el panel responde 200 en `/admin/contacto` recargando la subruta. El mensaje de prueba
+  se borró después: la bandeja queda en 0.
+- **Respaldos previos:** `backup_20260813_precontactomensajes.sql.gz`,
+  `server_linux.bak.20260813_precontactobandeja` y `dist.bak.20260813_contacto` en el frontend.
+- **10 tests** en el backend y **6** en el panel.
+- **Criterios de QA:**
+  1. **Enviar un mensaje desde la app** y verlo aparecer en *Panel → Mensajes de Contacto* como Nuevo.
+  2. **Abrirlo**: se despliega el texto y pasa solo a Leído.
+  3. **Responder por correo**: abre el cliente con el destinatario y "Re: asunto", y queda Respondido.
+  4. Cambiar entre los filtros Nuevos / Leídos / Respondidos / Todos.
+  5. **Enviar 6 mensajes seguidos**: el sexto avisa de que hay que esperar, y solo se guardan 5.
+  6. Comprobar que el correo sigue llegando a `soporte@legacynetworkco.com` y que al responderlo va
+     al remitente (viaja en `Reply-To`).
+
 ### [2026-08-13]: Contáctenos — buzón de soporte desde la app
 
 - **Por qué:** "Contactenos" es una de las seis pantallas del módulo de Autenticación en *Grandes
