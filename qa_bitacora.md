@@ -36,9 +36,18 @@ Entrada de trabajo para validación de API.
   intactos —13 usuarios, 5 inscripciones, 11 transacciones— y la API siguió respondiendo durante
   todo el proceso: `/health` 200, `/api/events` 200, el panel 200 y el login con credenciales falsas
   401.
-- ⚠️ **El binario de producción sigue siendo el anterior.** La migración es inerte para él: las
-  columnas son opcionales y el código viejo las ignora. La funcionalidad no estará activa hasta que
-  se despliegue el binario nuevo, que además lleva el cambio del payload de CredibanCo.
+- **Binario desplegado el mismo día, después de la migración.** Respaldos previos en el servidor:
+  `server_linux.bak.20260813_0313` y `config.docker.yaml.bak.20260813_0313`. Se subió **solo el
+  binario**: ni `docker-compose.yml` ni `config.yaml`, que son los de desarrollo.
+- **Verificado tras recrear el contenedor:** el binario en ejecución (`/app/server` dentro del
+  contenedor) coincide **byte a byte** con el compilado, 58.645.567; el log de arranque muestra
+  "Connected to Database" y el puerto 8080, **sin el aviso de pasarela simulada** —el modo está
+  apagado en producción, como debe—; `/health` 200, `/api/events` 200, el panel 200, el login con
+  credenciales falsas 401, la subida de imágenes sigue protegida con 401, y
+  `/api/payments/simulado/...` responde **404**: esas rutas no se registran con el modo apagado.
+- **Con esto entra también el cambio del payload de CredibanCo.** No arregla el bloqueo —la pasarela
+  sigue devolviendo "acceso denegado"— pero tampoco lo empeora, y deja la llamada alineada con la
+  implementación que sí funciona para cuando lleguen credenciales válidas.
 - **Criterios de QA** (con la migración aplicada y la pasarela simulada activa):
   1. **Comprar un evento de pago** con los tres campos rellenos y aprobar: la inscripción se crea.
   2. **En la base**, `SELECT participant_name FROM events.registrations` devuelve **texto cifrado**,
