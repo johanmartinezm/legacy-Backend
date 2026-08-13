@@ -4,6 +4,46 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-13]: Producción firmaba los JWT con el secreto de ejemplo — 🔴 cualquiera era admin
+
+- **El problema:** `/docker/legacy/config.docker.yaml` tenía `jwt_secret:
+  "super-secret-jwt-key-change-me"`, el placeholder que trae el repositorio. El secreto es lo único
+  que separa un token legítimo de uno inventado, así que **cualquiera que conociera ese valor podía
+  firmarse un token con `role: admin` y entrar a las rutas de administración**. No hacía falta
+  ninguna credencial ni ningún fallo adicional.
+- **Comprobado contra producción antes de rotar:** un token HS256 firmado a mano con ese secreto,
+  con `sub` inventado y `role: admin`, obtuvo **200 en `GET /api/admin/stats/dashboard`**. La misma
+  petición sin token daba 401.
+- **Alcance:** solo configuración; no se tocó código.
+  - `config.docker.yaml` (servidor y copia local) — `jwt_secret` nuevo, 96 caracteres de
+    `openssl rand -hex 48`, generado en el servidor para que no pasara por ningún registro.
+  - Imagen `legacy-backend` reconstruida. **El `--build` no es opcional:** el `Dockerfile` hace
+    `COPY config.docker.yaml /app/config.yaml`, así que el archivo viaja dentro de la imagen y un
+    `restart` habría dejado el secreto viejo en marcha.
+  - Respaldo previo: `config.docker.yaml.bak.20260813_prerotacion`.
+- **Efecto para los usuarios:** todas las sesiones abiertas quedan invalidadas. La app y el panel
+  piden iniciar sesión otra vez, una sola vez. No se tocó ningún dato.
+- **Verificado tras el despliegue:** el token forjado con el secreto viejo pasa a **401**; `/health`
+  200, `GET /api/events` 200, el panel 200, y `POST /api/admin/login` con credenciales malas
+  responde 401 (no 500, que delataría un arranque a medias).
+- **Segundo hallazgo, sin relación con lo anterior:** la copia local de `config.docker.yaml` estaba
+  **desincronizada** del servidor —le faltaba la sección `apple:`, añadida directamente allí el día
+  12—. Como el despliegue sube el archivo local por `scp`, **el siguiente despliegue habría borrado
+  `apple.bundle_id` y dejado a todo el mundo fuera de Sign in with Apple**, sin cambiar una línea de
+  código y sin error visible en el arranque. Ambas copias quedan idénticas
+  (`sha256 38681c06…`) y en `DESPLIEGUE.md` queda el paso de comparar hashes antes de subir.
+- ⚠️ **`encryption_key` sigue con el valor de ejemplo.** Rotarla es otra tarea, no un cambio de
+  configuración: hay que descifrar y volver a cifrar nueve columnas de `core.users`, los mensajes de
+  chat y el contacto de los inscritos, y **recalcular `email_blind_index`**, que es un
+  HMAC con esa misma clave y del que depende el inicio de sesión por correo. Sin ese recálculo nadie
+  puede entrar. Queda pendiente por decisión, con el procedimiento documentado.
+- **Criterios de QA:**
+  1. **Iniciar sesión en el panel** con un administrador real: entra, y el listado de usuarios carga.
+  2. **Abrir la app con la sesión que ya estaba iniciada**: debe pedir iniciar sesión de nuevo —eso
+     es el efecto esperado, no un fallo— y funcionar con normalidad tras entrar.
+  3. **Chat y notificaciones** después de volver a entrar: siguen operando.
+  4. Repetir el punto 2 en un segundo dispositivo para confirmar que la expulsión fue general.
+
 ### [2026-08-12]: Sign in with Apple no validaba nada — 🔴 agujero de autenticación
 
 - **El problema:** `SocialLogin` no comprobaba el token de Apple. El código lo decía sin rodeos —

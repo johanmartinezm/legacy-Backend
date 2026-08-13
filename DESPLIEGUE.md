@@ -52,8 +52,9 @@ No está versionado. Antes de subirlo, revisa que:
 | `web_app.reset_password_url` / `verify_email_url` | el dominio público, no `localhost:4200` |
 | `credibanco.base_url` | pasarela de **producción**, no la de pruebas (`ecouat`) |
 | `security.encryption_key` | **32 caracteres exactos** (AES-256) y el mismo con el que se cifraron los datos |
-| `security.jwt_secret` | secreto propio, no el de ejemplo |
-| `firebase.google_client_id` | ver la advertencia de abajo |
+| `security.jwt_secret` | secreto propio, no el de ejemplo (rotado el 2026-08-13) |
+| `firebase.google_client_id` | el cliente **web**; presente y verificado |
+| `apple.bundle_id` | `co.legacynetwork.legacyapp`; sin él, Sign in with Apple rechaza a todo el mundo |
 | `storage.uploads_dir` | **`/data/uploads`**, que es el volumen `legacy_uploads` del `docker-compose.yml` |
 
 **`storage.uploads_dir` tiene que apuntar al volumen.** Ahí se guardan las imágenes que suben los
@@ -65,20 +66,95 @@ a dar 404.
 **Cambiar `encryption_key` inutiliza todos los datos ya cifrados** (usuarios, mensajes de chat,
 sinergias): quedan ilegibles y no hay forma de recuperarlos. No la toques sin migrar antes.
 
-### Advertencia verificada: falta `google_client_id`
+### ⚠️ La copia local de este archivo se desincroniza sola — comprobado el 2026-08-13
 
-`config.docker.yaml` **no define** `firebase.google_client_id`, aunque `config.yaml` sí lo trae.
-`cmd/server/main.go:68` pasa ese valor a `AuthService`, que lo usa en
-`internal/core/services/auth_service.go:195`:
+Este archivo **se edita en los dos sitios**: en el servidor cuando hay prisa, y en local cuando se
+prepara un despliegue. Como no está versionado, nada avisa de que difieran.
 
-```go
-payload, err := idtoken.Validate(ctx, idToken, s.googleClientID)
+Pasó entre el 11 y el 13 de agosto: se añadió `apple.bundle_id` directamente en el servidor y la
+copia local se quedó sin él. El `scp` del paso 3 sube el local, así que **el siguiente despliegue
+habría borrado esa clave y dejado a todo el mundo fuera de Sign in with Apple**, sin tocar una sola
+línea de código y sin ningún error visible en el arranque.
+
+**Antes de cualquier `scp`, compara:**
+
+```bash
+ssh "$SSH_USER@$SERVER_IP" 'sha256sum /docker/legacy/config.docker.yaml'
+sha256sum config.docker.yaml
 ```
 
-Con la audiencia vacía, `idtoken.Validate` **omite la comprobación del campo `aud`**: el token se
-verifica como token legítimo de Google, pero no que haya sido emitido para esta aplicación.
-Añade la clave con el cliente **web** (`client_type: 3`) de `google-services.json` — el mismo que
-la app móvil pasa como `serverClientId`.
+Si no coinciden, **baja primero el del servidor** (`scp` en sentido contrario) y aplica encima tus
+cambios. El servidor es la copia buena: es la que está corriendo.
+
+### `google_client_id`: presente desde el 2026-08-13
+
+La advertencia anterior —que `config.docker.yaml` no lo definía y que por eso `idtoken.Validate`
+omitía la comprobación del `aud`— **ya no aplica**. Verificado en el servidor: la clave está, con el
+cliente **web** (`client_type: 3`) de `google-services.json`, el mismo que la app pasa como
+`serverClientId`. Si algún día se reescribe el archivo desde cero, esa clave tiene que seguir ahí.
+
+### Rotar el `jwt_secret`
+
+Hecho el 2026-08-13, porque producción firmaba con `super-secret-jwt-key-change-me`. Con ese valor
+—un placeholder que está en cualquier tutorial— **cualquiera podía firmarse un token de rol `admin`
+y entrar a las rutas de administración**; comprobado contra producción antes de rotarlo.
+
+```bash
+cd /docker/legacy
+cp config.docker.yaml config.docker.yaml.bak.$(date +%Y%m%d_%H%M)
+NUEVO=$(openssl rand -hex 48)          # 96 caracteres, sin '$' (ver la regla del .env)
+# sustituir el valor de jwt_secret por "$NUEVO"
+docker compose up -d --build backend   # el Dockerfile COPIA el config: reiniciar NO basta
+```
+
+**Rotarlo invalida todas las sesiones abiertas**: la app y el panel piden iniciar sesión otra vez.
+Eso es todo el impacto; no toca datos.
+
+**El paso que se olvida es el `--build`.** El `config.docker.yaml` viaja dentro de la imagen
+(`COPY config.docker.yaml /app/config.yaml`), así que editarlo en `/docker/legacy` y hacer
+`restart` deja el contenedor con el valor viejo y la sensación de haber rotado nada.
+
+Verificación de que surtió efecto, sin necesidad de credenciales: firma un token con el secreto
+**viejo** y pídele una ruta de administración. Antes daba 200; después tiene que dar 401.
+
+### Rotar la `encryption_key` — pendiente, y NO es un cambio de configuración
+
+Producción sigue con la clave de ejemplo (`0123456789…`). Cambiarla en el YAML y reconstruir **deja
+la base ilegible**: `gcm.Open` falla con la clave nueva y no hay forma de volver atrás si además se
+perdió la vieja. Nadie podría iniciar sesión por correo, ni leer un chat, ni ver un nombre.
+
+Hay que hacerlo con un comando de un solo uso —`cmd/recifrar`, aún sin escribir— que lea con la
+clave vieja y escriba con la nueva, **dentro de una transacción**, sobre este inventario:
+
+| Tabla | Columnas |
+|---|---|
+| `core.users` | `email_encrypted`, `first_name`, `last_name`, `phone`, `location`, `bio`, `company_name`, `job_title`, `identification_number` |
+| `core.users` | `email_blind_index` — **no se descifra: se recalcula** |
+| `chat.messages` | `content_encrypted` |
+| `events.registrations` | `participant_name`, `participant_email`, `participant_phone` |
+
+**El `email_blind_index` es la trampa.** No es un cifrado sino un `HMAC-SHA256` con esa misma clave
+(`internal/security/crypto.go:85`), y es **por donde se busca al usuario al iniciar sesión**
+(`auth_service.go:325`). Si se re-cifran los datos y no se recalcula el índice, la base queda intacta
+y legible, todo parece haber salido bien, y **nadie vuelve a poder entrar con correo y contraseña**:
+la búsqueda no encuentra a nadie y responde credenciales inválidas.
+
+Las sinergias no guardan nada cifrado propio: muestran campos de `core.users`, así que se arreglan
+solas al arreglar esa tabla.
+
+Orden y precauciones:
+
+1. **Respaldo completo de la base** y comprobar que se restaura, no solo que se creó el `.gz`.
+2. **Parar el backend** (`docker compose stop backend`). Escribir mientras acepta peticiones deja
+   filas nuevas cifradas con la clave vieja detrás del cursor de la migración.
+3. Ejecutar el comando con las dos claves, la vieja y la nueva.
+4. Cambiar `encryption_key` en `config.docker.yaml` y `docker compose up -d --build backend`.
+5. Verificar **antes de dar por buena la ventana**: iniciar sesión con correo y contraseña, abrir un
+   chat con historial y ver un nombre de usuario en el panel. Si algo de eso falla, restaurar el
+   respaldo: es más rápido que diagnosticar.
+
+Una fila que no descifre con la clave vieja debe **abortar** la migración, no saltarse: un valor que
+no se puede leer hoy tampoco se recupera mañana, y saltarlo lo convierte en pérdida silenciosa.
 
 ## 3. Subir los artefactos
 
