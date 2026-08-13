@@ -117,15 +117,15 @@ Eso es todo el impacto; no toca datos.
 Verificación de que surtió efecto, sin necesidad de credenciales: firma un token con el secreto
 **viejo** y pídele una ruta de administración. Antes daba 200; después tiene que dar 401.
 
-### Rotar la `encryption_key` — pendiente, y NO es un cambio de configuración
+### Rotar la `encryption_key` — hecha el 2026-08-13, y NO es un cambio de configuración
 
-Producción sigue con una clave débil que nunca se rotó; el valor vive en `config.docker.yaml`, en el
-servidor, y no se reproduce aquí porque este repositorio es público. Cambiarla en el YAML y reconstruir **deja
-la base ilegible**: `gcm.Open` falla con la clave nueva y no hay forma de volver atrás si además se
-perdió la vieja. Nadie podría iniciar sesión por correo, ni leer un chat, ni ver un nombre.
+Hasta ese día producción usaba una clave débil que nunca se había rotado. **Cambiarla en el YAML y
+reconstruir, a secas, deja la base ilegible**: `gcm.Open` falla con la clave nueva y no hay vuelta
+atrás si además se perdió la vieja. Nadie podría iniciar sesión por correo, ni leer un chat, ni ver
+un nombre.
 
-Hay que hacerlo con un comando de un solo uso —`cmd/recifrar`, aún sin escribir— que lea con la
-clave vieja y escriba con la nueva, **dentro de una transacción**, sobre este inventario:
+Se hace con `cmd/recifrar`, un comando de un solo uso que lee con la clave vieja y escribe con la
+nueva **dentro de una única transacción**, sobre este inventario:
 
 | Tabla | Columnas |
 |---|---|
@@ -154,13 +154,63 @@ Orden y precauciones:
    chat con historial y ver un nombre de usuario en el panel. Si algo de eso falla, restaurar el
    respaldo: es más rápido que diagnosticar.
 
-Una fila que no descifre con la clave vieja debe **abortar** la migración, no saltarse: un valor que
-no se puede leer hoy tampoco se recupera mañana, y saltarlo lo convierte en pérdida silenciosa.
+Cómo se ejecutó, con el backend ya parado:
+
+```bash
+cd /docker/legacy
+docker exec legacy_db pg_dump -U dba applegacy | gzip > backup_AAAAMMDD_prerecifrado.sql.gz
+gunzip -t backup_AAAAMMDD_prerecifrado.sql.gz        # que el .gz esté sano, no solo que exista
+
+export RECIFRAR_DSN=$(grep '  dsn:' config.docker.yaml | sed -E 's/.*"(.*)".*/\1/' | sed 's|@db:|@127.0.0.1:|')
+export RECIFRAR_CLAVE_VIEJA=$(grep 'encryption_key:' config.docker.yaml | sed -E 's/.*"(.*)".*/\1/')
+export RECIFRAR_CLAVE_NUEVA=$(openssl rand -hex 16)   # 32 caracteres: NewCryptoService exige 32 exactos
+
+./recifrar_linux                    # simulacro: hace todo el trabajo y lo deshace
+./recifrar_linux -aplicar           # confirma
+```
+
+`openssl rand -hex 16`, no `-hex 32`: la clave es la **cadena** y `NewCryptoService` rechaza
+cualquier longitud que no sea 32 caracteres (`crypto.go:21`). Con `-hex 32` salen 64 y el backend no
+arranca.
+
+**El comando verifica antes de confirmar**, dentro de la misma transacción: relee todo con la clave
+nueva y comprueba que cada `email_blind_index` corresponde a su correo. Si algo no cuadra hace
+rollback, que es el único momento en el que un fallo todavía se puede deshacer.
+
+#### La política de texto plano
+
+Un valor que no descifra con la clave vieja **aborta** la migración por defecto, y así debe seguir:
+puede ser texto plano heredado, pero también un dato cifrado con *otra* clave, y cifrar ese segundo
+caso lo convierte en basura irrecuperable. `-texto-plano=cifrar` lo trata como texto plano y lo
+cifra, y solo debe usarse tras mirar qué son esos valores.
+
+En la ejecución del 2026-08-13 hubo **8 valores así**, todos de dos cuentas semilla del 27 de
+febrero (`first_name`, `last_name`, `identification_number` y `phone`). Se confirmaron como texto
+plano sin exponerlos, sustituyendo letras por `x` y dígitos por `9` en SQL: la forma era
+`xxxxxxxxx_9999999999999999999`, y un base64 nunca lleva `_`.
+
+Cifrarlos además **los arregló**: `auth_service.go:433` hace `user.FirstName, _ = Decrypt(...)`,
+descarta el error pero asigna igual, y `Decrypt` devuelve cadena vacía al fallar — esos dos usuarios
+se mostraban **sin nombre** en la app.
+
+#### Verificar el circuito completo, sin credenciales de nadie
+
+Que la base descifre no prueba que el backend la lea. Firma un token de administrador con el
+`jwt_secret` **desde el servidor**, para que no salga de ahí, y pide el listado:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" https://legacy.intelyclick.com/api/users
+```
+
+Los `first_name` y los `email` tienen que venir legibles. Si vinieran como cadenas base64 de 40
+caracteres o más, el backend está sirviendo texto cifrado y la clave no cuadra.
+
+Resultado del 2026-08-13: 13 usuarios, 13 correos con `@`, ningún campo ilegible.
 
 ## 3. Subir los artefactos
 
 Ningún script automatiza este paso. Los datos de conexión están en `.env` (no versionado):
-`SERVER_IP`, `SSH_USER`, `SSH_PASS`, `DEPLOY_DIR`.
+`SERVER_IP`, `SSH_USER`, `DEPLOY_DIR`. `SSH_PASS` se retiró el 2026-08-10: se entra por clave.
 
 ```bash
 set -a; source .env; set +a

@@ -4,6 +4,49 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-13]: Rotada la clave de cifrado en reposo, con recifrado de la base
+
+- **Por qué:** `encryption_key` seguía siendo la clave de ejemplo, la misma desde el primer día y
+  débil por construcción. A diferencia del `jwt_secret`, rotarla no es editar un YAML: los datos
+  cifrados dejarían de leerse y **no habría vuelta atrás**.
+- **Alcance:**
+  - `cmd/recifrar/` — nuevo, comando de un solo uso. Lee con la clave vieja y escribe con la nueva
+    **en una sola transacción**: o se rota todo, o no se toca nada. Cubre las nueve columnas cifradas
+    de `core.users`, `chat.messages.content_encrypted` y los tres campos de contacto de
+    `events.registrations`.
+  - `.gitignore` — `/recifrar_linux`, para que el binario no acabe en el repositorio.
+  - `DESPLIEGUE.md` — el procedimiento completo, ya ejecutado.
+- **Lo que hace distinto a este comando de "descifrar y volver a cifrar":** `email_blind_index` no es
+  un cifrado sino un HMAC con esa misma clave, y es **por donde `Login` busca al usuario**. Sin
+  recalcularlo, la base habría quedado intacta y legible y **nadie habría podido iniciar sesión por
+  correo**: la búsqueda no encuentra a nadie y responde credenciales inválidas. El índice se calcula
+  sobre el correo **tal cual**, sin `ToLower` ni `TrimSpace`, porque `Login` tampoco normaliza
+  (`auth_service.go:325`); normalizarlo habría dejado fuera a quien se registró con una mayúscula.
+- **Ocho valores estaban en texto plano**, de dos cuentas semilla del 27 de febrero. Se comprobó que
+  lo eran **sin exponerlos**, sustituyendo letras por `x` y dígitos por `9` en SQL: la forma
+  `xxxxxxxxx_9999999999999999999` no puede ser base64. Cifrarlos **arregló un fallo de paso**:
+  `auth_service.go:433` descarta el error de `Decrypt` pero asigna el resultado igual, y `Decrypt`
+  devuelve cadena vacía al fallar, así que esos dos usuarios **se mostraban sin nombre en la app**.
+- **Ejecución:** respaldo verificado con `gunzip -t` (36 tablas, 13 usuarios), backend parado,
+  simulacro, y aplicación. Movidos **74 valores recifrados + 8 desde texto plano + 13 índices
+  ciegos**; 35 campos vacíos se dejaron vacíos a propósito. Las 5 inscripciones no tenían datos de
+  contacto todavía.
+- **Verificado en tres niveles:** el comando relee todo con la clave nueva y comprueba cada índice
+  **antes** de confirmar; el backend arranca; y `GET /api/users` con un token firmado dentro del
+  servidor devuelve **13 usuarios, 13 correos con `@` y ningún campo ilegible** — es decir, el
+  circuito entero, no solo la base.
+- **Para revertir:** `backup_20260813_prerecifrado.sql.gz` y
+  `config.docker.yaml.bak.20260813_prerecifrado`, ambos en `/docker/legacy`. Hacen falta **los dos**:
+  el respaldo sin la clave vieja no sirve de nada.
+- **Criterios de QA:**
+  1. **Iniciar sesión en la app** con correo y contraseña: entra. Es la prueba del índice ciego.
+  2. **Abrir un chat con historial**: los mensajes anteriores se leen.
+  3. **Ver el perfil propio y el de otro miembro**: nombre, empresa y cargo legibles.
+  4. **En el panel**, el listado de usuarios muestra nombres y correos, no cadenas de letras.
+  5. **Registrar una cuenta nueva** y entrar con ella: cubre el camino de escritura con la clave
+     nueva, no solo el de lectura.
+  6. **Editar el perfil** y volver a abrirlo: lo guardado se relee bien.
+
 ### [2026-08-13]: Producción firmaba los JWT con el secreto de ejemplo — 🔴 cualquiera era admin
 
 - **El problema:** `/docker/legacy/config.docker.yaml` tenía `jwt_secret:

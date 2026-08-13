@@ -17,6 +17,7 @@ config.docker.yaml
 /main
 /server
 /server_linux
+/recifrar_linux
 /tmp_build
 *.exe
 *.exe~
