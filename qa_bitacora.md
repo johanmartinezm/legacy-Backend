@@ -4,6 +4,36 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-13]: El algoritmo de firma del JWT lo fijamos nosotros, no el token
+
+- **El problema:** los tres middlewares llamaban a `jwt.Parse` sin `WithValidMethods`, así que el
+  algoritmo con el que se verificaba la firma lo elegía el propio token. Es la puerta del clásico
+  `alg: none` y de la confusión de algoritmo.
+- **No era explotable, y conviene decirlo con precisión:** la `keyfunc` devuelve `[]byte`, y con eso
+  la librería ya rechazaba tanto `none` como RS256. Pero esa protección era un detalle de
+  implementación de la dependencia, no una decisión nuestra: una actualización que cambiara ese
+  comportamiento lo habría abierto sin que nadie tocara este código.
+- **Alcance:** `internal/handler/http/middleware.go` (`AuthMiddleware` y `OptionalAuthMiddleware`) y
+  `internal/handler/http/admin_middleware.go` (`AdminOnly`), los tres con
+  `jwt.WithValidMethods([]string{"HS256"})`. El validador de Apple ya lo hacía así desde el día 12.
+- **Verificado en producción** tras desplegar, con tokens firmados dentro del servidor:
+  - HS256 legítimo → **200** (no se rompió el camino bueno, que es el riesgo real de este cambio)
+  - `alg: none` sin firma → **401**
+  - `alg: RS256` firmado con HMAC → **401**
+  - `/health`, `/api/events` y el panel → 200
+- `go test ./internal/handler/http` **no se puede ejecutar en este equipo**: el Control de
+  aplicaciones de Windows bloquea el binario de test. `go vet` y `go build` sí pasan, y el resto de
+  la suite está en verde. Es un problema del entorno, no del paquete.
+- **Limpieza del servidor, en la misma sesión:** se liberaron **223 MB** en `/docker/legacy`
+  —tres `server_linux.bak` superados, el binario huérfano `legacy_backend` de julio y cinco
+  `config.docker.yaml.bak` que ya no abren nada—. El disco pasó del 75% al 72%. **Se conservaron a
+  propósito** los siete respaldos de la base, `server_linux.bak.20260813_middleware` (para revertir
+  este despliegue) y `config.docker.yaml.bak.20260813_prerecifrado`, que es el único archivo capaz de
+  leer `backup_20260813_prerecifrado.sql.gz`.
+- **Criterios de QA:** los de siempre; este cambio no altera ningún flujo visible. Basta con
+  comprobar que se puede **iniciar sesión en la app y en el panel**, que es lo que ejercita los tres
+  middlewares.
+
 ### [2026-08-13]: Rotada la clave de cifrado en reposo, con recifrado de la base
 
 - **Por qué:** `encryption_key` seguía siendo la clave de ejemplo, la misma desde el primer día y

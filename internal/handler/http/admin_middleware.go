@@ -23,9 +23,12 @@ func AdminOnly(jwtSecret []byte) func(http.Handler) http.Handler {
 				return
 			}
 			tokenString := parts[1]
+			// Mismo motivo que en AuthMiddleware (middleware.go): el algoritmo
+			// lo fijamos nosotros, no el token. Aqui pesa mas, porque lo que
+			// hay detras son las rutas de administracion.
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 				return jwtSecret, nil
-			})
+			}, jwt.WithValidMethods([]string{"HS256"}))
 			if err != nil || !token.Valid {
 				http.Error(w, "Invalid token", http.StatusUnauthorized)
 				return

@@ -51,9 +51,16 @@ func AuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 				http.Error(w, "Authorization required", http.StatusUnauthorized)
 				return
 			}
+			// WithValidMethods fija el algoritmo antes de mirar la firma. Sin
+			// esto, quien decide que algoritmo se usa es el propio token, que
+			// es el clasico "alg: none" / confusion de algoritmo. Hoy no era
+			// explotable —la keyfunc devuelve []byte, y con eso la libreria
+			// rechaza tanto RS256 como none—, pero eso es un detalle de
+			// implementacion de la dependencia, no una decision nuestra.
+			// El validador de Apple ya lo hacia asi (apple/validator.go).
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 				return jwtSecret, nil
-			})
+			}, jwt.WithValidMethods([]string{"HS256"}))
 
 			if err != nil || !token.Valid {
 				http.Error(w, "Invalid token", http.StatusUnauthorized)
@@ -106,9 +113,11 @@ func OptionalAuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Mismo motivo que en AuthMiddleware: el algoritmo lo fijamos
+			// nosotros, no el token.
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 				return jwtSecret, nil
-			})
+			}, jwt.WithValidMethods([]string{"HS256"}))
 
 			if err != nil || !token.Valid {
 				next.ServeHTTP(w, r) // Invalid token, still proceed as anonymous
