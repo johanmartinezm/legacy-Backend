@@ -30,6 +30,15 @@ Entrada de trabajo para validación de API.
   como para integrarlo de verdad.
 - **Verificado:** `go build`, `go vet` y los tests del backend en verde; en la app, **117 tests**,
   con 5 nuevos que fijan que los campos viajan y que los vacíos no se envían.
+- **Migración aplicada en producción el 2026-08-12.** Respaldo previo en el servidor:
+  `backup_20260812_premigracion.sql.gz` (25 KB). Las cuatro columnas existen y son `NULL`ables; la
+  **idempotencia se comprobó aplicándola dos veces**, la segunda sin errores. Los datos quedaron
+  intactos —13 usuarios, 5 inscripciones, 11 transacciones— y la API siguió respondiendo durante
+  todo el proceso: `/health` 200, `/api/events` 200, el panel 200 y el login con credenciales falsas
+  401.
+- ⚠️ **El binario de producción sigue siendo el anterior.** La migración es inerte para él: las
+  columnas son opcionales y el código viejo las ignora. La funcionalidad no estará activa hasta que
+  se despliegue el binario nuevo, que además lleva el cambio del payload de CredibanCo.
 - **Criterios de QA** (con la migración aplicada y la pasarela simulada activa):
   1. **Comprar un evento de pago** con los tres campos rellenos y aprobar: la inscripción se crea.
   2. **En la base**, `SELECT participant_name FROM events.registrations` devuelve **texto cifrado**,
