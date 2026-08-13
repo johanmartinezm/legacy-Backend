@@ -4,6 +4,54 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-12]: El registro de pagos se alinea con el plugin que sí funciona
+
+- **Por qué:** los pagos están bloqueados desde el 2026-08-06 con `errorCode 5`, "acceso denegado",
+  incluso llamando a la pasarela desde el servidor sin pasar por el backend. Al analizar el plugin
+  `woocommerce-rbspayment-credibanco 1.1.3` —que funciona **contra la misma pasarela y el mismo
+  comercio**— aparece la diferencia: nosotros enviábamos tres parámetros que el plugin no envía.
+- **La hipótesis:** en la API de RBS, sobre la que corre CredibanCo, `merchant` lo mandan los
+  agregadores que facturan por terceros. Un comercio normal que lo incluye pide una operación para
+  la que su usuario no tiene permiso, y eso responde `errorCode 5`. Encaja con lo que no cuadraba:
+  el error salía igual desde otra IP y con un usuario inventado, cosa que ni una lista blanca ni una
+  contraseña mala explicarían. En el plugin, además, la línea de `currency` está **comentada a
+  propósito**.
+- **Alcance** — solo `internal/infrastructure/credibanco/client.go`:
+  - **Se dejan de enviar `terminal`, `merchant` y `currency`** en `register.do`. Siguen en la
+    configuración porque identifican el comercio ante el banco, pero no viajan en la llamada.
+  - Se añaden `language=es` y `jsonParams`, que identifica a la app en los registros del banco y
+    permite distinguirla del WooCommerce del mismo comercio al reclamar.
+  - **El importe pasa a calcularse sobre enteros** (`math.Round(amount*100)`) en vez de formatear a
+    texto y quitarle el punto. Por la vía anterior, 25,55 llegaba como **2554**: en coma flotante ese
+    número es 25,549999…
+  - **`orderStatus = 1` (preautorizado) sigue siendo pendiente, no aprobado**, y ahora deja aviso en
+    el log. Aquí se difiere del plugin a propósito: preautorizado es dinero retenido, no cobrado, e
+    inscribir a alguien de quien no se ha cobrado es peor que hacerle esperar. El plugin puede
+    aceptarlo porque ofrece el modo de dos pasos; nosotros registramos con `register.do`, donde ese
+    estado no debería aparecer.
+  - **No se copia el sufijo `_{timestamp}` del `orderNumber`**: WooCommerce lo necesita porque
+    reutiliza el mismo `order_id` al reintentar, mientras que aquí cada intento crea una transacción
+    nueva con su UUID. Añadirlo rompería `transaccionDeLaNotificacion`, que resuelve la referencia
+    parseando un UUID.
+- **No se ha desplegado ni se ha llamado a la pasarela.** Es solo el cambio de código: la prueba real
+  es una **única** llamada contra UAT, porque tras tres intentos la pasarela empezó a devolver 403 en
+  el borde y repetir puede bloquear la IP o el usuario de API.
+- **Verificado:** `go build ./...` y `go vet` limpios; **7 tests** del paquete pasan, incluidos los
+  5 nuevos. La suite completa pasa salvo dos fallos conocidos y ajenos: `TestExhaustiveUserUpdate`
+  (cadena de conexión con el usuario `postgres`) y `internal/handler/http`, que en este equipo no
+  puede ejecutarse porque una política de control de aplicaciones de Windows bloquea ese binario de
+  prueba.
+- **Criterios de QA** (cuando se haga la prueba de la fase 2):
+  1. **Una sola llamada** a `register.do` contra `ecouat.credibanco.com`, guardando petición y
+     respuesta completas.
+  2. Si **desaparece el `errorCode 5`**, la causa era ésta: continuar con el plan.
+  3. Si **persiste**, queda descartada la vía técnica y el problema son las credenciales — con un
+     argumento concreto que darle a CredibanCo.
+  4. **No repetir** la llamada más de una vez por sesión de pruebas.
+  5. Cuando haya pago real: **importe mínimo** y comprobación en el extracto antes de abrir el cobro.
+
+---
+
 ### [2026-08-12]: Postgres deja de estar publicado a Internet
 
 - **El problema:** el 5432 respondía desde cualquier parte (`0.0.0.0:5432` y también IPv6) y el

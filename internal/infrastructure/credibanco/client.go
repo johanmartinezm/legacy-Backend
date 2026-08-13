@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -35,22 +37,49 @@ type registerResponse struct {
 	ErrorMessage string `json:"errorMessage"`
 }
 
+// jsonParams identifica quién llama. El banco lo ve en sus registros, y tenerlo
+// ayuda cuando hay que reclamarles algo: sabe distinguir la app del WooCommerce
+// del mismo comercio.
+const jsonParamsApp = `{"CMS":"Legacy App","Module-Version":"1.0"}`
+
 func (c *credibancoClient) CreatePaymentIntent(ctx context.Context, amount float64, orderNumber string, returnUrl string) (string, string, error) {
 	endpoint := c.config.CredibanCo.BaseURL + "register.do"
 
-	// CredibanCo amounts are in cents/smallest unit without decimals usually, but as per typical implementations we convert to string
-	amountStr := strconv.FormatFloat(amount, 'f', 2, 64)
-	amountCentsStr := strings.ReplaceAll(amountStr, ".", "")
+	// El importe viaja en centavos, sin separador decimal. Se redondea sobre
+	// enteros en vez de formatear a texto y quitarle el punto: 25.55 en coma
+	// flotante es 25.549999…, y por la vía del texto acababa en 2554.
+	//
+	// OJO: multiplicar por 100 es lo correcto según ISO 4217 para el peso
+	// colombiano, pero varias integraciones locales esperan pesos enteros. La
+	// primera transacción real debe ser de importe mínimo hasta confirmarlo en
+	// el extracto; con un evento de 250.000 el error se cobra cien veces.
+	amountCents := strconv.FormatInt(int64(math.Round(amount*100)), 10)
 
 	data := url.Values{}
 	data.Set("userName", c.config.CredibanCo.Username)
 	data.Set("password", c.config.CredibanCo.Password)
 	data.Set("orderNumber", orderNumber)
-	data.Set("amount", amountCentsStr)
+	data.Set("amount", amountCents)
 	data.Set("returnUrl", returnUrl)
-	data.Set("terminal", c.config.CredibanCo.Terminal)
-	data.Set("merchant", c.config.CredibanCo.Merchant)
-	data.Set("currency", "170") // 170 for COP
+	data.Set("language", "es")
+	data.Set("jsonParams", jsonParamsApp)
+
+	// NO se envían `terminal`, `merchant` ni `currency`, y esto es deliberado.
+	//
+	// El plugin de WooCommerce del mismo comercio —que sí funciona contra esta
+	// pasarela— no manda ninguno de los tres, y en su código la línea de
+	// `currency` está comentada a propósito, no ausente por descuido.
+	//
+	// En la API de RBS, sobre la que corre CredibanCo, `merchant` lo envían los
+	// agregadores que facturan en nombre de terceros. Un comercio normal que lo
+	// incluye pide una operación para la que su usuario no tiene permiso, y la
+	// respuesta a eso es `errorCode 5`, "acceso denegado" — que es exactamente
+	// el error que bloqueaba los pagos. La divisa la fija el comercio en la
+	// pasarela.
+	//
+	// `config.credibanco.terminal` y `.merchant` siguen existiendo porque
+	// identifican el comercio ante el banco y hacen falta para hablar con
+	// soporte, pero no viajan en esta llamada.
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -124,20 +153,33 @@ func (c *credibancoClient) GetPaymentStatus(ctx context.Context, orderId string)
 		return domain.TxStatusFailed, fmt.Errorf("credibanco error %s: %s", statResp.ErrorCode, statResp.ErrorMessage)
 	}
 
-	// Status codes: 
-	// 0 - order registered but not paid
-	// 1 - pre-authorized
-	// 2 - fully authorized/paid
-	// 3 - canceled
-	// 4 - refunded
-	// 5 - auth via issuer
-	// 6 - rejected
+	// Estados de la pasarela:
+	// 0 - registrado, sin pagar
+	// 1 - preautorizado (importe retenido, cobro sin confirmar)
+	// 2 - pagado
+	// 3 - anulado
+	// 4 - devuelto
+	// 5 - autorización iniciada por el emisor
+	// 6 - rechazado
 	switch statResp.OrderStatus {
 	case 2:
 		return domain.TxStatusApproved, nil
 	case 6:
 		return domain.TxStatusDeclined, nil
-	case 0, 1:
+	case 1:
+		// El plugin de WooCommerce da por bueno el 1, y aquí NO, a propósito.
+		//
+		// Preautorizado significa dinero retenido y cobro sin confirmar. Darlo
+		// por pagado inscribiría a alguien de quien todavía no se ha cobrado, y
+		// una inscripción no se deshace tan fácil como una retención.
+		//
+		// El plugin puede permitírselo porque ofrece el modo de dos pasos
+		// (registerPreAuth.do); nosotros registramos con register.do, donde el
+		// 1 no debería aparecer nunca. Si aparece, conviene enterarse.
+		log.Printf("[PAGO] CredibanCo devolvió orderStatus=1 (preautorizado) para la orden %s: "+
+			"queda pendiente y sin inscribir. Con register.do no debería ocurrir.", orderId)
+		return domain.TxStatusPending, nil
+	case 0:
 		return domain.TxStatusPending, nil
 	default:
 		return domain.TxStatusFailed, nil
