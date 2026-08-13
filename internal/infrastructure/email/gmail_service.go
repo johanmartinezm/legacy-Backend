@@ -116,6 +116,31 @@ func (s *GmailService) SendAsesoriaEmail(to, senderName, senderEmail, category, 
 	return s.sendMessage(to, subject, body)
 }
 
+// SendContactoEmail entrega al buzón de soporte un mensaje libre escrito desde
+// la pantalla "Contáctenos". El asunto lleva el nombre de quien escribe para
+// poder distinguirlo en la bandeja sin abrirlo.
+func (s *GmailService) SendContactoEmail(to, asunto, senderName, senderEmail, messageText string) error {
+	subject := fmt.Sprintf("Contacto desde la app: %s - %s", asunto, senderName)
+	body := fmt.Sprintf(`
+		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+			<h2 style="color: #c98a1a;">Nuevo mensaje desde la app</h2>
+			<p>Hola,</p>
+			<p>Un usuario de Legacy App ha escrito desde la pantalla de Contáctenos:</p>
+			<div style="background-color: #fcf9f2; padding: 20px; border-left: 4px solid #c98a1a; margin: 20px 0;">
+				<p><strong>Asunto:</strong> %s</p>
+				<p><strong>Remitente:</strong> %s &lt;%s&gt;</p>
+				<p><strong>Mensaje:</strong></p>
+				<p style="white-space: pre-wrap;">%s</p>
+			</div>
+			<p>Puedes responder directamente a esta persona en el correo de arriba.</p>
+			<hr style="border: none; border-top: 1px solid #eee;">
+			<p style="font-size: 12px; color: #777;">Legacy Network - Connectando líderes.</p>
+		</div>
+	`, asunto, senderName, senderEmail, messageText)
+
+	return s.sendMessage(to, subject, body)
+}
+
 func (s *GmailService) SendWelcomeEmail(to, userName string) error {
 	subject := "¡Bienvenido a Legacy Network!"
 	body := fmt.Sprintf(`

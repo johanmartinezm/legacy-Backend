@@ -105,6 +105,7 @@ type EmailService interface {
 	SendResetPasswordEmail(to, resetURL string) error
 	SendBoardContactEmail(to, senderName, senderEmail, messageText string) error
 	SendAsesoriaEmail(to, senderName, senderEmail, category, messageText string) error
+	SendContactoEmail(to, asunto, senderName, senderEmail, messageText string) error
 	SendWelcomeEmail(to, userName string) error
 	SendVerificationEmail(to, link string) error
 }

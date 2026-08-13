@@ -84,6 +84,20 @@ type Config struct {
 
 	BoardContacts map[string]string `yaml:"board_contacts"`
 	AsesoriaEmail string            `yaml:"asesoria_email"`
+
+	// ContactoEmail es el buzón de la pantalla "Contáctenos". Si falta, se cae
+	// a board_contacts["default"] (ver BuzonDeContacto): así un despliegue con
+	// una configuración anterior sigue entregando los mensajes en vez de
+	// rechazarlos, que es lo que pasaría con el buzón vacío.
+	ContactoEmail string `yaml:"contacto_email"`
+}
+
+// BuzonDeContacto resuelve a dónde van los mensajes de "Contáctenos".
+func (c *Config) BuzonDeContacto() string {
+	if c.ContactoEmail != "" {
+		return c.ContactoEmail
+	}
+	return c.BoardContacts["default"]
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -4,6 +4,44 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-13]: Contáctenos — buzón de soporte desde la app
+
+- **Por qué:** "Contactenos" es una de las seis pantallas del módulo de Autenticación en *Grandes
+  Grupos Funcionales V1.0* y era la única del módulo sin implementación. Existían
+  `POST /api/board/contact` y `POST /api/asesoria/request`, pero van a destinatarios distintos —un
+  miembro de junta y el buzón de asesorías—, así que no servían como contacto general.
+- **Alcance** (corte vertical completo, en el orden del CLAUDE.md):
+  - `internal/core/ports/contacto_ports.go` — nuevo.
+  - `internal/core/services/contacto_service.go` — nuevo. Valida y delega en el correo.
+  - `internal/infrastructure/email/{smtp,gmail}_service.go` — `SendContactoEmail` en **los dos**
+    implementadores. El que corre en producción es `GmailService`; olvidar el segundo rompe la
+    compilación, que es la forma buena de enterarse.
+  - `internal/handler/http/contacto_handler.go` — nuevo.
+  - `internal/config/config.go` — `contacto_email` y `BuzonDeContacto()`.
+  - **`cmd/server/main.go` — la ruta `POST /api/contacto` registrada.** Sin esto el handler existe y
+    no se puede llamar, que es el fallo que ya ocurrió con `UploadImage`.
+- **El remitente no viaja en el cuerpo**, se saca del perfil del token. Aceptarlo del cliente
+  permitiría escribir al buzón de soporte haciéndose pasar por cualquiera.
+- **`contacto_email` cae a `board_contacts["default"]` si falta.** Así un despliegue con una
+  configuración anterior sigue entregando los mensajes en vez de rechazarlos con el buzón vacío.
+- **Verificado en producción, sin enviar un solo correo real:** las tres validaciones responden 400
+  con su motivo —mensaje vacío, mensaje demasiado largo, asunto demasiado largo— y sin token da 401.
+  Se usó una cuenta semilla de pruebas, no la de una persona.
+- **Corregido tras la primera verificación:** el handler consultaba el perfil antes de validar el
+  mensaje, así que un mensaje en blanco gastaba una consulta a la base, y si el perfil fallaba
+  devolvía `failed to fetch sender profile`, un texto interno en inglés. Ahora valida primero y el
+  error dice qué hacer.
+- **6 tests nuevos** en `contacto_service_test.go`: buzón correcto, asunto vacío sustituido por uno
+  por defecto, mensaje en blanco y pasado de largo rechazados, falta de configuración, y que el fallo
+  del envío se propaga en vez de tragarse el mensaje.
+- **Criterios de QA** (necesita un build de la app):
+  1. **Perfil → Contáctenos**: escribir asunto y mensaje, enviar. Llega a `soporte@legacynetworkco.com`
+     con el nombre y correo de quien escribe, y se puede **responder directamente** (va en `Reply-To`).
+  2. **Home → tarjeta Contáctenos**: abre la misma pantalla y se puede volver.
+  3. **Enviar con el mensaje vacío**: avisa sin llamar al servidor.
+  4. **Sin conexión**: muestra el error y **conserva lo escrito**, ofreciendo "Escribir por correo".
+  5. Tocar **Correo** abre la app de correo con asunto y mensaje ya puestos.
+
 ### [2026-08-13]: El algoritmo de firma del JWT lo fijamos nosotros, no el token
 
 - **El problema:** los tres middlewares llamaban a `jwt.Parse` sin `WithValidMethods`, así que el

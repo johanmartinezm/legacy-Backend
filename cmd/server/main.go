@@ -148,6 +148,9 @@ func main() {
 	asesoriaService := services.NewAsesoriaService(emailService, cfg.AsesoriaEmail)
 	asesoriaHandler := handler.NewAsesoriaHandler(asesoriaService, authService)
 
+	contactoService := services.NewContactoService(emailService, cfg.BuzonDeContacto())
+	contactoHandler := handler.NewContactoHandler(contactoService, authService)
+
 	groupRepo := postgres.NewGroupRepository(dbPool)
 	groupService := services.NewGroupService(groupRepo)
 	groupHandler := handler.NewGroupHandler(groupService)
@@ -337,6 +340,10 @@ func main() {
 
 		// Asesoria request route
 		r.Post("/api/asesoria/request", asesoriaHandler.Request)
+
+		// Contactenos: mensaje libre al buzon de soporte. El remitente sale del
+		// token, no del cuerpo de la peticion.
+		r.Post("/api/contacto", contactoHandler.Enviar)
 
 		// FCM Token Registration
 		r.Post("/api/me/fcm-token", notificationHandler.RegisterToken)
