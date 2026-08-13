@@ -33,9 +33,23 @@ Entrada de trabajo para validación de API.
     reutiliza el mismo `order_id` al reintentar, mientras que aquí cada intento crea una transacción
     nueva con su UUID. Añadirlo rompería `transaccionDeLaNotificacion`, que resuelve la referencia
     parseando un UUID.
-- **No se ha desplegado ni se ha llamado a la pasarela.** Es solo el cambio de código: la prueba real
-  es una **única** llamada contra UAT, porque tras tres intentos la pasarela empezó a devolver 403 en
-  el borde y repetir puede bloquear la IP o el usuario de API.
+- 🔴 **Probado contra UAT el mismo día: el `errorCode 5` PERSISTE.** Una única llamada a
+  `register.do` en `ecouat.credibanco.com` con el payload ya corregido devolvió otra vez "Acceso
+  denegado". Mismo entorno y mismas credenciales que el intento del 2026-08-06, con la única variable
+  cambiada siendo el payload. **La hipótesis queda descartada:** no eran `merchant`, `terminal` ni
+  `currency`.
+- **Lo que eso deja en pie:** el usuario de API no tiene permiso para registrar pagos, o no es el que
+  corresponde a este comercio. La prueba conserva su valor porque cierra la vía técnica: ya no hay
+  nada más que ajustar en el código, y la reclamación a CredibanCo puede ser concreta.
+- **La comprobación pendiente, y no cuesta ninguna llamada:** el WooCommerce de Legacy funciona
+  contra esta misma pasarela, así que **su login de API sí es válido**. Nuestro `username` empieza
+  por `LEG` y termina en `-api`; el del plugin se ve en WordPress, en los ajustes de la pasarela
+  CredibanCo. Si no coinciden, nos entregaron un usuario que no sirve.
+- **Los cambios de código se conservan igualmente**: el fallo del importe (25,55 → 2554) era real e
+  independiente, y el resto alinea la llamada con la implementación que sí funciona.
+- **`uat_manual_test.go`** queda tras la etiqueta `uat` para repetir la prueba cuando haya
+  credenciales nuevas, sin riesgo de ejecutarla por accidente:
+  `go test -tags uat -count=1 -v ./internal/infrastructure/credibanco/ -run TestUATRegistroReal`
 - **Verificado:** `go build ./...` y `go vet` limpios; **7 tests** del paquete pasan, incluidos los
   5 nuevos. La suite completa pasa salvo dos fallos conocidos y ajenos: `TestExhaustiveUserUpdate`
   (cadena de conexión con el usuario `postgres`) y `internal/handler/http`, que en este equipo no
