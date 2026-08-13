@@ -4,6 +4,44 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-12]: Los datos del participante y el método de pago dejan de tirarse
+
+- **El problema:** la pantalla de pago pedía nombre, correo y teléfono del participante, los
+  validaba desde el 2026-08-05… y los descartaba, porque **ninguna ruta los aceptaba**. Quien
+  organiza un evento no tenía a quién llamar si alguien no aparecía. El selector de tarjeta o PSE
+  tampoco viajaba: elegir uno u otro no cambiaba absolutamente nada.
+- **Migración:** `scripts/20260812_datos_participante_y_metodo_pago.sql`, idempotente. Añade
+  `participant_name`, `participant_email` y `participant_phone` a `events.registrations`, y
+  `payment_method` a `core.transactions`.
+- **Alcance:** `domain/event.go` y `domain/transaction.go`, `handler/http/event_handler.go`,
+  `services/event_service.go` (cifrado), `services/payment_service.go`, y los repositorios de
+  eventos y transacciones. En la app: `event_payment_screen.dart`, `event_service.dart`,
+  `payment_service.dart` y `events_provider.dart`.
+- **El contacto va cifrado**, como el resto de datos personales: lo cifra `EventService` con
+  `CryptoService` al escribir. Una consulta directa a esas columnas devuelve texto cifrado, no el
+  nombre. Vacío se queda vacío —significa "usa los del perfil"— en vez de guardar cadenas cifradas
+  que no dicen nada.
+- **No cambia de quién es la entrada.** El titular sigue siendo el del token: estos campos son el
+  contacto para ese evento, que puede diferir del perfil. No reabren el agujero de inscribir a
+  terceros que se cerró el 2026-08-05.
+- **El método de pago es informativo** y se filtra en el servidor: solo se guardan `credit_card` y
+  `pse`, y cualquier otro valor se descarta en silencio en vez de tumbar la compra. Quien decide los
+  medios disponibles es la pasarela; esto sirve para soporte y para saber si PSE se usa lo bastante
+  como para integrarlo de verdad.
+- **Verificado:** `go build`, `go vet` y los tests del backend en verde; en la app, **117 tests**,
+  con 5 nuevos que fijan que los campos viajan y que los vacíos no se envían.
+- **Criterios de QA** (con la migración aplicada y la pasarela simulada activa):
+  1. **Comprar un evento de pago** con los tres campos rellenos y aprobar: la inscripción se crea.
+  2. **En la base**, `SELECT participant_name FROM events.registrations` devuelve **texto cifrado**,
+     no el nombre. Si se lee en claro, el cifrado no se aplicó.
+  3. **Elegir PSE** y comprobar que `core.transactions.payment_method` guarda `pse`.
+  4. **Dejar los campos como vienen** (prellenados del perfil) y comprobar que se guardan igual.
+  5. **Inscribirse a un evento gratuito**, que no pasa por esta pantalla: debe seguir funcionando
+     sin datos de participante.
+  6. **Repetir una inscripción ya existente**: no debe duplicarse ni perder los datos anteriores.
+
+---
+
 ### [2026-08-12]: Pasarela de pago simulada para poder probar sin CredibanCo
 
 - **Por qué:** la pasarela real lleva bloqueada desde el 2026-08-06 y la prueba de hoy confirmó que

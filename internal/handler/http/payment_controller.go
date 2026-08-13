@@ -28,6 +28,9 @@ type CreateIntentRequest struct {
 	ReferenceID   uuid.UUID            `json:"reference_id"`
 	Amount        float64              `json:"amount"`
 	ReturnURL     string               `json:"return_url"`
+	// PaymentMethod es informativo: queda registrado lo que el usuario eligio,
+	// pero quien decide los medios de pago es la pasarela.
+	PaymentMethod string `json:"payment_method"`
 }
 
 type CreateIntentResponse struct {
@@ -57,7 +60,7 @@ func (h *PaymentHandler) CreatePaymentIntent(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	formUrl, err := h.paymentService.InitiatePayment(r.Context(), userID, req.ReferenceType, req.ReferenceID, req.Amount, req.ReturnURL)
+	formUrl, err := h.paymentService.InitiatePayment(r.Context(), userID, req.ReferenceType, req.ReferenceID, req.Amount, req.ReturnURL, req.PaymentMethod)
 	if err != nil {
 		switch {
 		case errors.Is(err, services.ErrPaymentEventNotFound):

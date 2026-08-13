@@ -72,6 +72,16 @@ type Registration struct {
 	TotalPaid           float64    `json:"total_paid" db:"total_paid"`
 	AttendanceConfirmed bool       `json:"attendance_confirmed" db:"attendance_confirmed"`
 	Workshops           []Workshop `json:"workshops" db:"-"`
+
+	// Contacto de quien asiste, para este evento concreto. Puede diferir del
+	// perfil —un correo de trabajo, otro teléfono— y es lo que usa quien
+	// organiza si alguien no aparece.
+	//
+	// **No cambian de quién es la entrada:** el titular sigue siendo UserID.
+	// Vacíos significan "usa los del perfil". Se guardan cifrados.
+	ParticipantName  string `json:"participant_name" db:"participant_name"`
+	ParticipantEmail string `json:"participant_email" db:"participant_email"`
+	ParticipantPhone string `json:"participant_phone" db:"participant_phone"`
 }
 
 // IsPendingPayment indica si la inscripción está a la espera del pago. Se usa

@@ -21,7 +21,7 @@ type stubPaymentService struct {
 	err        error
 }
 
-func (s *stubPaymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string) (string, error) {
+func (s *stubPaymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string, paymentMethod string) (string, error) {
 	return "", nil
 }
 

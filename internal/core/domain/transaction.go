@@ -32,4 +32,10 @@ type Transaction struct {
 	Status            TransactionStatus `json:"status"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
+
+	// PaymentMethod es lo que el usuario eligió en la app: 'credit_card' o
+	// 'pse'. **Es informativo:** la pasarela muestra sus propios medios y decide
+	// ella. Sirve para soporte —"elegí PSE y me salió tarjeta"— y para saber si
+	// PSE se usa lo bastante como para integrarlo de verdad.
+	PaymentMethod string `json:"payment_method,omitempty"`
 }

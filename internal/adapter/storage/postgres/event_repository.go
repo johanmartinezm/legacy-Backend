@@ -150,12 +150,17 @@ func (r *EventRepository) GetWorkshopsByEventID(ctx context.Context, eventID str
 
 func (r *EventRepository) CreateRegistration(ctx context.Context, reg *domain.Registration) error {
 	query := `
-		INSERT INTO events.registrations (user_id, event_id, payment_status, registration_status, qr_data, total_paid)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO events.registrations (
+			user_id, event_id, payment_status, registration_status, qr_data, total_paid,
+			participant_name, participant_email, participant_phone
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''))
 		RETURNING id, registration_date
 	`
-	return r.db.QueryRow(ctx, query, reg.UserID, reg.EventID, reg.PaymentStatus, reg.RegistrationStatus, reg.QRData, reg.TotalPaid).
-		Scan(&reg.ID, &reg.RegistrationDate)
+	return r.db.QueryRow(ctx, query,
+		reg.UserID, reg.EventID, reg.PaymentStatus, reg.RegistrationStatus, reg.QRData, reg.TotalPaid,
+		reg.ParticipantName, reg.ParticipantEmail, reg.ParticipantPhone,
+	).Scan(&reg.ID, &reg.RegistrationDate)
 }
 
 // ConfirmEventRegistration pasa la inscripción a pagada y confirmada. La llama

@@ -63,7 +63,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 		// por mil pesos.
 		gateway, svc := servicioCon(250000, false, true)
 
-		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 1000, "app://volver")
+		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 1000, "app://volver", "")
 
 		if !errors.Is(err, ErrPaymentAmountMismatch) {
 			t.Fatalf("esperaba ErrPaymentAmountMismatch, llegó %v", err)
@@ -78,7 +78,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 		// ese precio en pantalla.
 		gateway, svc := servicioCon(250000, false, true)
 
-		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 500000, "app://volver")
+		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 500000, "app://volver", "")
 
 		if !errors.Is(err, ErrPaymentAmountMismatch) {
 			t.Fatalf("esperaba ErrPaymentAmountMismatch, llegó %v", err)
@@ -91,7 +91,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 	t.Run("Acepta el importe correcto y cobra el precio del servidor", func(t *testing.T) {
 		gateway, svc := servicioCon(250000, false, true)
 
-		url, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 250000, "app://volver")
+		url, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 250000, "app://volver", "")
 
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
@@ -109,7 +109,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 		// comparar con == daría falsos rechazos.
 		gateway, svc := servicioCon(99.90, false, true)
 
-		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 99.900000001, "app://volver")
+		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 99.900000001, "app://volver", "")
 
 		if err != nil {
 			t.Fatalf("una diferencia de una millonésima no debe rechazarse: %v", err)
@@ -122,7 +122,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 	t.Run("Un evento gratuito no pasa por la pasarela", func(t *testing.T) {
 		gateway, svc := servicioCon(0, true, true)
 
-		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 0, "app://volver")
+		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 0, "app://volver", "")
 
 		if !errors.Is(err, ErrPaymentEventIsFree) {
 			t.Fatalf("esperaba ErrPaymentEventIsFree, llegó %v", err)
@@ -135,7 +135,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 	t.Run("Un evento inexistente se distingue de una avería", func(t *testing.T) {
 		_, svc := servicioCon(0, false, false)
 
-		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 100, "app://volver")
+		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeEvent, evento, 100, "app://volver", "")
 
 		if !errors.Is(err, ErrPaymentEventNotFound) {
 			t.Fatalf("esperaba ErrPaymentEventNotFound, llegó %v", err)
@@ -147,7 +147,7 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 		// anota como pendiente en el informe del flujo de pago.
 		gateway, svc := servicioCon(250000, false, true)
 
-		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeCart, evento, 1234, "app://volver")
+		_, err := svc.InitiatePayment(ctx, usuario, domain.RefTypeCart, evento, 1234, "app://volver", "")
 
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
@@ -156,4 +156,23 @@ func TestInitiatePayment_ElImporteLoDecideElServidor(t *testing.T) {
 			t.Errorf("el carrito conserva su importe, se cobró %v", gateway.importeCobrado)
 		}
 	})
+}
+
+// El método de pago que elige el usuario es informativo —lo que decide los
+// medios disponibles es la pasarela—, así que un valor desconocido se descarta
+// en silencio en vez de impedir la compra.
+func TestMetodoDePagoConocido(t *testing.T) {
+	casos := map[string]string{
+		"credit_card": "credit_card",
+		"pse":         "pse",
+		"":            "",
+		"bitcoin":     "",
+		"CREDIT_CARD": "",
+	}
+
+	for entrada, esperado := range casos {
+		if got := metodoDePagoConocido(entrada); got != esperado {
+			t.Errorf("metodoDePagoConocido(%q) = %q, se esperaba %q", entrada, got, esperado)
+		}
+	}
 }

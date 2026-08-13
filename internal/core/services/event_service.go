@@ -103,6 +103,47 @@ func (s *EventService) DeleteEvent(ctx context.Context, id string) error {
 	return s.repo.DeleteEvent(ctx, id)
 }
 
+// cifrarContactoParticipante deja los tres campos listos para guardar. Vacío se
+// queda vacío: es la forma de decir "no se dieron datos distintos a los del
+// perfil", y cifrar una cadena vacía la convertiría en un valor que parece dato.
+func (s *EventService) cifrarContactoParticipante(reg *domain.Registration) error {
+	if s.crypto == nil {
+		return nil
+	}
+
+	campos := []*string{&reg.ParticipantName, &reg.ParticipantEmail, &reg.ParticipantPhone}
+	for _, campo := range campos {
+		if *campo == "" {
+			continue
+		}
+		cifrado, err := s.crypto.Encrypt(*campo)
+		if err != nil {
+			return fmt.Errorf("no se pudo cifrar el contacto del participante: %w", err)
+		}
+		*campo = cifrado
+	}
+	return nil
+}
+
+// DescifrarContactoParticipante deja los tres campos legibles. Lo usa quien
+// tenga que mostrar la inscripción; si el valor no se puede descifrar se deja
+// como está en vez de romper la consulta entera.
+func (s *EventService) DescifrarContactoParticipante(reg *domain.Registration) {
+	if s.crypto == nil {
+		return
+	}
+
+	campos := []*string{&reg.ParticipantName, &reg.ParticipantEmail, &reg.ParticipantPhone}
+	for _, campo := range campos {
+		if *campo == "" {
+			continue
+		}
+		if claro, err := s.crypto.Decrypt(*campo); err == nil {
+			*campo = claro
+		}
+	}
+}
+
 func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registration) error {
 	// 1. Check if already registered
 	existing, _ := s.repo.GetRegistrationByUserAndEvent(ctx, reg.UserID, reg.EventID)
@@ -120,6 +161,13 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 	// 2. Fetch event to check price and free status
 	event, err := s.repo.GetEventByID(ctx, reg.EventID)
 	if err != nil {
+		return err
+	}
+
+	// Contacto del participante: se cifra igual que el resto de datos
+	// personales. Si viene vacío se deja vacío, que significa "usa los del
+	// perfil", en vez de cifrar cadenas vacías que luego no dicen nada.
+	if err := s.cifrarContactoParticipante(reg); err != nil {
 		return err
 	}
 

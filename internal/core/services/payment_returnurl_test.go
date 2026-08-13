@@ -46,7 +46,7 @@ func TestInitiatePayment_ElReturnUrlLlevaElTxID(t *testing.T) {
 		g, svc := nuevoServicio()
 
 		_, err := svc.InitiatePayment(ctx, uuid.New(), domain.RefTypeEvent, uuid.New(),
-			250000, "legacyapp://app/payment-callback")
+			250000, "legacyapp://app/payment-callback", "")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
@@ -71,7 +71,7 @@ func TestInitiatePayment_ElReturnUrlLlevaElTxID(t *testing.T) {
 		g, svc := nuevoServicio()
 
 		_, err := svc.InitiatePayment(ctx, uuid.New(), domain.RefTypeEvent, uuid.New(),
-			250000, "legacyapp://app/payment-callback?origen=evento")
+			250000, "legacyapp://app/payment-callback?origen=evento", "")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
@@ -99,7 +99,7 @@ func TestInitiatePayment_ElReturnUrlLlevaElTxID(t *testing.T) {
 		svc := NewPaymentService(&stubTxRepo{}, gw, repo).(*paymentService)
 
 		_, err := svc.InitiatePayment(ctx, uuid.New(), domain.RefTypeEvent, uuid.New(),
-			100, "legacyapp://app/payment-callback")
+			100, "legacyapp://app/payment-callback", "")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}
@@ -115,7 +115,7 @@ func TestInitiatePayment_ElReturnUrlLlevaElTxID(t *testing.T) {
 		g, svc := nuevoServicio()
 
 		_, err := svc.InitiatePayment(ctx, uuid.New(), domain.RefTypeEvent, uuid.New(),
-			250000, "://esto no es una url")
+			250000, "://esto no es una url", "")
 		if err != nil {
 			t.Fatalf("no esperaba error, llegó %v", err)
 		}

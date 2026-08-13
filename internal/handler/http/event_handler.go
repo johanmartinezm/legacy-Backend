@@ -132,6 +132,12 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 		UserID        string   `json:"userID"`
 		PaymentStatus string   `json:"paymentStatus"`
 		Workshops     []string `json:"workshops"`
+		// Contacto para este evento. Lo manda cualquiera para SU propia
+		// inscripcion: no dice de quien es la entrada —eso lo fija el token—,
+		// solo a quien llamar si no aparece.
+		ParticipantName  string `json:"participant_name"`
+		ParticipantEmail string `json:"participant_email"`
+		ParticipantPhone string `json:"participant_phone"`
 	}
 	if r.Header.Get("Content-Type") == "application/json" {
 		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
@@ -165,6 +171,10 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 			for _, wID := range req.Workshops {
 				registration.Workshops = append(registration.Workshops, domain.Workshop{ID: wID})
 			}
+
+			registration.ParticipantName = req.ParticipantName
+			registration.ParticipantEmail = req.ParticipantEmail
+			registration.ParticipantPhone = req.ParticipantPhone
 		}
 	}
 

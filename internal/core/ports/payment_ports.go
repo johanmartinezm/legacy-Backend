@@ -23,7 +23,7 @@ type PaymentGateway interface {
 }
 
 type PaymentService interface {
-	InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string) (string, error)
+	InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string, paymentMethod string) (string, error)
 	VerifyPayment(ctx context.Context, txID uuid.UUID) (*domain.Transaction, error)
 	// ProcessGatewayNotification atiende el webhook de la pasarela. La
 	// referencia puede ser el id de nuestra transacción o el de CredibanCo; el

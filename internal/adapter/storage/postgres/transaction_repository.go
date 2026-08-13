@@ -21,8 +21,8 @@ func NewTransactionRepository(db *pgxpool.Pool) ports.TransactionRepository {
 
 func (r *transactionRepository) CreateTransaction(ctx context.Context, tx *domain.Transaction) error {
 	query := `
-		INSERT INTO core.transactions (id, user_id, reference_type, reference_id, amount, credibanco_order_id, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO core.transactions (id, user_id, reference_type, reference_id, amount, credibanco_order_id, status, payment_method)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''))
 	`
 	_, err := r.db.Exec(ctx, query,
 		tx.ID,
@@ -32,6 +32,7 @@ func (r *transactionRepository) CreateTransaction(ctx context.Context, tx *domai
 		tx.Amount,
 		tx.CredibancoOrderID,
 		tx.Status,
+		tx.PaymentMethod,
 	)
 	return err
 }

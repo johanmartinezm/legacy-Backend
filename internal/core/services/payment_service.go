@@ -54,7 +54,20 @@ var (
 // que se admite menos de un centavo de diferencia.
 const toleranciaImporte = 0.005
 
-func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string) (string, error) {
+// metodoDePagoConocido filtra lo que llega del cliente. Es un dato informativo,
+// así que un valor raro se descarta en silencio en vez de tumbar la compra:
+// nadie debería quedarse sin poder pagar porque una versión futura de la app
+// mande una etiqueta nueva.
+func metodoDePagoConocido(metodo string) string {
+	switch metodo {
+	case "credit_card", "pse":
+		return metodo
+	default:
+		return ""
+	}
+}
+
+func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, refType domain.ReferenceType, refID uuid.UUID, amount float64, returnUrl string, paymentMethod string) (string, error) {
 	// El importe lo decide el servidor, no el cliente.
 	//
 	// Antes se cobraba tal cual lo que llegaba en el cuerpo de la peticion, sin
@@ -85,6 +98,7 @@ func (s *paymentService) InitiatePayment(ctx context.Context, userID uuid.UUID, 
 		ReferenceID:   refID,
 		Amount:        amount,
 		Status:        domain.TxStatusPending,
+		PaymentMethod: metodoDePagoConocido(paymentMethod),
 	}
 
 	if err := s.txRepo.CreateTransaction(ctx, tx); err != nil {
