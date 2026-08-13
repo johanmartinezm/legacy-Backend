@@ -3,6 +3,7 @@ package main
 import (
 	"applegacy/backend/internal/adapter/storage/postgres"
 	"applegacy/backend/internal/config"
+	"applegacy/backend/internal/core/ports"
 	"applegacy/backend/internal/core/services"
 	handler "applegacy/backend/internal/handler/http"
 	"applegacy/backend/internal/infrastructure/credibanco"
@@ -28,6 +29,16 @@ func main() {
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Una pasarela simulada apuntando a produccion permitiria aprobar pagos sin
+	// cobrar a quien encontrara la URL. Se comprueba aqui, lo primero, antes de
+	// abrir la base o cualquier otro recurso: una configuracion asi no debe
+	// llegar a arrancar por ningun camino.
+	if cfg.CredibanCo.Simulado && credibanco.SimuladoEsPeligroso(cfg.CredibanCo.BaseURL) {
+		log.Fatalf("credibanco.simulado esta activo apuntando a %q, que no es un entorno de "+
+			"pruebas. Eso permitiria aprobar pagos sin cobrar: revisa config.yaml.",
+			cfg.CredibanCo.BaseURL)
 	}
 
 	// 2. Database Connection
@@ -129,7 +140,23 @@ func main() {
 	groupService := services.NewGroupService(groupRepo)
 	groupHandler := handler.NewGroupHandler(groupService)
 
-	credibancoClient := credibanco.NewCredibancoClient(cfg)
+	// La pasarela: la de verdad, o una de mentira para poder probar el flujo
+	// mientras CredibanCo sigue devolviendo "acceso denegado".
+	var credibancoClient ports.PaymentGateway = credibanco.NewCredibancoClient(cfg)
+	var gatewaySimulado *credibanco.GatewaySimulado
+
+	if cfg.CredibanCo.Simulado {
+		// La comprobacion de seguridad ya se hizo al arrancar, antes de abrir
+		// la base: si se llega hasta aqui con el modo encendido, la URL es de
+		// pruebas.
+		gatewaySimulado = credibanco.NuevoGatewaySimulado(cfg.CredibanCo.SimuladoBaseURL)
+		credibancoClient = gatewaySimulado
+		log.Println("*****************************************************************")
+		log.Println("* PASARELA DE PAGO SIMULADA: no se cobra nada y cualquiera puede *")
+		log.Println("* aprobar un pago. Solo para desarrollo.                         *")
+		log.Println("*****************************************************************")
+	}
+
 	transactionRepo := postgres.NewTransactionRepository(dbPool)
 	// eventRepo entra aqui para que un pago aprobado confirme la inscripcion del
 	// evento; sin el, la inscripcion se quedaria en pending_payment para siempre.
@@ -175,7 +202,7 @@ func main() {
 	r.Post("/social-login", userHandler.SocialLogin)
 	r.Post("/forgot-password", userHandler.ForgotPassword)
 	r.Post("/reset-password", userHandler.ResetPassword)
-	
+
 	// New verification routes
 	r.Post("/verify-email", userHandler.VerifyEmail)
 	r.Post("/resend-verification", userHandler.ResendVerificationEmail)
@@ -211,6 +238,12 @@ func main() {
 	// depender de ello.
 	r.Get("/api/payments/credibanco/callback", paymentHandler.CredibancoCallback)
 	r.Post("/api/payments/credibanco/callback", paymentHandler.CredibancoCallback)
+
+	// La pantalla de la pasarela de mentira. Solo existe con el modo simulado
+	// encendido: en cualquier otro caso estas rutas no llegan a registrarse.
+	if gatewaySimulado != nil {
+		gatewaySimulado.RegistrarRutas(r)
+	}
 
 	// Protected routes
 	r.Group(func(r chi.Router) {

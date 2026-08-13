@@ -47,6 +47,24 @@ type Config struct {
 		Password string `yaml:"password"`
 		Terminal string `yaml:"terminal"`
 		Merchant string `yaml:"merchant"`
+
+		// Simulado sustituye la pasarela por una de mentira que no cobra nada y
+		// deja elegir el desenlace. Existe porque CredibanCo lleva bloqueando
+		// los pagos con "acceso denegado" desde el 2026-08-06 y sin esto no hay
+		// forma de probar el flujo completo: intención, retorno a la app,
+		// notificación e inscripción confirmada.
+		//
+		// **Jamás en producción.** Activarlo allí sería regalar inscripciones a
+		// quien encuentre la URL. `main.go` se niega a arrancar si esto está
+		// encendido apuntando a la pasarela real.
+		Simulado bool `yaml:"simulado"`
+
+		// SimuladoBaseURL es la dirección pública de ESTE backend, con la que se
+		// construye el enlace de la pasarela de mentira. Vacío equivale a
+		// http://localhost:8080. En un emulador Android tiene que ser
+		// http://10.0.2.2:8080, y en un teléfono real la IP del equipo en la
+		// red local: el navegador que abre el enlace no es el del servidor.
+		SimuladoBaseURL string `yaml:"simulado_base_url"`
 	} `yaml:"credibanco"`
 
 

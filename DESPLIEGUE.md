@@ -144,6 +144,37 @@ El backend no se vio afectado en ningún momento: se conecta por `proxy-net` con
 por el puerto publicado. Recrear `legacy_db` corta las conexiones abiertas del pool y pgx
 reconecta solo.
 
+### Pasarela de pago simulada — solo para desarrollo
+
+Mientras CredibanCo siga devolviendo «acceso denegado», el flujo de pago se puede probar entero con
+una pasarela de mentira que no cobra nada:
+
+```yaml
+credibanco:
+  base_url: "https://ecouat.credibanco.com/payment/rest/"   # UAT o localhost
+  simulado: true
+  simulado_base_url: ""     # la dirección de ESTE backend vista por el teléfono
+```
+
+`simulado_base_url` importa más de lo que parece: **quien abre ese enlace es el navegador del
+teléfono, no el servidor**. Vacío vale para web y para el simulador de iOS; en el emulador de
+Android es `http://10.0.2.2:8080`, y en un teléfono real, la IP del equipo en la red local.
+
+Con eso, `/api/payments/intent` devuelve una pantalla propia con tres botones —aprobar, rechazar,
+dejar pendiente— que redirige al `returnUrl` igual que haría el banco. Sirve para comprobar el
+recorrido completo: intención, salida al navegador, vuelta por el deep link, notificación e
+inscripción confirmada.
+
+**No valida el comportamiento real del banco**: ni su redirección, ni el formato de su notificación,
+ni si el importe se interpreta ×100 o en pesos enteros. Eso solo lo cierra una transacción real de
+importe mínimo.
+
+**El backend se niega a arrancar** si `simulado` está activo con una `base_url` que no sea de
+pruebas: la comprobación es por lista blanca —`ecouat`, `localhost`, `127.0.0.1`, `sandbox`,
+`test`— y ocurre antes de abrir la base de datos, así que no hay camino por el que una configuración
+así llegue a servir peticiones. Las rutas `/api/payments/simulado/...` **solo se registran** con el
+modo encendido.
+
 `firebase-service-account.json` es opcional en el `Dockerfile` (se copia con comodín). **Sin él,
 FCM arranca en modo mock**: las notificaciones se escriben en la consola del contenedor y nadie
 las recibe.

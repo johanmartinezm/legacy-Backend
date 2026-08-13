@@ -4,6 +4,49 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-12]: Pasarela de pago simulada para poder probar sin CredibanCo
+
+- **Por qué:** la pasarela real lleva bloqueada desde el 2026-08-06 y la prueba de hoy confirmó que
+  no es cosa del payload. Sin ella no había forma de probar **el resto del recorrido**, que es donde
+  estaban ocho de los diez fallos de agosto: crear la intención, salir al navegador, volver por el
+  deep link, recibir la notificación y confirmar la inscripción.
+- **Alcance:**
+  - `internal/infrastructure/credibanco/gateway_simulado.go` — nuevo. Implementa el mismo puerto
+    `ports.PaymentGateway`, así que el servicio y los handlers no se enteran. Sirve una pantalla con
+    tres botones —aprobar, rechazar, dejar pendiente— y redirige al `returnUrl` como haría el banco.
+  - `internal/config/config.go` — `credibanco.simulado` y `credibanco.simulado_base_url`.
+  - `cmd/server/main.go` — elige la implementación y registra las rutas **solo** si el modo está
+    encendido.
+- **Tres capas de protección**, porque un modo así en producción es regalar inscripciones:
+  1. **El backend no arranca** si `simulado` está activo con una `base_url` que no sea de pruebas, y
+     la comprobación va **antes de abrir la base de datos**: no hay camino por el que llegue a
+     servir peticiones.
+  2. La comprobación es **por lista blanca** (`ecouat`, `localhost`, `127.0.0.1`, `sandbox`,
+     `test`), no por lista negra del dominio real: si mañana el banco cambia de dominio, una lista
+     negra dejaría de proteger sin que nadie se entere.
+  3. Las rutas `/api/payments/simulado/...` **no se registran** con el modo apagado, y el arranque
+     deja un aviso en el log imposible de pasar por alto.
+- **Verificado:** `go build ./...` y `go vet ./...` limpios; **14 tests** del paquete pasan, entre
+  ellos el recorrido completo en sus tres desenlaces y los 7 casos de la salvaguarda.
+- ⚠️ **Lo que NO se pudo probar aquí:** el arranque real con la configuración peligrosa. La política
+  de control de aplicaciones de este equipo bloquea cualquier binario recién compilado, así que la
+  llamada desde `main.go` está revisada a ojo pero no ejecutada. La decisión que toma —
+  `SimuladoEsPeligroso`— sí está cubierta por tests.
+- **Criterios de QA** (con `simulado: true` y el backend en local):
+  1. **Arranque:** el log muestra el aviso de pasarela simulada.
+  2. **Con `base_url` de producción y `simulado: true`**, el backend **debe negarse a arrancar**.
+  3. **Con `simulado: false`**, `/api/payments/simulado/loquesea` debe dar 404.
+  4. **Comprar un evento de pago** desde la app: se abre la pantalla de prueba con el importe
+     correcto.
+  5. **Aprobar**: la app vuelve por el deep link, "Mi credencial" muestra la inscripción y el evento
+     pasa a `confirmed`.
+  6. **Rechazar**: la inscripción sigue en `pending_payment` y el evento se puede reintentar.
+  7. **Dejar pendiente**: la app informa de que el pago está en proceso, sin inscribir.
+  8. **Desde el teléfono**, con `simulado_base_url` apuntando a la IP del equipo, la pantalla carga:
+     quien la abre es el navegador del teléfono, no el servidor.
+
+---
+
 ### [2026-08-12]: El registro de pagos se alinea con el plugin que sí funciona
 
 - **Por qué:** los pagos están bloqueados desde el 2026-08-06 con `errorCode 5`, "acceso denegado",
