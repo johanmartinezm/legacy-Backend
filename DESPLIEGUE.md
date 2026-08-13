@@ -119,7 +119,8 @@ Verificación de que surtió efecto, sin necesidad de credenciales: firma un tok
 
 ### Rotar la `encryption_key` — pendiente, y NO es un cambio de configuración
 
-Producción sigue con la clave de ejemplo (`0123456789…`). Cambiarla en el YAML y reconstruir **deja
+Producción sigue con una clave débil que nunca se rotó; el valor vive en `config.docker.yaml`, en el
+servidor, y no se reproduce aquí porque este repositorio es público. Cambiarla en el YAML y reconstruir **deja
 la base ilegible**: `gcm.Open` falla con la clave nueva y no hay forma de volver atrás si además se
 perdió la vieja. Nadie podría iniciar sesión por correo, ni leer un chat, ni ver un nombre.
 
