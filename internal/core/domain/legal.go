@@ -18,10 +18,12 @@ const (
 	// TermsVersionVigente es la versión de los Términos y Condiciones de la APP.
 	// El documento declara en su cláusula 2 que entra en vigor el 01/04/2026.
 	//
-	// Ojo: a fecha de hoy esos T&C no están publicados ni en la web ni dentro de
-	// la app, y el aviso legal que la app muestra al registrarse es un texto
-	// distinto y más corto. Está encargada la corrección; cuando se publique,
-	// esta constante debe subir a la fecha del texto nuevo.
+	// Publicados el 12/08/2026 en
+	// https://legacynetworkco.com/terminos-y-condiciones-de-uso-app-legacy/ y
+	// enlazados desde la app ese mismo día. Sigue pendiente la redacción
+	// corregida —falta la cláusula de eliminación de cuenta y separar los eventos
+	// virtuales de los presenciales—; cuando se publique, esta constante debe
+	// subir a la fecha del texto nuevo.
 	TermsVersionVigente = "2026-04-01"
 
 	// PrivacyVersionVigente es la versión de la política de tratamiento de datos
