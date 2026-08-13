@@ -6,6 +6,7 @@ import (
 	"applegacy/backend/internal/core/ports"
 	"applegacy/backend/internal/core/services"
 	handler "applegacy/backend/internal/handler/http"
+	"applegacy/backend/internal/infrastructure/apple"
 	"applegacy/backend/internal/infrastructure/credibanco"
 	"applegacy/backend/internal/infrastructure/email"
 	"applegacy/backend/internal/infrastructure/firebase"
@@ -68,6 +69,16 @@ func main() {
 		log.Fatalf("Failed to init email service: %v", err)
 	}
 
+	// Sign in with Apple. Si falta apple.bundle_id el validador se queda a nil y
+	// el inicio de sesion con Apple se RECHAZA: antes se aceptaba cualquier
+	// token sin comprobarlo y todos entraban como user_apple@example.com.
+	var validadorApple ports.ValidadorDeApple
+	if cfg.Apple.BundleID != "" {
+		validadorApple = apple.ValidadorParaPuerto{Validador: apple.NuevoValidador(cfg.Apple.BundleID)}
+	} else {
+		log.Println("[AUTH] falta apple.bundle_id: el inicio de sesion con Apple quedara deshabilitado")
+	}
+
 	authService := services.NewAuthService(
 		userRepo,
 		adminRepo,
@@ -79,6 +90,7 @@ func main() {
 		cfg.WebApp.ResetPasswordURL,
 		cfg.WebApp.VerifyEmailURL,
 		cfg.Firebase.GoogleClientID,
+		validadorApple,
 	)
 	userHandler := handler.NewUserHandler(authService)
 	adminHandler := handler.NewAdminHandler(authService)

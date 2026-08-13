@@ -6,9 +6,28 @@ import (
 	"time"
 )
 
+// IdentidadApple es quien inicia sesión según su token de Apple.
+type IdentidadApple struct {
+	// Sujeto es el claim `sub`, el único identificador estable: el correo
+	// puede faltar o ser una dirección de retransmisión privada.
+	Sujeto string
+	Correo string
+}
+
+// ValidadorDeApple comprueba un token de Sign in with Apple. Es una interfaz
+// para poder ejercitar el inicio de sesión sin llamar a Apple.
+type ValidadorDeApple interface {
+	Validar(ctx context.Context, idToken string) (*IdentidadApple, error)
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, user *domain.User) error
 	FindByEmailBlindIndex(ctx context.Context, blindIndex string) (*domain.User, error)
+	// FindBySocialID busca por la identidad del proveedor ("google" o "apple").
+	// Es la única forma fiable con Apple, que solo manda el correo la primera vez.
+	FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error)
+	// LinkSocialID deja constancia de con qué cuenta social entra alguien.
+	LinkSocialID(ctx context.Context, userID, provider, socialID string) error
 	FindAll(ctx context.Context) ([]*domain.User, error)
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, user *domain.User) error
@@ -200,4 +219,3 @@ type GroupService interface {
 	GetMembers(ctx context.Context, groupID string) ([]string, error)
 	ReplaceMembers(ctx context.Context, groupID string, userIDs []string) error
 }
-

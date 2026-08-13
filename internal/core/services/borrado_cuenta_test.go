@@ -26,6 +26,12 @@ func (r *repoUsuarios) FindByEmailBlindIndex(ctx context.Context, b string) (*do
 	return nil, nil
 }
 func (r *repoUsuarios) FindAll(ctx context.Context) ([]*domain.User, error) { return nil, nil }
+func (r *repoUsuarios) FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error) {
+	return nil, errors.New("user not found")
+}
+func (r *repoUsuarios) LinkSocialID(ctx context.Context, userID, provider, socialID string) error {
+	return nil
+}
 func (r *repoUsuarios) FindByID(ctx context.Context, id string) (*domain.User, error) {
 	return nil, nil
 }

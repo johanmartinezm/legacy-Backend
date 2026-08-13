@@ -21,7 +21,7 @@ type ForumRepository interface {
 	ListPosts(ctx context.Context, forumID string, limit, offset int) ([]*domain.ForumPost, error)
 	ListAllPostsForAdmin(ctx context.Context, forumID string) ([]*domain.ForumPost, error)
 	SoftDeletePost(ctx context.Context, postID string) error
-	
+
 	// Moderation
 	ReportPost(ctx context.Context, report *domain.ForumPostReport) error
 	ListFlaggedPosts(ctx context.Context) ([]*domain.ForumPost, error)

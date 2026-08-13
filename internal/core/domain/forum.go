@@ -6,10 +6,10 @@ type ForumStatus string
 type PostStatus string
 
 const (
-	ForumStatusActive        ForumStatus = "active"
-	ForumStatusLocked        ForumStatus = "locked"
-	ForumStatusHidden        ForumStatus = "hidden"
-	ForumStatusDeleted       ForumStatus = "deleted"
+	ForumStatusActive  ForumStatus = "active"
+	ForumStatusLocked  ForumStatus = "locked"
+	ForumStatusHidden  ForumStatus = "hidden"
+	ForumStatusDeleted ForumStatus = "deleted"
 
 	PostStatusActive  PostStatus = "active"
 	PostStatusDeleted PostStatus = "deleted"
@@ -18,17 +18,17 @@ const (
 
 // Forum represents a forum topic/category.
 type Forum struct {
-	ID               string      `json:"id"               db:"id"`
-	Title            string      `json:"title"            db:"title"`
-	Description      string      `json:"description"      db:"description"`
-	CoverURL         string      `json:"cover_url"        db:"cover_url"`
-	Status           ForumStatus `json:"status"           db:"status"`
-	CreatedByUserID  *string     `json:"created_by_user_id" db:"created_by_user_id"`
-	CreatedByAdmin   bool        `json:"created_by_admin" db:"created_by_admin"`
-	PostCount        int         `json:"post_count"       db:"-"` // calculated
-	AuthorAlias      string      `json:"author_alias,omitempty" db:"author_alias"` // joined
-	CreatedAt        time.Time   `json:"created_at"       db:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"       db:"updated_at"`
+	ID              string      `json:"id"               db:"id"`
+	Title           string      `json:"title"            db:"title"`
+	Description     string      `json:"description"      db:"description"`
+	CoverURL        string      `json:"cover_url"        db:"cover_url"`
+	Status          ForumStatus `json:"status"           db:"status"`
+	CreatedByUserID *string     `json:"created_by_user_id" db:"created_by_user_id"`
+	CreatedByAdmin  bool        `json:"created_by_admin" db:"created_by_admin"`
+	PostCount       int         `json:"post_count"       db:"-"`                  // calculated
+	AuthorAlias     string      `json:"author_alias,omitempty" db:"author_alias"` // joined
+	CreatedAt       time.Time   `json:"created_at"       db:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"       db:"updated_at"`
 }
 
 // ForumPost represents a reply/post within a forum.

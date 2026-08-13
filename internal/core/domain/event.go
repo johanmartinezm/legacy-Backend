@@ -189,11 +189,11 @@ type CheckInResponse struct {
 	// el paso intermedio entre el repositorio, que los lee cifrados y por
 	// separado, y el servicio, que los descifra y compone UserName. El panel
 	// sigue recibiendo userName y userEmail, solo que legibles.
-	FirstName string     `json:"-"`
-	LastName  string     `json:"-"`
-	UserName  string     `json:"userName"`
-	UserEmail string     `json:"userEmail"`
-	EventTitle     string     `json:"eventTitle"`
-	CheckInTime    time.Time  `json:"checkInTime"`
-	Workshops      []Workshop `json:"workshops"`
+	FirstName   string     `json:"-"`
+	LastName    string     `json:"-"`
+	UserName    string     `json:"userName"`
+	UserEmail   string     `json:"userEmail"`
+	EventTitle  string     `json:"eventTitle"`
+	CheckInTime time.Time  `json:"checkInTime"`
+	Workshops   []Workshop `json:"workshops"`
 }

@@ -12,7 +12,6 @@ import (
 
 // No ImageStorageService needed here anymore since we receive image_url directly
 
-
 type ForumHandler struct {
 	forumService ports.ForumService
 	imageStorage interface{} // Optional: inject the actual storage service here if needed, or we might use the image_handler's service
@@ -77,7 +76,7 @@ func (h *ForumHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 	forumID := chi.URLParam(r, "forumID")
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
-	
+
 	limit, _ := strconv.Atoi(limitStr)
 	if limit == 0 {
 		limit = 20
@@ -164,7 +163,6 @@ func (h *ForumHandler) AdminListForums(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(forums)
 }
-
 
 func (h *ForumHandler) AdminCreateForum(w http.ResponseWriter, r *http.Request) {
 	var forum domain.Forum

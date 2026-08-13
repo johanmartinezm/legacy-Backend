@@ -88,8 +88,6 @@ func (r *forumRepository) ListForums(ctx context.Context, includeHidden bool) ([
 	return forums, nil
 }
 
-
-
 func (r *forumRepository) GetForumByID(ctx context.Context, forumID string) (*domain.Forum, error) {
 	query := `
 		SELECT f.id, f.title, f.description, f.cover_url, f.status, f.created_by_admin, f.created_at, f.updated_at,
@@ -129,7 +127,7 @@ func (r *forumRepository) ListPosts(ctx context.Context, forumID string, limit, 
 		WHERE p.forum_id = $1 AND p.status = 'active' AND p.parent_id IS NULL
 		ORDER BY p.created_at ASC
 		LIMIT $2 OFFSET $3`
-		
+
 	rows, err := r.db.Query(ctx, query, forumID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -158,7 +156,7 @@ func (r *forumRepository) ListAllPostsForAdmin(ctx context.Context, forumID stri
 		JOIN core.users u ON p.user_id = u.id
 		WHERE p.forum_id = $1 AND p.status != 'deleted'
 		ORDER BY p.created_at ASC`
-		
+
 	rows, err := r.db.Query(ctx, query, forumID)
 	if err != nil {
 		return nil, err

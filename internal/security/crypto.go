@@ -26,9 +26,9 @@ func NewCryptoService(keyString string) (*CryptoService, error) {
 
 // Encrypt encrypts plain text using AES-GCM and returns a base64 encoded string
 func (s *CryptoService) Encrypt(plaintext string) (string, error) {
-    if plaintext == "" {
-        return "", nil
-    }
+	if plaintext == "" {
+		return "", nil
+	}
 	block, err := aes.NewCipher(s.key)
 	if err != nil {
 		return "", err
@@ -83,9 +83,9 @@ func (s *CryptoService) Decrypt(encodedCiphertext string) (string, error) {
 
 // BlindIndex creates a deterministic hash for searching (HMAC-SHA256)
 func (s *CryptoService) BlindIndex(input string) string {
-    if input == "" {
-        return ""
-    }
+	if input == "" {
+		return ""
+	}
 	h := hmac.New(sha256.New, s.key)
 	h.Write([]byte(input))
 	return hex.EncodeToString(h.Sum(nil))

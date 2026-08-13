@@ -11,7 +11,7 @@ type NotificationRepository interface {
 	// GetAllTokens alimenta la suscripción en bloque al tópico "all".
 	GetAllTokens(ctx context.Context) ([]*domain.FCMToken, error)
 	DeleteToken(ctx context.Context, userID, token string) error
-	
+
 	SaveHistory(ctx context.Context, history *domain.NotificationHistory) error
 	GetHistory(ctx context.Context, limit, offset int) ([]*domain.NotificationHistory, error)
 }

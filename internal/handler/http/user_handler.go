@@ -23,21 +23,21 @@ func NewUserHandler(authService ports.AuthService) *UserHandler {
 }
 
 type RegisterRequest struct {
-	Email                      string `json:"email"`
-	Password                   string `json:"password"`
-	FirstName                  string `json:"first_name"`
-	LastName                   string `json:"last_name"`
-	Phone                      string `json:"phone"`
-	Location                   string `json:"location"`
-	Bio                        string `json:"bio"`
-	CompanyName                string `json:"company_name"`
-	JobTitle                   string `json:"job_title"`
-	Country                    string `json:"country"`
-	IdentificationType         string `json:"identification_type"`
-	IdentificationNumber       string `json:"identification_number"`
-	CustomerStatus             string `json:"customer_status"`
-	Industry                   string `json:"industry"`
-	ProfileImageUrl            string `json:"profile_image_url"`
+	Email                      string   `json:"email"`
+	Password                   string   `json:"password"`
+	FirstName                  string   `json:"first_name"`
+	LastName                   string   `json:"last_name"`
+	Phone                      string   `json:"phone"`
+	Location                   string   `json:"location"`
+	Bio                        string   `json:"bio"`
+	CompanyName                string   `json:"company_name"`
+	JobTitle                   string   `json:"job_title"`
+	Country                    string   `json:"country"`
+	IdentificationType         string   `json:"identification_type"`
+	IdentificationNumber       string   `json:"identification_number"`
+	CustomerStatus             string   `json:"customer_status"`
+	Industry                   string   `json:"industry"`
+	ProfileImageUrl            string   `json:"profile_image_url"`
 	Generation                 string   `json:"generation"`
 	IsPublicProfile            bool     `json:"is_public_profile"`
 	AllowMessagesFromStrangers bool     `json:"allow_messages_from_strangers"`

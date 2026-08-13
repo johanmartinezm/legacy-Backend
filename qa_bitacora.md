@@ -4,6 +4,57 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-12]: Sign in with Apple no validaba nada — 🔴 agujero de autenticación
+
+- **El problema:** `SocialLogin` no comprobaba el token de Apple. El código lo decía sin rodeos —
+  `// Mock for now until Apple verification logic is set`— y devolvía siempre
+  `user_apple@example.com` / "Apple User", **ignorando el `id_token`**.
+- **Comprobado contra producción antes del arreglo:** un `POST /api/auth/social-login` con
+  `{"provider":"apple","id_token":"token-inventado-de-diagnostico"}` respondía con esa identidad. Las
+  consecuencias, en orden: **(1)** nadie podía entrar con su cuenta de Apple, porque todos colapsaban
+  en el mismo correo ficticio; **(2)** la app mandaba a registro con ese correo; **(3)** en cuanto
+  alguien completara ese registro, cualquiera con cualquier cadena habría obtenido un JWT válido de
+  esa cuenta. La cuenta no existía —el 404 lo confirmó—, así que el agujero **no llegó a abrirse**.
+- **También estaba a medias el vínculo social:** `core.users` no tenía `google_id` ni `apple_id`. El
+  dominio los declaraba y la API los devolvía como `null`, pero no existían; en el código quedaba un
+  `// Update DB with google ID (dummy update here)`.
+- **Migración:** `scripts/20260812_identidad_social.sql`, idempotente. Dos columnas y sus índices
+  únicos parciales, para que dos cuentas no puedan reclamar la misma identidad.
+- **Alcance:**
+  - `internal/infrastructure/apple/validator.go` — nuevo. Verifica firma contra las claves públicas
+    de Apple (JWKS con caché de 6 h), emisor, audiencia y caducidad; **exige** las tres. Solo acepta
+    RS256: admitir otro algoritmo abriría la puerta al clásico `alg: none`.
+  - `internal/core/ports/interfaces.go` — `ValidadorDeApple`, `FindBySocialID`, `LinkSocialID`.
+  - `internal/core/services/auth_service.go` — valida de verdad y busca **por el `sub`**, no por
+    correo: Apple solo manda el correo en el primer inicio de sesión y puede ser de retransmisión
+    privada. Si falta configuración, **rechaza** en vez de dejar pasar.
+  - `internal/adapter/storage/postgres/user_repository.go` — el proveedor se traduce a columna con un
+    `switch`, no interpolando en el SQL: llega en el cuerpo de una petición pública.
+  - `internal/config/config.go` y ambos `config*.yaml` — `apple.bundle_id`.
+  - App: el botón de Apple **solo se muestra en iOS y macOS**; en Android requiere un Service ID que
+    no está configurado y solo llevaba a un error.
+- **Verificado:** **19 tests** nuevos —13 del validador, 6 del inicio de sesión—, entre ellos los
+  nueve tokens que deben rechazarse: sin firma válida, de otra app, de otro emisor, caducado, sin
+  caducidad, sin sujeto. Toda la suite en verde salvo los dos fallos conocidos y ajenos.
+- **Desplegado y comprobado en producción el mismo día:** la migración primero, luego el binario. El
+  token inventado que antes devolvía identidad ahora da **401 "Credenciales inválidas de red
+  social"**. `/health` 200, eventos 200, el panel 200, el inicio de sesión con correo y contraseña
+  sigue dando 200, y Google con un token falso, 401. Respaldos:
+  `backup_20260812_preidentidadsocial.sql.gz`, `server_linux.bak.20260813_0413` y
+  `config.docker.yaml.bak.20260813_0413`.
+- **Criterios de QA** (hace falta un iPhone y un build nuevo):
+  1. **Entrar con Apple** en iOS por primera vez: si no hay cuenta, lleva al registro con el correo
+     que dé Apple —o vacío, si eligió ocultarlo—, no con `user_apple@example.com`.
+  2. **Completar el registro** y volver a entrar con Apple: reconoce la cuenta **sin** pedir nada más.
+  3. **Salir y volver a entrar** una tercera vez, que es cuando Apple ya no manda el correo: debe
+     seguir reconociéndola por su identidad.
+  4. **En Android**, el botón de Apple **no aparece**.
+  5. **El inicio de sesión con correo y contraseña** y el de Google siguen funcionando.
+  6. **Una cuenta que ya existía por correo** y entra por primera vez con Apple con ese mismo correo:
+     debe enlazarse a la cuenta existente, no crear otra.
+
+---
+
 ### [2026-08-12]: Los datos del participante y el método de pago dejan de tirarse
 
 - **El problema:** la pantalla de pago pedía nombre, correo y teléfono del participante, los

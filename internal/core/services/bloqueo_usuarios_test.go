@@ -48,10 +48,10 @@ func (r *repoBloqueos) UpdateReportStatus(ctx context.Context, reportID, status 
 
 // repoChatMinimo solo responde lo que necesitan los guardas.
 type repoChatMinimo struct {
-	conexion   *domain.ChatConnection
-	creadas    int
-	guardados  int
-	existente  *domain.ChatConnection
+	conexion  *domain.ChatConnection
+	creadas   int
+	guardados int
+	existente *domain.ChatConnection
 }
 
 func (r *repoChatMinimo) CreateConnection(ctx context.Context, requesterID, receiverID string) error {

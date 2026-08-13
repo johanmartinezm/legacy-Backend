@@ -20,7 +20,9 @@ type repoWebhook struct {
 	nActualizadas int
 }
 
-func (r *repoWebhook) CreateTransaction(ctx context.Context, tx *domain.Transaction) error { return nil }
+func (r *repoWebhook) CreateTransaction(ctx context.Context, tx *domain.Transaction) error {
+	return nil
+}
 
 func (r *repoWebhook) GetTransactionByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error) {
 	r.porID++

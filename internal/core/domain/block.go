@@ -57,7 +57,7 @@ type UserReport struct {
 
 // Estados de un reporte en la bandeja del panel administrativo.
 const (
-	ReportStatusPending  = "pending"
-	ReportStatusReviewed = "reviewed"
+	ReportStatusPending   = "pending"
+	ReportStatusReviewed  = "reviewed"
 	ReportStatusDismissed = "dismissed"
 )

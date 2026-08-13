@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"time"
 
@@ -18,8 +19,8 @@ import (
 )
 
 type AuthService struct {
-	repo          ports.UserRepository
-	adminRepo     ports.AdminUserRepository
+	repo           ports.UserRepository
+	adminRepo      ports.AdminUserRepository
 	tokenRepo      ports.PasswordResetRepository
 	verifyRepo     ports.EmailVerificationRepository
 	emailService   ports.EmailService
@@ -29,6 +30,10 @@ type AuthService struct {
 	resetURL       string
 	verifyURL      string
 	googleClientID string
+	// appleValidator verifica los tokens de Sign in with Apple. Puede ser nil si
+	// falta la configuración; en ese caso el inicio de sesión con Apple se
+	// rechaza en vez de dejar pasar a cualquiera, que es lo que hacía antes.
+	appleValidator ports.ValidadorDeApple
 }
 
 func NewAuthService(
@@ -42,6 +47,7 @@ func NewAuthService(
 	resetURL string,
 	verifyURL string,
 	googleClientID string,
+	appleValidator ports.ValidadorDeApple,
 ) *AuthService {
 	return &AuthService{
 		repo:           repo,
@@ -55,6 +61,7 @@ func NewAuthService(
 		resetURL:       resetURL,
 		verifyURL:      verifyURL,
 		googleClientID: googleClientID,
+		appleValidator: appleValidator,
 	}
 }
 
@@ -190,7 +197,7 @@ func (s *AuthService) Register(ctx context.Context, user *domain.User, password 
 		b := make([]byte, 32)
 		rand.Read(b)
 		token := hex.EncodeToString(b)
-		
+
 		// user.ID lo devuelve el INSERT del repositorio.
 		err = s.verifyRepo.StoreToken(ctx, user.ID, token, time.Now().Add(24*time.Hour))
 		if err != nil {
@@ -215,35 +222,77 @@ func (s *AuthService) SocialLogin(ctx context.Context, provider, idToken string)
 	var extractedEmail string
 	var extractedName string
 
+	// socialID es el identificador estable que da el proveedor (el claim `sub`).
+	// Con Apple es imprescindible: solo manda el correo en el PRIMER inicio de
+	// sesión de cada persona, y puede ser una dirección de retransmisión
+	// privada. Buscar por correo dejaría fuera a quien vuelva a entrar.
+	var socialID string
+
 	if provider == "google" {
 		payload, err := idtoken.Validate(ctx, idToken, s.googleClientID)
 		if err != nil {
 			return "", nil, errors.New("invalid google token: " + err.Error())
 		}
-		extractedEmail = payload.Claims["email"].(string)
+		socialID = payload.Subject
+		extractedEmail, _ = payload.Claims["email"].(string)
 		if name, ok := payload.Claims["name"].(string); ok {
 			extractedName = name
 		}
 	} else if provider == "apple" {
-		// Mock for now until Apple verification logic is set
-		extractedEmail = "user_apple@example.com"
-		extractedName = "Apple User"
+		// Esto ANTES no existía: el token se ignoraba y se devolvía siempre
+		// user_apple@example.com. Cualquiera con cualquier cadena entraba, y en
+		// cuanto esa cuenta existiera habría bastado para suplantarla.
+		if s.appleValidator == nil {
+			return "", nil, errors.New("sign in with apple no está configurado en el servidor")
+		}
+		identidad, err := s.appleValidator.Validar(ctx, idToken)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid apple token: %w", err)
+		}
+		socialID = identidad.Sujeto
+		extractedEmail = identidad.Correo
 	} else {
 		return "", nil, errors.New("unsupported provider")
 	}
 
-	blindIndex := s.crypto.BlindIndex(extractedEmail)
-	user, err := s.repo.FindByEmailBlindIndex(ctx, blindIndex)
-
-	if err != nil || user == nil {
-		// User does not exist in our DB.
-		// We return a mock user so the handler knows who they are to prefill register form
-		return "", &domain.User{Email: extractedEmail, FirstName: extractedName}, errors.New("user not registered")
+	if socialID == "" {
+		return "", nil, errors.New("el proveedor no identificó a la persona")
 	}
 
-	// User exists. Link provider ID if not linked yet.
-	if provider == "google" && user.GoogleID == nil {
-		// Update DB with google ID (dummy update here)
+	// 1. Por identidad social, que es la que no cambia.
+	user, err := s.repo.FindBySocialID(ctx, provider, socialID)
+
+	// 2. Si no aparece, por correo: es quien ya tenía cuenta y entra por primera
+	//    vez con este proveedor. Con Apple puede no haber correo, y entonces no
+	//    hay nada que enlazar: si su `sub` no está registrado, es alguien nuevo.
+	if (err != nil || user == nil) && extractedEmail != "" {
+		user, err = s.repo.FindByEmailBlindIndex(ctx, s.crypto.BlindIndex(extractedEmail))
+	}
+
+	if err != nil || user == nil {
+		// No tiene cuenta: el handler usa estos datos para prellenar el
+		// formulario de registro. El correo puede ir vacío si Apple no lo dio.
+		return "", &domain.User{Email: extractedEmail, FirstName: extractedName},
+			errors.New("user not registered")
+	}
+
+	// Queda constancia de con qué cuenta social entra, para reconocerla la
+	// próxima vez aunque el proveedor no vuelva a mandar el correo.
+	yaEnlazado := (provider == "google" && user.GoogleID != nil && *user.GoogleID == socialID) ||
+		(provider == "apple" && user.AppleID != nil && *user.AppleID == socialID)
+	if !yaEnlazado {
+		if err := s.repo.LinkSocialID(ctx, user.ID, provider, socialID); err != nil {
+			// No se corta el inicio de sesión por esto: la persona ya está
+			// identificada. Se reintentará la próxima vez.
+			log.Printf("[AUTH] no se pudo enlazar la identidad de %s del usuario %s: %v",
+				provider, user.ID, err)
+		}
+	}
+
+	// El correo del token puede ser el de retransmisión privada de Apple, que no
+	// es el de la cuenta: para el JWT manda el que tenemos guardado.
+	if correoGuardado, err := s.crypto.Decrypt(user.EmailEncrypted); err == nil && correoGuardado != "" {
+		extractedEmail = correoGuardado
 	}
 
 	// Generate JWT
@@ -470,7 +519,7 @@ func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string)
 	b := make([]byte, 32)
 	rand.Read(b)
 	token := hex.EncodeToString(b)
-	
+
 	err = s.verifyRepo.StoreToken(ctx, user.ID, token, time.Now().Add(24*time.Hour))
 	if err != nil {
 		return err

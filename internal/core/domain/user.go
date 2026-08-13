@@ -5,14 +5,14 @@ import (
 )
 
 type User struct {
-	ID    string `json:"id" db:"id"`
-	Email string `json:"email" db:"-"` // Input/Output only, not stored directly
-	EmailVerified bool `json:"email_verified" db:"email_verified"`
+	ID            string `json:"id" db:"id"`
+	Email         string `json:"email" db:"-"` // Input/Output only, not stored directly
+	EmailVerified bool   `json:"email_verified" db:"email_verified"`
 
 	// Internal fields for DB mapping
 	EmailBlindIndex string `json:"-" db:"email_blind_index"`
 	EmailEncrypted  string `json:"-" db:"email_encrypted"`
-	
+
 	GoogleID *string `json:"google_id" db:"google_id"`
 	AppleID  *string `json:"apple_id" db:"apple_id"`
 
@@ -45,8 +45,8 @@ type User struct {
 	TermsAcceptedAt       *time.Time `json:"terms_accepted_at" db:"terms_accepted_at"`
 	DataSharingVersion    *string    `json:"data_sharing_version" db:"data_sharing_version"`
 	DataSharingAcceptedAt *time.Time `json:"data_sharing_accepted_at" db:"data_sharing_accepted_at"`
-	Interests                  []string   `json:"interests" db:"-"` // Handled separately
-	Alias                      string     `json:"alias" db:"alias"`
+	Interests             []string   `json:"interests" db:"-"` // Handled separately
+	Alias                 string     `json:"alias" db:"alias"`
 
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`

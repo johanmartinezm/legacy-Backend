@@ -55,8 +55,8 @@ func (r *repoUsuariosVerificacion) FindAll(ctx context.Context) ([]*domain.User,
 func (r *repoUsuariosVerificacion) FindByID(ctx context.Context, id string) (*domain.User, error) {
 	return nil, nil
 }
-func (r *repoUsuariosVerificacion) Update(ctx context.Context, u *domain.User) error   { return nil }
-func (r *repoUsuariosVerificacion) Delete(ctx context.Context, id string) error        { return nil }
+func (r *repoUsuariosVerificacion) Update(ctx context.Context, u *domain.User) error { return nil }
+func (r *repoUsuariosVerificacion) Delete(ctx context.Context, id string) error      { return nil }
 func (r *repoUsuariosVerificacion) UpdatePassword(ctx context.Context, id, h string) error {
 	return nil
 }
@@ -93,4 +93,11 @@ func TestVerifyEmail_TokenInvalidoNoVerificaANadie(t *testing.T) {
 	if len(usuarios.verificados) != 0 {
 		t.Errorf("no debe marcarse ninguna cuenta, se marcó: %v", usuarios.verificados)
 	}
+}
+
+func (r *repoUsuariosVerificacion) FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error) {
+	return nil, errors.New("user not found")
+}
+func (r *repoUsuariosVerificacion) LinkSocialID(ctx context.Context, userID, provider, socialID string) error {
+	return nil
 }

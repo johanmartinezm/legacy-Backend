@@ -14,11 +14,11 @@ type SynergyRepository interface {
 
 	CreateComment(ctx context.Context, comment *domain.SynergyComment) error
 	GetCommentsBySynergyID(ctx context.Context, synergyID string) ([]domain.SynergyComment, error)
-	
+
 	AddLike(ctx context.Context, synergyID, userID string) error
 	RemoveLike(ctx context.Context, synergyID, userID string) error
 	IsLikedByUser(ctx context.Context, synergyID, userID string) (bool, error)
-	
+
 	IncrementViews(ctx context.Context, synergyID string) error
 }
 

@@ -129,6 +129,84 @@ func (r *UserRepository) FindByEmailBlindIndex(ctx context.Context, blindIndex s
 	return &user, nil
 }
 
+// columnaSocial traduce el nombre del proveedor a su columna. Se hace con un
+// switch y no interpolando el valor en el SQL: `provider` viene del cuerpo de
+// una petición pública.
+func columnaSocial(provider string) (string, error) {
+	switch provider {
+	case "google":
+		return "google_id", nil
+	case "apple":
+		return "apple_id", nil
+	default:
+		return "", errors.New("proveedor social no soportado: " + provider)
+	}
+}
+
+// FindBySocialID busca por la identidad estable del proveedor. Es la única
+// forma fiable con Apple, que solo envía el correo en el primer inicio de sesión.
+func (r *UserRepository) FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error) {
+	columna, err := columnaSocial(provider)
+	if err != nil {
+		return nil, err
+	}
+	if socialID == "" {
+		return nil, errors.New("user not found")
+	}
+
+	sql := `
+		SELECT id, email_blind_index, COALESCE(email_encrypted, ''), password_hash, role, COALESCE(email_verified, false), google_id, apple_id
+		FROM core.users
+		WHERE ` + columna + ` = $1
+	`
+
+	var user domain.User
+	err = r.db.QueryRow(ctx, sql, socialID).Scan(
+		&user.ID,
+		&user.EmailBlindIndex,
+		&user.EmailEncrypted,
+		&user.PasswordHash,
+		&user.Role,
+		&user.EmailVerified,
+		&user.GoogleID,
+		&user.AppleID,
+	)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// LinkSocialID deja constancia de con qué cuenta social entra alguien.
+//
+// El WHERE incluye que la columna esté vacía o ya sea la misma: si esa identidad
+// estuviera enlazada a OTRA cuenta, el índice único lo impediría, y así el error
+// llega como "no se actualizó nada" en vez de reventar la consulta.
+func (r *UserRepository) LinkSocialID(ctx context.Context, userID, provider, socialID string) error {
+	columna, err := columnaSocial(provider)
+	if err != nil {
+		return err
+	}
+
+	sql := `
+		UPDATE core.users
+		SET ` + columna + ` = $2, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1 AND (` + columna + ` IS NULL OR ` + columna + ` = $2)
+	`
+
+	tag, err := r.db.Exec(ctx, sql, userID, socialID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("no se pudo enlazar la identidad social: la cuenta ya tiene otra distinta")
+	}
+	return nil
+}
+
 func (r *UserRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
 	sql := `
 		SELECT 

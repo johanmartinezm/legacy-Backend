@@ -122,10 +122,10 @@ func (s *forumService) PublishPost(ctx context.Context, userID, forumID, content
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Populate author alias for immediate return
 	post.AuthorAlias = user.Alias
-	
+
 	return post, nil
 }
 

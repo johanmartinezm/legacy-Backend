@@ -41,6 +41,13 @@ type Config struct {
 		GoogleClientID  string `yaml:"google_client_id"`
 	} `yaml:"firebase"`
 
+	// Apple es lo necesario para verificar Sign in with Apple. El bundle_id es
+	// la audiencia que debe traer el token: sin él no se puede distinguir un
+	// token emitido para esta app del de cualquier otra.
+	Apple struct {
+		BundleID string `yaml:"bundle_id"`
+	} `yaml:"apple"`
+
 	CredibanCo struct {
 		BaseURL  string `yaml:"base_url"`
 		Username string `yaml:"username"`
@@ -66,7 +73,6 @@ type Config struct {
 		// red local: el navegador que abre el enlace no es el del servidor.
 		SimuladoBaseURL string `yaml:"simulado_base_url"`
 	} `yaml:"credibanco"`
-
 
 	// Storage.UploadsDir es donde se guardan las imagenes que suben los foros.
 	// Vacio equivale a "uploads" (relativo a Backend/). En produccion tiene que
