@@ -4,6 +4,63 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-14]: Un mensaje de chat ya avisa por push (y llega en vivo)
+
+- **El problema:** el chat era el único módulo que no notificaba nada. Crear un evento y publicar
+  contenido avisaban al tópico `all` desde el 6 de agosto, pero un mensaje no avisaba a nadie: la
+  conversación solo avanzaba si la otra persona abría la app por su cuenta. Era lo único que le
+  faltaba al módulo de notificaciones frente al documento de alcance.
+- **Y había un segundo agujero, encontrado al tocarlo:** la app envía los mensajes por REST y el
+  handler HTTP **nunca los repartía por WebSocket** —solo lo hacía el camino WS, que la app usa solo
+  para recibir—. El destinatario no veía nada hasta recargar, aunque tuviera el chat abierto delante.
+- **Alcance:**
+  - `internal/core/services/chat_avisos.go` — nuevo. Arma y manda el aviso.
+  - `internal/core/services/chat_service.go` — `SendMessage` dispara el aviso; el constructor recibe
+    el servicio de notificaciones.
+  - `internal/core/services/notification_service.go` y `internal/core/ports/notification_ports.go` —
+    `SendToUser`, envío directo a los dispositivos de una persona.
+  - `internal/handler/http/chat_handler.go` — reparte por el hub tras guardar.
+  - `internal/infrastructure/websocket/hub.go` — entrega no bloqueante.
+  - `cmd/server/main.go` — el chat recibe el servicio de notificaciones. **No hay rutas nuevas.**
+- **El aviso va a los dispositivos del destinatario, no al tópico `all`.** Un mensaje privado no le
+  interesa a la comunidad, y por tópico habría llegado a todos los teléfonos.
+- **No escribe en el historial de notificaciones**, que es la bitácora de lo que manda un
+  administrador desde el panel. Un mensaje de chat no lo manda nadie del panel: anotarlo sepultaría
+  los envíos reales bajo miles de filas y exigiría un `admin_id` que no existe. Por eso `SendToUser`
+  es un método aparte y no un `targetType` más de `SendNotification`.
+- **El aviso sale después de guardar, en su propia goroutine y sin devolver error nunca**, igual que
+  los avisos de novedades. Si FCM está caído —o corre en modo mock por falta de
+  `firebase-service-account.json`— el mensaje se guarda y se entrega igual. Lleva contexto propio con
+  15 s de límite: el de la petición HTTP se cancela al responder al remitente y cortaría el envío a
+  medias.
+- **El título es el nombre de quien escribe, descifrado**; el cuerpo, el mensaje recortado a 140
+  caracteres. **El recorte cuenta caracteres, no bytes**: en un chat abundan tildes y emojis, y
+  cortar a mitad de un carácter deja un rombo negro en la notificación.
+- **La entrega por el hub ya no puede tumbar la petición:** antes escribía directo en el canal del
+  cliente, que bloquea si la cola está llena y **hace panic si el cliente acaba de desconectarse**
+  —con el proceso entero detrás—. Ahora es un envío no bloqueante con recuperación: perder la entrega
+  en vivo no importa, el mensaje está guardado y la push avisa igual.
+- **Sin migración de base de datos.**
+- **Verificado:** `go build ./...`, `go vet ./...` y `go test ./...` en verde salvo
+  `TestExhaustiveUserUpdate`, que falla desde siempre por su cadena de conexión escrita a mano.
+  **9 tests nuevos** en `chat_avisos_test.go`.
+- **Criterios de QA:**
+  1. **Con dos cuentas y la app cerrada en la segunda:** escribir desde la primera. En el otro
+     teléfono llega una notificación con el **nombre de quien escribe** como título y el texto del
+     mensaje debajo.
+  2. **Tocarla** abre esa conversación, no la bandeja, y el historial se ve completo.
+  3. **Responder desde ahí:** la notificación llega en sentido contrario, al que escribió primero.
+  4. **Con la conversación abierta en pantalla:** el mensaje aparece solo, sin recargar —esto es lo
+     que arregla el reparto por WebSocket— y **no** salta ningún aviso encima.
+  5. **Con la app abierta en otra pantalla:** aparece el aviso con el botón **Ver**, que lleva a la
+     conversación.
+  6. **Con un mensaje largo** (más de 140 caracteres) y con emojis: la notificación lo corta con
+     puntos suspensivos y no muestra ningún carácter roto.
+  7. **Un mensaje a alguien que nunca abrió la app en un teléfono** no falla: el mensaje se envía y
+     en el log queda que no había dispositivos registrados.
+  8. **Con FCM en modo mock** (sin `firebase-service-account.json`): el chat funciona igual y el
+     aviso aparece en consola.
+
 ### [2026-08-13]: Los mensajes de Contáctenos ya no se pierden — bandeja en el panel
 
 - **El problema:** la pantalla se estrenó hoy enviando solo un correo, como los otros dos canales.

@@ -1,4 +1,4 @@
-package services
+﻿package services
 
 import (
 	"applegacy/backend/internal/core/domain"
@@ -61,7 +61,7 @@ func TestChatService_SendInvite(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		err := service.SendInvite(ctx, "user1", "user2")
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
@@ -75,7 +75,7 @@ func TestChatService_SendInvite(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		err := service.SendInvite(ctx, "user1", "user2")
 		if err == nil {
 			t.Error("Expected error for existing connection, got nil")
@@ -94,7 +94,7 @@ func TestChatService_SendMessage(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		_, err := service.SendMessage(ctx, "user1", "conn1", "hello")
 		if err == nil {
 			t.Error("Expected error because connection is pending, got nil")
@@ -114,7 +114,7 @@ func TestChatService_SendMessage(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		msg, err := service.SendMessage(ctx, "user1", "conn1", "hello")
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
@@ -136,7 +136,7 @@ func TestChatService_AcceptInvite(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		err := service.AcceptInvite(ctx, "conn1", "user1") // user1 is requester, cannot accept
 		if err == nil {
 			t.Error("Expected error because requester tried to accept, got nil")
@@ -156,7 +156,7 @@ func TestChatService_AcceptInvite(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		err := service.AcceptInvite(ctx, "conn1", "user2")
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
@@ -178,7 +178,7 @@ func TestChatService_ListMembers(t *testing.T) {
 			},
 		}
 
-		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto)
+		service := NewChatService(mockRepo, nil, nuevoRepoBloqueos(), crypto, nil)
 		users, err := service.ListMembers(ctx, "viewer-1")
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)

@@ -120,7 +120,9 @@ func main() {
 	blockHandler := handler.NewBlockHandler(blockService)
 
 	chatRepo := postgres.NewChatRepository(dbPool)
-	chatService := services.NewChatService(chatRepo, userRepo, blockRepo, cryptoService)
+	// El chat recibe el servicio de notificaciones para avisar por push del
+	// mensaje al destinatario, que es lo único que le faltaba a ese módulo.
+	chatService := services.NewChatService(chatRepo, userRepo, blockRepo, cryptoService, notificationService)
 	chatHub := websocket.NewHub(chatService, chatRepo)
 	go chatHub.Run()
 	chatHandler := handler.NewChatHandler(chatService, chatHub)

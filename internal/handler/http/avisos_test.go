@@ -36,6 +36,11 @@ func (n *notificadorFalso) GetHistory(ctx context.Context, limit, offset int) ([
 
 func (n *notificadorFalso) SubscribeAllToTopic(ctx context.Context) (int, error) { return 0, nil }
 
+// SendToUser es la vía de los avisos de chat, que no pasan por estos handlers.
+func (n *notificadorFalso) SendToUser(ctx context.Context, userID, title, body string, data map[string]string) error {
+	return nil
+}
+
 func (n *notificadorFalso) SendNotification(ctx context.Context, adminID, title, body, targetType, targetValue string, data map[string]string) error {
 	n.envios = append(n.envios, envio{adminID: adminID, titulo: title, cuerpo: body, targetType: targetType, datos: data})
 	return n.err

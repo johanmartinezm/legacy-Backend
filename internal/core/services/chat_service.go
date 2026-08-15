@@ -13,14 +13,19 @@ type ChatService struct {
 	userRepo  ports.UserRepository
 	blockRepo ports.BlockRepository
 	crypto    *security.CryptoService
+	// notifier manda la push al destinatario de cada mensaje. Puede ser nil
+	// —así lo dejan los tests—: entonces el chat funciona igual, solo que sin
+	// avisar.
+	notifier ports.NotificationService
 }
 
-func NewChatService(repo ports.ChatRepository, userRepo ports.UserRepository, blockRepo ports.BlockRepository, crypto *security.CryptoService) *ChatService {
+func NewChatService(repo ports.ChatRepository, userRepo ports.UserRepository, blockRepo ports.BlockRepository, crypto *security.CryptoService, notifier ports.NotificationService) *ChatService {
 	return &ChatService{
 		repo:      repo,
 		userRepo:  userRepo,
 		blockRepo: blockRepo,
 		crypto:    crypto,
+		notifier:  notifier,
 	}
 }
 
@@ -194,6 +199,11 @@ func (s *ChatService) SendMessage(ctx context.Context, senderID, connectionID, c
 	if err := s.repo.SaveMessage(ctx, msg); err != nil {
 		return nil, err
 	}
+
+	// El aviso va después de guardar y nunca antes: si la push saliera primero,
+	// un fallo al escribir dejaría a alguien abriendo la app para leer un
+	// mensaje que no existe.
+	s.avisarMensajeNuevo(conn, connectionID, senderID, content)
 
 	// For the speaker's convenience, return the message with unencrypted content
 	msg.ContentEncrypted = content

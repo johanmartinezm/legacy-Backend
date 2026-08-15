@@ -146,12 +146,38 @@ func (h *Hub) DeliverMessage(msg *domain.Message) {
 
 	// Delivery to recipient
 	if recipientClient, ok := h.clients[recipientID]; ok {
-		recipientClient.Send <- data
+		entregar(recipientClient, data)
 	}
 
 	// Also send back to sender for confirmation if they have multiple devices or just for consistency
 	if senderClient, ok := h.clients[msg.SenderID]; ok {
-		senderClient.Send <- data
+		entregar(senderClient, data)
+	}
+}
+
+// entregar deja el mensaje en la cola del cliente sin poder tumbar a quien
+// llama.
+//
+// Escribir directamente en el canal tenía dos formas de hacer daño, y ahora que
+// esto se invoca también desde el handler HTTP alcanzarían a la petición de
+// quien escribe: si la cola está llena —un cliente que no lee, un móvil con la
+// pantalla apagada— el envío bloquea para siempre, y si el cliente acaba de
+// desconectarse el canal está cerrado y escribir en él es un panic que se lleva
+// por delante el proceso entero.
+//
+// Perder la entrega en vivo de un mensaje no es grave: está guardado, la push
+// avisa igual y la pantalla lo carga al abrirse.
+func entregar(c *Client, data []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[WS] no se pudo entregar a %s: cliente desconectado", c.UserID)
+		}
+	}()
+
+	select {
+	case c.Send <- data:
+	default:
+		log.Printf("[WS] cola llena para %s, se omite la entrega en vivo", c.UserID)
 	}
 }
 

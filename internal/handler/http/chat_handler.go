@@ -123,6 +123,15 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// La app envía por aquí, no por el WebSocket —el socket solo lo usa para
+	// recibir—, y este camino nunca repartía el mensaje: el destinatario no veía
+	// nada hasta recargar la pantalla, aunque tuviera el chat abierto delante.
+	// El hub entrega a quien esté conectado; a quien no lo esté ya lo avisa la
+	// push que dispara el servicio.
+	if h.hub != nil {
+		h.hub.DeliverMessage(msg)
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(msg)
 }

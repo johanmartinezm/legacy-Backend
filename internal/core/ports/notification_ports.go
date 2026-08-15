@@ -30,6 +30,14 @@ type PushSender interface {
 type NotificationService interface {
 	RegisterToken(ctx context.Context, userID, token, deviceType string) error
 	SendNotification(ctx context.Context, adminID, title, body, targetType, targetValue string, data map[string]string) error
+	// SendToUser avisa a los dispositivos de una persona por algo que ocurrió
+	// dentro de la app, no por un envío del panel.
+	//
+	// Se separa de SendNotification porque aquella deja constancia en el
+	// historial de notificaciones, que es la bitácora de lo que ha mandado un
+	// administrador: un mensaje de chat no lo manda nadie del panel y anotarlo
+	// ahí llenaría la pantalla de historial con miles de filas ajenas.
+	SendToUser(ctx context.Context, userID, title, body string, data map[string]string) error
 	GetHistory(ctx context.Context, limit, offset int) ([]*domain.NotificationHistory, error)
 	// SubscribeAllToTopic suscribe al tópico general los tokens ya registrados.
 	// Devuelve cuántos quedaron suscritos.

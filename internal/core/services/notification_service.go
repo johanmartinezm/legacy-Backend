@@ -103,40 +103,7 @@ func (s *NotificationService) SendNotification(ctx context.Context, adminID, tit
 		if targetValue == "" {
 			return errors.New("el ID del usuario de destino es requerido")
 		}
-		tokens, fetchErr := s.repo.GetTokensByUserID(ctx, targetValue)
-		if fetchErr != nil {
-			err = fetchErr
-			status = "failed"
-			break
-		}
-		if len(tokens) == 0 {
-			err = fmt.Errorf("no se encontraron dispositivos registrados para el usuario %s", targetValue)
-			status = "failed"
-			break
-		}
-
-		// Enviar a todos los dispositivos del usuario
-		var sendErrors []error
-		for _, t := range tokens {
-			_, fcmErr := s.fcmClient.SendToToken(ctx, t.FCMToken, title, body, data)
-			if fcmErr != nil {
-				sendErrors = append(sendErrors, fcmErr)
-
-				// El token solo se borra si FCM dice que está muerto de verdad
-				// —desinstalado, rotado, mal formado o de otro proyecto—.
-				//
-				// Antes se borraba ante CUALQUIER error, así que un corte
-				// momentáneo con Google se llevaba por delante dispositivos
-				// buenos y esos usuarios dejaban de recibir notificaciones para
-				// siempre, sin rastro de por qué. Ante un fallo pasajero el
-				// token se conserva y el siguiente envío lo intentará de nuevo.
-				if errors.Is(fcmErr, firebase.ErrTokenInvalido) {
-					_ = s.repo.DeleteToken(ctx, targetValue, t.FCMToken)
-				}
-			}
-		}
-		if len(sendErrors) == len(tokens) {
-			err = fmt.Errorf("fallaron todos los envíos a los tokens del usuario: %v", sendErrors)
+		if err = s.enviarADispositivos(ctx, targetValue, title, body, data); err != nil {
 			status = "failed"
 		}
 	default:
@@ -160,6 +127,64 @@ func (s *NotificationService) SendNotification(ctx context.Context, adminID, tit
 	}
 
 	return err
+}
+
+// SendToUser avisa a una persona de algo que ocurrió dentro de la app —hoy, un
+// mensaje de chat—.
+//
+// No escribe en el historial de notificaciones a propósito: esa tabla registra
+// lo que ha enviado un administrador desde el panel, y un mensaje de chat no lo
+// envía nadie del panel. Anotarlos ahí sepultaría los envíos reales bajo miles
+// de filas y además exigiría un `admin_id` que no existe.
+func (s *NotificationService) SendToUser(ctx context.Context, userID, title, body string, data map[string]string) error {
+	if userID == "" {
+		return errors.New("el ID del usuario de destino es requerido")
+	}
+	if title == "" || body == "" {
+		return errors.New("el título y cuerpo del mensaje son requeridos")
+	}
+
+	return s.enviarADispositivos(ctx, userID, title, body, data)
+}
+
+// enviarADispositivos manda el aviso a cada dispositivo registrado de una
+// persona y limpia por el camino los tokens que ya no sirven.
+//
+// Solo devuelve error si **ningún** dispositivo lo recibió: con dos teléfonos,
+// que uno falle no significa que la persona no se haya enterado.
+func (s *NotificationService) enviarADispositivos(ctx context.Context, userID, title, body string, data map[string]string) error {
+	tokens, err := s.repo.GetTokensByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(tokens) == 0 {
+		return fmt.Errorf("no se encontraron dispositivos registrados para el usuario %s", userID)
+	}
+
+	var sendErrors []error
+	for _, t := range tokens {
+		_, fcmErr := s.fcmClient.SendToToken(ctx, t.FCMToken, title, body, data)
+		if fcmErr != nil {
+			sendErrors = append(sendErrors, fcmErr)
+
+			// El token solo se borra si FCM dice que está muerto de verdad
+			// —desinstalado, rotado, mal formado o de otro proyecto—.
+			//
+			// Antes se borraba ante CUALQUIER error, así que un corte momentáneo
+			// con Google se llevaba por delante dispositivos buenos y esos
+			// usuarios dejaban de recibir notificaciones para siempre, sin
+			// rastro de por qué. Ante un fallo pasajero el token se conserva y
+			// el siguiente envío lo intentará de nuevo.
+			if errors.Is(fcmErr, firebase.ErrTokenInvalido) {
+				_ = s.repo.DeleteToken(ctx, userID, t.FCMToken)
+			}
+		}
+	}
+
+	if len(sendErrors) == len(tokens) {
+		return fmt.Errorf("fallaron todos los envíos a los tokens del usuario: %v", sendErrors)
+	}
+	return nil
 }
 
 func (s *NotificationService) GetHistory(ctx context.Context, limit, offset int) ([]*domain.NotificationHistory, error) {
