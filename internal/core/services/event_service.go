@@ -477,10 +477,16 @@ func (s *EventService) CheckIn(ctx context.Context, qrData, staffID string) (*do
 	}
 
 	// 3. Record attendance (updates confirmation and logs)
-	err = s.repo.RecordAttendance(ctx, reg.ID, staffID)
+	//
+	// La operación es idempotente: si ese QR ya había entrado, no se registra
+	// una segunda asistencia y se devuelve la hora de la primera. Sin esto, el
+	// recuento del evento subía con cada relectura del mismo código.
+	entrada, yaHabiaEntrado, err := s.repo.RecordAttendance(ctx, reg.ID, staffID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to record attendance: %v", err)
 	}
+	resp.CheckInTime = entrada
+	resp.AlreadyCheckedIn = yaHabiaEntrado
 
 	// 4. Get workshops for this registration
 	workshops, err := s.repo.GetWorkshopsByRegistrationID(ctx, reg.ID)

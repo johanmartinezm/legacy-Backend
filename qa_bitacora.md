@@ -4,6 +4,90 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-19]: El mínimo de 6 caracteres de la contraseña deja de ser cosa del formulario
+
+Salió al ejecutar F8.5 del plan de pruebas.
+
+- **El problema:** `POST /reset-password` aceptaba `ab123` con un **200**, y la cuenta entraba después
+  con esa contraseña. `ResetPassword` pasaba de comprobar el token a `bcrypt.GenerateFromPassword` sin
+  mirar la longitud. Tampoco `POST /register`: con cinco caracteres devolvía **201**.
+- **La regla existía solo en los clientes.** `register_screen.dart:536` en la app y
+  `reset-password.component.ts:42` en el panel. Quien llamara a la API directamente se la saltaba, y esa
+  es la contraseña de la cuenta.
+- **Se resuelve en el dominio, no en cada llamador.** `domain.ValidarContrasena` con
+  `LongitudMinimaContrasena`, aplicada en **los cuatro caminos** que cifran una contraseña: registro,
+  restablecer, cambiar y alta de administrador. Es el mismo patrón que obligó a meter la normalización
+  del correo dentro de `BlindIndex`: repartida entre los llamadores, basta que uno se olvide.
+- **Cuenta caracteres y no bytes:** `añoñí6` son seis caracteres aunque ocupe más bytes.
+- **La comprobación va antes de tocar el token de restablecimiento.** Si fuera después, un intento
+  rechazado se llevaría por delante el enlace del correo y obligaría a pedir otro. Comprobado: tras el
+  400 el token sigue en la base y el segundo intento con una contraseña válida entra.
+- **El registro social sigue sin contraseña**, que es lo que había que no romper: quien entra con Google
+  o Apple nunca escribe una, y exigirle seis caracteres a una cadena vacía habría cerrado ese camino.
+- **Sale como 400 y no como 500.** En el registro hacía falta una rama propia en el handler: sin ella
+  caía en el 500 genérico y el formulario decía «Inténtalo de nuevo» sin explicar qué corregir.
+- **Alcance:**
+  - `internal/core/domain/user.go` — `LongitudMinimaContrasena` y `ValidarContrasena`.
+  - `internal/core/domain/errors.go` — `ErrContrasenaCorta`.
+  - `internal/core/services/auth_service.go` — los cuatro puntos.
+  - `internal/handler/http/user_handler.go` y `admin_handler.go` — 400 en vez de 500.
+  - `internal/core/services/contrasena_minima_test.go` — nuevo, 7 pruebas.
+- **Verificado:** `go build`, `go vet` y la suite en verde salvo el fallo conocido de `postgres`. Contra
+  la API local: 5 caracteres dan 400 en registro, restablecer y cambiar; 6 pasan.
+- **Criterios de QA:**
+  1. **Restablecer con una contraseña de 5 caracteres:** la rechaza y explica el mínimo.
+  2. **Reintentar con el mismo enlace del correo y una de 6:** funciona — el enlace no se gastó.
+  3. **Registrarse con 5 caracteres desde la app:** el formulario ya lo impedía; comprobar que la API
+     también lo rechaza si se llama directamente.
+  4. **Cambiar la contraseña desde el perfil poniendo 5 caracteres:** la rechaza.
+  5. **Entrar con Google o Apple:** se registra igual, sin pedir contraseña.
+  6. **Contraseñas con tildes o eñes de 6 caracteres:** se aceptan.
+
+---
+
+### [2026-08-19]: El mismo QR deja de contar dos veces en la puerta
+
+Salió al ejecutar F12.8 del plan de pruebas.
+
+- **El problema:** pasar dos veces el mismo código por el escáner dejaba **dos filas** en
+  `events.attendance_logs` para una sola inscripción, y las dos respuestas eran **idénticas**: quien está
+  en la puerta no tenía forma de saber que ese código ya se había usado.
+- **No es solo cosmético:** el recuento de asistentes de un evento subía una unidad por cada relectura,
+  así que las cifras del panel estaban infladas en cualquier evento donde alguien escaneara dos veces. Y
+  un QR compartido entre dos personas se veía igual que uno leído dos veces por error.
+- **Se arregla en la base y no solo en el código.** `RecordAttendance` pasa a
+  `ON CONFLICT (registration_id) DO NOTHING`, y la restricción `UNIQUE` que lo respalda la crea
+  `scripts/20260819_attendance_logs_una_por_inscripcion.sql`. Dejarlo solo en Go lo haría depender de que
+  nadie escriba otra inserción más adelante.
+- **La migración limpia antes de restringir.** Primero borra las repetidas conservando la primera de cada
+  inscripción y después crea la restricción; al revés no se puede aplicar en ninguna base donde ya se
+  haya escaneado dos veces. **En producción esto hará bajar el recuento de asistentes** de los eventos
+  afectados: no es pérdida de datos, es el número que debería haber salido siempre.
+- **La hora que se devuelve es la de la primera entrada**, no la de la lectura actual. Es el dato que
+  sirve en la puerta para decidir si el código se está compartiendo.
+- **No se convierte en un error.** Se pensó devolver 409 y se descartó: dejaría sin datos a quien está
+  validando justo cuando más los necesita. El aviso viaja en la respuesta (`alreadyCheckedIn`), no en el
+  código de estado, y el asistente se sigue mostrando.
+- **Un QR inventado sigue dando 404** y uno impago sigue dando 402: esto no toca esos dos caminos.
+- **Alcance:**
+  - `scripts/20260819_attendance_logs_una_por_inscripcion.sql` — nueva.
+  - `internal/adapter/storage/postgres/event_repository.go` — `RecordAttendance` idempotente.
+  - `internal/core/ports/event_ports.go` — la firma devuelve la hora y si ya había entrado.
+  - `internal/core/domain/event.go` — `alreadyCheckedIn` en `CheckInResponse`.
+  - `internal/core/services/event_service.go` — traslada ambos a la respuesta.
+  - `internal/core/services/checkin_repetido_test.go` — nuevo, 2 pruebas.
+- **Verificado:** tres lecturas seguidas del mismo QR dejan **una sola** fila de asistencia; la segunda y
+  la tercera vuelven con `alreadyCheckedIn` y la hora de la primera.
+- **Criterios de QA:**
+  1. **Escanear un QR válido:** entra, y el panel lo da por bueno como siempre.
+  2. **Escanear el mismo QR otra vez:** avisa de que ya se había usado y dice a qué hora entró.
+  3. **Mirar los inscritos del evento:** cuenta un asistente, no dos.
+  4. **Escanear un QR inventado:** sigue diciendo que no existe.
+  5. **Escanear el de una inscripción sin pagar:** sigue pidiendo el cobro.
+  6. **Antes de todo lo anterior:** aplicar la migración y después publicar el binario, en ese orden.
+
+---
+
 ### [2026-08-18]: Reenviar la verificación deja de delatar qué cuentas existen
 
 Salió al ejecutar F5.7 del plan de pruebas.

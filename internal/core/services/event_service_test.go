@@ -4,6 +4,7 @@ import (
 	"applegacy/backend/internal/core/domain"
 	"context"
 	"testing"
+	"time"
 )
 
 // MockEventRepository for testing
@@ -18,7 +19,7 @@ type MockEventRepository struct {
 	GetEventSurveyByUserFunc          func(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error)
 	GetEventSurveySummaryFunc         func(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
 	GetRegistrationByQRFunc           func(ctx context.Context, qr string) (*domain.Registration, *domain.CheckInResponse, error)
-	RecordAttendanceFunc              func(ctx context.Context, regID, staffID string) error
+	RecordAttendanceFunc              func(ctx context.Context, regID, staffID string) (time.Time, bool, error)
 	GetRegistrationsByEventFunc       func(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
 }
 
@@ -89,9 +90,9 @@ func (m *MockEventRepository) GetRegistrationByQR(ctx context.Context, qr string
 	}
 	return m.GetRegistrationByQRFunc(ctx, qr)
 }
-func (m *MockEventRepository) RecordAttendance(ctx context.Context, rID, sID string) error {
+func (m *MockEventRepository) RecordAttendance(ctx context.Context, rID, sID string) (time.Time, bool, error) {
 	if m.RecordAttendanceFunc == nil {
-		return nil
+		return time.Now(), false, nil
 	}
 	return m.RecordAttendanceFunc(ctx, rID, sID)
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // El QR se genera al reservar el cupo, antes de pasar por la pasarela, así que
@@ -38,9 +39,9 @@ func servicioConQRYDatos(reg *domain.Registration, errRepo error, datos *domain.
 			}
 			return reg, &domain.CheckInResponse{RegistrationID: reg.ID, EventTitle: "LEGACY SUMMIT"}, nil
 		},
-		RecordAttendanceFunc: func(ctx context.Context, regID, staffID string) error {
+		RecordAttendanceFunc: func(ctx context.Context, regID, staffID string) (time.Time, bool, error) {
 			asistenciaRegistrada = true
-			return nil
+			return time.Now(), false, nil
 		},
 	}
 	return NewEventService(repo, crypto), &asistenciaRegistrada, crypto

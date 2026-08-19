@@ -3,6 +3,7 @@ package ports
 import (
 	"applegacy/backend/internal/core/domain"
 	"context"
+	"time"
 )
 
 type EventRepository interface {
@@ -39,7 +40,11 @@ type EventRepository interface {
 
 	// QR & Attendance
 	GetRegistrationByQR(ctx context.Context, qrData string) (*domain.Registration, *domain.CheckInResponse, error)
-	RecordAttendance(ctx context.Context, registrationID, staffID string) error
+	// RecordAttendance registra la entrada y devuelve cuándo entró esa
+	// inscripción —la primera vez, no la de esta lectura— y si ya había
+	// entrado antes. Es idempotente: el mismo QR dos veces deja una sola
+	// asistencia.
+	RecordAttendance(ctx context.Context, registrationID, staffID string) (time.Time, bool, error)
 	GetWorkshopsByRegistrationID(ctx context.Context, registrationID string) ([]domain.Workshop, error)
 }
 

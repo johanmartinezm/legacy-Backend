@@ -605,26 +605,53 @@ func (r *EventRepository) GetRegistrationByQR(ctx context.Context, qrData string
 		return nil, nil, err
 	}
 	resp.RegistrationID = reg.ID
-	resp.CheckInTime = time.Now()
+	// CheckInTime lo fija RecordAttendance con la hora que quedó guardada: aquí
+	// todavía no se sabe si esta lectura es la primera o una repetida.
 
 	return &reg, &resp, nil
 }
 
-func (r *EventRepository) RecordAttendance(ctx context.Context, registrationID, staffID string) error {
+// RecordAttendance deja constancia de la entrada y devuelve el momento en que
+// esa inscripción entró —el PRIMERO, no el de esta lectura— junto con si ya
+// había entrado antes.
+//
+// El ON CONFLICT es lo que hace la operación idempotente: hasta el 2026-08-19
+// se insertaba siempre, así que pasar dos veces el mismo QR dejaba dos filas y
+// el evento contaba un asistente de más por cada relectura. La restricción
+// UNIQUE que lo respalda la crea
+// scripts/20260819_attendance_logs_una_por_inscripcion.sql.
+func (r *EventRepository) RecordAttendance(ctx context.Context, registrationID, staffID string) (time.Time, bool, error) {
 	// 1. Update registration status
 	updateQuery := `UPDATE events.registrations SET attendance_confirmed = true WHERE id = $1::uuid`
 	_, err := r.db.Exec(ctx, updateQuery, registrationID)
 	if err != nil {
-		return err
+		return time.Time{}, false, err
 	}
 
 	// 2. Insert attendance log
 	logQuery := `
 		INSERT INTO events.attendance_logs (registration_id, staff_user_id)
 		VALUES ($1::uuid, $2::uuid)
+		ON CONFLICT (registration_id) DO NOTHING
 	`
-	_, err = r.db.Exec(ctx, logQuery, registrationID, staffID)
-	return err
+	tag, err := r.db.Exec(ctx, logQuery, registrationID, staffID)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	yaHabiaEntrado := tag.RowsAffected() == 0
+
+	// 3. La hora sale siempre de la fila que quedó guardada, no del reloj de
+	// ahora: en una relectura lo que interesa en la puerta es cuándo entró esta
+	// persona la primera vez.
+	var entrada time.Time
+	err = r.db.QueryRow(ctx,
+		`SELECT check_in_time FROM events.attendance_logs WHERE registration_id = $1::uuid`,
+		registrationID).Scan(&entrada)
+	if err != nil {
+		return time.Time{}, yaHabiaEntrado, err
+	}
+
+	return entrada, yaHabiaEntrado, nil
 }
 
 func (r *EventRepository) GetWorkshopsByRegistrationID(ctx context.Context, registrationID string) ([]domain.Workshop, error) {

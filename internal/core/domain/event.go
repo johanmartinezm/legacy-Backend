@@ -248,11 +248,19 @@ type CheckInResponse struct {
 	// el paso intermedio entre el repositorio, que los lee cifrados y por
 	// separado, y el servicio, que los descifra y compone UserName. El panel
 	// sigue recibiendo userName y userEmail, solo que legibles.
-	FirstName   string     `json:"-"`
-	LastName    string     `json:"-"`
-	UserName    string     `json:"userName"`
-	UserEmail   string     `json:"userEmail"`
-	EventTitle  string     `json:"eventTitle"`
-	CheckInTime time.Time  `json:"checkInTime"`
-	Workshops   []Workshop `json:"workshops"`
+	FirstName  string `json:"-"`
+	LastName   string `json:"-"`
+	UserName   string `json:"userName"`
+	UserEmail  string `json:"userEmail"`
+	EventTitle string `json:"eventTitle"`
+	// CheckInTime es la hora de la PRIMERA entrada de esa inscripción, no la de
+	// la lectura que se acaba de hacer. En una relectura es lo que interesa en
+	// la puerta: a qué hora entró esta persona.
+	CheckInTime time.Time `json:"checkInTime"`
+	// AlreadyCheckedIn avisa de que ese QR ya se había usado. Hasta el
+	// 2026-08-19 las dos respuestas eran idénticas —y además quedaban dos
+	// asistencias registradas—, así que una entrada repetida no se distinguía
+	// de una nueva.
+	AlreadyCheckedIn bool       `json:"alreadyCheckedIn"`
+	Workshops        []Workshop `json:"workshops"`
 }
