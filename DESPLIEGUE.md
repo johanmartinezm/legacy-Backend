@@ -220,6 +220,12 @@ scp server_linux config.docker.yaml Dockerfile \
     "$SSH_USER@$SERVER_IP:$DEPLOY_DIR"
 ```
 
+**`firebase-service-account.json` no suele estar en local** —por eso el backend de desarrollo arranca
+con FCM en modo mock— y el `scp` falla en ese archivo con `No such file or directory`. **No es un
+problema:** el del servidor es el bueno y sigue ahí; el resto de archivos se copian igual. Lo que
+**no** hay que hacer es "arreglarlo" subiendo cualquier otro: sin ese archivo correcto, las
+notificaciones push dejan de salir en producción. Comprobado el 2026-08-18.
+
 ### ⚠️ NO subas `docker-compose.yml` — comprobado el 2026-08-11
 
 **El `docker-compose.yml` versionado es el de desarrollo local y NO sirve para producción.** Difiere
@@ -320,8 +326,8 @@ todos los `docker compose` del despliegue. Quien viera esos logs veía el fragme
 De ahí una regla para cualquier valor que acabe en un `.env` leído por Compose: **sin `$`**, o
 escapado como `$$`. La contraseña nueva es alfanumérica por ese motivo.
 
-La copia anterior del archivo quedó en el servidor como `.env.bak.20260810`; bórrala cuando
-confirmes que todo va bien.
+La copia anterior quedó en el servidor como `.env.bak.20260810` y **ya no está**: comprobado el
+2026-08-18, no queda ningún `.env.bak*` bajo `/docker`. No hay nada que limpiar aquí.
 
 ### Acceso por contraseña: cerrado el 2026-08-10
 
@@ -455,6 +461,33 @@ docker compose exec -T db psql -U dba -d applegacy < scripts/20260731_add_synerg
 ```
 
 No hay herramienta de migraciones ni control de cuáles se aplicaron: llevar la cuenta es manual.
+
+### ⚠️ Comprueba qué falta antes de desplegar, no después — comprobado el 2026-08-18
+
+Llevar la cuenta a mano falla. Ese día se descubrió que
+`20260731_add_synergies_comments_count.sql` **nunca se había aplicado en producción**: la sección de
+Sinergias llevaba **desde el 31 de julio devolviendo 500**, y la cabecera de ese propio archivo
+describía el fallo. Nadie lo notó porque ningún despliegue lo comprueba.
+
+La base local del equipo de desarrollo estaba peor: **once migraciones por detrás**. `levantar.ps1`
+solo las aplica cuando crea la base desde cero, así que una base que ya existe se queda congelada
+mientras el código avanza.
+
+Antes de dar por bueno un despliegue, comprueba en el servidor los objetos que crean las migraciones
+pendientes. Sale más barato que descubrirlo por un 500:
+
+```bash
+docker exec legacy_db psql -U dba -d applegacy -tAc "
+select
+  (select count(*) from information_schema.columns where column_name = 'comments_count'),
+  (select count(*) from information_schema.columns where column_name = 'is_virtual'),
+  (select count(*) from pg_enum e join pg_type t on t.oid=e.enumtypid
+    where t.typname='user_role' and e.enumlabel='junta');"
+```
+
+**Las migraciones son reejecutables.** Las trece se aplicaron seguidas sobre una base ya migrada el
+2026-08-18 y todas pasaron limpias, avisando con `NOTICE ... skipping` lo que ya existía. Ante la
+duda de si una se aplicó, volver a pasarla es seguro; asumir que sí, no.
 
 **Respaldo antes de cualquier migración:**
 
