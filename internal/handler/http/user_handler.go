@@ -93,7 +93,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user.Role == "" {
-		user.Role = "familia" // Default role
+		user.Role = domain.RoleDefault
+	}
+	// Sin esto el rol baja tal cual al INSERT y es Postgres quien lo rechaza,
+	// con un 500 que le enseñaba el SQLSTATE al usuario (ver más abajo).
+	if !domain.IsValidRole(user.Role) {
+		h.respondWithError(w, http.StatusBadRequest, "Perfil de usuario no válido")
+		return
 	}
 
 	if req.BirthDate != "" {
@@ -111,7 +117,11 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 			h.respondWithError(w, http.StatusConflict, "El usuario ya existe")
 			return
 		}
-		h.respondWithError(w, http.StatusInternalServerError, err.Error())
+		// El detalle va al log, no a la pantalla: devolver err.Error() es lo que
+		// le mostró al usuario "ERROR: invalid input value for enum
+		// core.user_role: junta (SQLSTATE 22P02)" el 2026-08-18.
+		log.Printf("Register: %v", err)
+		h.respondWithError(w, http.StatusInternalServerError, "No se pudo crear la cuenta. Inténtalo de nuevo.")
 		return
 	}
 
@@ -299,8 +309,17 @@ func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 	user.ID = id
-	// Debug logging
-	log.Printf("Updating user %s: %+v", id, user)
+	// El decode de arriba vuelca el JSON sobre el usuario ya cargado, así que el
+	// cliente también puede cambiar el rol por aquí y llegar al mismo 22P02.
+	if !domain.IsValidRole(user.Role) {
+		h.respondWithError(w, http.StatusBadRequest, "Perfil de usuario no válido")
+		return
+	}
+	// Solo el id. El `%+v` que había aquí volcaba el struct entero en cada
+	// edición de perfil, y eso dejaba en el log el hash bcrypt, el correo
+	// cifrado y el email_blind_index —el HMAC del que depende el inicio de
+	// sesión por correo—.
+	log.Printf("Updating user %s", id)
 
 	if err := h.authService.UpdateUser(r.Context(), user); err != nil {
 		if err.Error() == "alias_in_use" {

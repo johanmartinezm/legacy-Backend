@@ -1,0 +1,36 @@
+-- 20260818_add_junta_user_role.sql
+--
+-- Añade el valor 'junta' al enum core.user_role.
+--
+-- Contexto: el onboarding de la app ofrece tres perfiles
+-- (App-Movil/lib/presentation/screens/profile_selection_screen.dart, líneas 66,
+-- 76 y 85) y el tercero, "Quiero ser miembro de junta o consejo", navega a
+-- /register?role=junta. Ese valor llega tal cual al INSERT porque
+-- internal/handler/http/user_handler.go solo sustituye el rol cuando viene
+-- vacío, y el enum solo tiene 'familia', 'empresa' y 'profesional'. Registrarse
+-- por esa opción falla con:
+--   ERROR: invalid input value for enum core.user_role: "junta" (SQLSTATE 22P02)
+--
+-- El error se veía en pantalla porque Register devolvía err.Error() con un 500;
+-- ese punto se corrige en el mismo cambio.
+--
+-- Se añade el valor en vez de mapear 'junta' a 'profesional' porque la app ya
+-- trata 'junta' como un perfil propio: el saludo de la home y el texto del
+-- destacado semanal tienen su rama
+-- (App-Movil/lib/presentation/screens/home/home_content_screen.dart, líneas 40 y
+-- 299). Mapearlo habría dejado esas dos ramas muertas sin que nada avisara.
+--
+-- 'profesional' se conserva: no lo usa ni la app ni el backend, pero el panel lo
+-- ofrece en el desplegable de usuarios y puede haber cuentas creadas con él.
+--
+-- Sin transacción explícita, como el resto de migraciones de esta carpeta.
+-- ALTER TYPE ... ADD VALUE no puede ejecutarse dentro de un bloque de
+-- transacción en PostgreSQL anterior a 12, y en 12+ el valor nuevo no se puede
+-- usar en la misma transacción que lo crea. Aplicar con psql directamente.
+--
+-- Afecta a:
+--   internal/handler/http/user_handler.go   (validación del rol)
+--   Sitio-Administrativo/src/app/core/models/user.model.ts
+--   Sitio-Administrativo/.../user-form-dialog.component.html
+
+ALTER TYPE core.user_role ADD VALUE IF NOT EXISTS 'junta';

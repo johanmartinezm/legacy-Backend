@@ -4,6 +4,28 @@ import (
 	"time"
 )
 
+// UserRoles son los valores que acepta el enum core.user_role. El orden es el
+// del enum. 'junta' se añadió el 2026-08-18
+// (scripts/20260818_add_junta_user_role.sql); 'profesional' no lo usa ni la app
+// ni el backend, pero el panel lo ofrece y puede haber cuentas con él.
+//
+// Un rol fuera de esta lista llega al INSERT y lo rechaza Postgres con SQLSTATE
+// 22P02, así que la comprobación se hace antes de bajar a la base.
+var UserRoles = []string{"familia", "empresa", "profesional", "junta"}
+
+// RoleDefault es el rol que se asigna cuando el cliente no manda ninguno.
+const RoleDefault = "familia"
+
+// IsValidRole indica si el rol existe en el enum core.user_role.
+func IsValidRole(role string) bool {
+	for _, r := range UserRoles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
 type User struct {
 	ID            string `json:"id" db:"id"`
 	Email         string `json:"email" db:"-"` // Input/Output only, not stored directly
