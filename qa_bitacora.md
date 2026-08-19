@@ -4,6 +4,59 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: El correo se normaliza antes de calcular el índice ciego
+
+Salió al ejecutar el caso F6.5 del plan de pruebas, y era peor de lo que decía ese caso.
+
+- **El problema:** `BlindIndex` aplicaba el HMAC al correo **tal como llegaba**, sin recortar espacios
+  ni pasar a minúsculas, y ningún punto de llamada lo hacía por él. Dos consecuencias comprobadas:
+  - **No se podía iniciar sesión** escribiendo el correo con otra caja. En un teclado móvil la primera
+    letra sale en mayúscula, así que no es un caso raro.
+  - **El mismo correo se registraba dos veces.** `dup@…` y `DUP@…` devolvieron **201** los dos y
+    quedaron dos cuentas distintas, en lugar del 409 de usuario ya existente.
+- **Alcance:**
+  - `internal/security/crypto.go` — `BlindIndex` normaliza; nueva `NormalizarCorreo`.
+  - `internal/security/crypto_test.go` — nuevo. Cinco pruebas; el paquete no tenía ninguna.
+  - `cmd/reindexar/` — nuevo. Recalcula `email_blind_index` de toda la tabla.
+  - `.gitignore` — cubre los respaldos del config y el binario nuevo.
+- **La normalización vive dentro de `BlindIndex`, no en quien llama.** Son cuatro puntos que calculan
+  ese índice —registro, inicio de sesión, solicitud de restablecimiento y restablecimiento— y basta
+  que uno se olvide para que no cuadre con los otros tres.
+- **Arreglar el código no bastaba.** Los índices ya guardados se calcularon sobre el texto sin
+  normalizar, así que el binario nuevo no habría encontrado a quien se registró con mayúsculas y lo
+  habría dejado fuera de su propia cuenta. Por eso el comando.
+- 🔴 **`reindexar` detecta los choques antes de escribir.** Si dos cuentas normalizan al mismo correo
+  chocarían contra la restricción `UNIQUE users_email_key` y el UPDATE fallaría a medias: aborta y las
+  lista **por id, nunca por correo** —su salida acaba en un log de producción—. Qué hacer con esas
+  cuentas es una decisión de negocio, no del comando.
+- **Simulacro por defecto y verificación dentro de la transacción**, igual que `cmd/recifrar`: relee
+  cada fila y comprueba que el índice guardado es el que produce `BlindIndex`. Es el último momento en
+  el que un fallo todavía se puede deshacer.
+- **Solo se normaliza el índice.** El correo que se muestra sale de `email_encrypted`, que conserva lo
+  que la persona escribió; hay una prueba que lo fija.
+- ✅ **Producción no necesitaba la migración.** El simulacro allí devolvió `usuarios leidos: 14`,
+  `indices actualizados: 0` y ningún choque: las 14 cuentas se registraron ya en minúsculas. Publicar
+  el binario no deja a nadie fuera. El comando se conserva para otros entornos —la base local sí tenía
+  una cuenta que reindexar— y como red de seguridad.
+- **Verificado:** `go build`, `go vet` y toda la suite en verde. Contra la base local se creó una
+  cuenta con el correo en mayúsculas usando el binario anterior, se reprodujo el fallo, se reindexó y
+  después entró de las cuatro formas —minúsculas, tal cual, todo mayúsculas y con espacios—, mientras
+  el registro duplicado por caja pasó a devolver 409.
+- **Criterios de QA:**
+  1. **Registrarse con el correo en minúsculas** y luego intentar registrar el mismo en mayúsculas:
+     **409**, no una segunda cuenta.
+  2. **Iniciar sesión** escribiendo el correo en minúsculas, en mayúsculas y como se registró: entra
+     en los tres casos.
+  3. **Con espacios delante o detrás** del correo: entra igual.
+  4. **Dos correos distintos** siguen siendo distintos: `juan@` y `juana@` no se confunden.
+  5. **El perfil sigue mostrando el correo como se escribió**, no en minúsculas.
+  6. **Recuperar contraseña** con el correo en otra caja encuentra la cuenta.
+  7. **`reindexar` sin `-aplicar`** no cambia nada: repetir la consulta del índice da lo mismo antes y
+     después.
+  8. **Con dos cuentas duplicadas por caja**, `reindexar` aborta y las lista sin escribir.
+
+---
+
 ### [2026-08-18]: Los videos de los canales de YouTube llegan a la app
 
 Punto 1.4 de `reports/20260818_plan_ajustes.html`. El cliente encontró **un solo video** en Contenido

@@ -7,6 +7,13 @@ config.yaml
 config.docker.yaml
 *-service-account.json
 
+# Los respaldos que deja el propio procedimiento de despliegue —el DESPLIEGUE.md
+# manda hacer `cp config.docker.yaml config.docker.yaml.bak.$(date ...)` antes de
+# tocarlo— llevan los mismos secretos que el original. El patron los cubre a
+# todos: las tres lineas de arriba son nombres exactos y no casaban con el .bak.
+config*.bak*
+.env.bak*
+
 # --- Binarios compilados ----------------------------------------------------
 # ~340 MB de ejecutables duplicados. Se regeneran con ./build.sh o ./build-linux.sh
 # Van anclados con "/" a la raiz: sin la barra, "server" tambien casaba con la
@@ -18,6 +25,7 @@ config.docker.yaml
 /server
 /server_linux
 /recifrar_linux
+/reindexar_linux
 /tmp_build
 *.exe
 *.exe~
