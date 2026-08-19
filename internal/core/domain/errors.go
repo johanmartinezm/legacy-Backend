@@ -54,3 +54,12 @@ var (
 	// persona, y quien busca acosar sabría que debe cambiar de cuenta.
 	ErrBloqueado = errors.New("no es posible contactar con esta persona")
 )
+
+// Motivo por el que no se acepta una contraseña.
+var (
+	// ErrContrasenaCorta es una contraseña por debajo de LongitudMinimaContrasena.
+	//
+	// El mensaje está en español porque los controladores de restablecer y de
+	// cambiar contraseña devuelven err.Error() tal cual al cliente.
+	ErrContrasenaCorta = errors.New("la contraseña debe tener al menos 6 caracteres")
+)

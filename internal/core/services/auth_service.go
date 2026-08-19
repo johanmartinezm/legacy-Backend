@@ -90,6 +90,13 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) er
 }
 
 func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPassword string) error {
+	// 0. La contraseña se valida ANTES de tocar el token: si se hiciera después,
+	// un intento rechazado se llevaría por delante el enlace del correo y
+	// obligaría a pedir otro.
+	if err := domain.ValidarContrasena(newPassword); err != nil {
+		return err
+	}
+
 	// 1. Verify token
 	storedToken, err := s.tokenRepo.GetToken(ctx, email)
 	if err != nil {
@@ -152,6 +159,11 @@ func (s *AuthService) Register(ctx context.Context, user *domain.User, password 
 
 	// 2. Hash Password only if provided
 	if password != "" {
+		// El registro social llega sin contraseña y no pasa por aquí: a esa
+		// cuenta no se le puede exigir una longitud que nunca escribió nadie.
+		if err := domain.ValidarContrasena(password); err != nil {
+			return err
+		}
 		hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			return err
@@ -367,6 +379,9 @@ func (s *AuthService) RegisterAdmin(ctx context.Context, admin *domain.AdminUser
 		return errors.New("admin already exists")
 	}
 	// 2. Hash password
+	if err := domain.ValidarContrasena(password); err != nil {
+		return err
+	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -479,6 +494,12 @@ func (s *AuthService) DeleteUser(ctx context.Context, id string) error {
 }
 
 func (s *AuthService) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	// 0. Comprobar la nueva antes que nada: es una comprobación de formato, no
+	// dice nada de la cuenta y ahorra un bcrypt cuando la petición no vale.
+	if err := domain.ValidarContrasena(newPassword); err != nil {
+		return err
+	}
+
 	// 1. Get user (raw, to get password hash)
 	user, err := s.repo.FindByID(ctx, userID)
 	if err != nil {

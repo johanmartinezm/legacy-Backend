@@ -26,6 +26,29 @@ func IsValidRole(role string) bool {
 	return false
 }
 
+// LongitudMinimaContrasena es el mínimo que se exige a cualquier contraseña.
+//
+// Hasta el 2026-08-19 esta regla vivía **solo en los clientes** —el formulario
+// de registro de la app y el de restablecer del panel—, así que quien llamara a
+// la API directamente se la saltaba: POST /reset-password aceptaba "ab123" con
+// un 200 y la cuenta entraba después con esa contraseña.
+//
+// Vive en el dominio porque son cuatro los sitios que cifran una contraseña
+// —registro, restablecer, cambiar y alta de administrador— y basta que uno se
+// olvide para que la regla no valga nada, igual que pasó con la normalización
+// del correo en BlindIndex.
+const LongitudMinimaContrasena = 6
+
+// ValidarContrasena aplica LongitudMinimaContrasena.
+//
+// Cuenta caracteres y no bytes: "contraseña" son diez caracteres, no once.
+func ValidarContrasena(contrasena string) error {
+	if len([]rune(contrasena)) < LongitudMinimaContrasena {
+		return ErrContrasenaCorta
+	}
+	return nil
+}
+
 type User struct {
 	ID            string `json:"id" db:"id"`
 	Email         string `json:"email" db:"-"` // Input/Output only, not stored directly
