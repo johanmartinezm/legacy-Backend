@@ -116,6 +116,36 @@ type CorreoInscripcion struct {
 	EnlaceLugar string
 }
 
+// CorreoPago es la confirmación que se manda cuando la pasarela aprueba el cobro
+// de un evento.
+//
+// Es distinta de CorreoInscripcion, que sale al reservar cupo en un evento
+// gratuito: esta lleva además lo que se pagó y, sobre todo, **el código de
+// acceso**. Antes de existir, quien pagaba no recibía nada: ni constancia del
+// cobro ni forma de entrar al evento sin abrir la app.
+type CorreoPago struct {
+	Para   string
+	Nombre string
+
+	// Evento y fecha de lo comprado.
+	Evento string
+	Fecha  string
+
+	// Datos del pago. Referencia es el identificador de la orden en la pasarela,
+	// que es por donde se rastrea un cobro con el banco.
+	Importe     float64
+	Moneda      string
+	Referencia  string
+	Metodo      string
+	PagadoEl    string
+	EsVirtual   bool
+	EnlaceLugar string
+
+	// QRData es el código de acceso en crudo. La plantilla lo dibuja como imagen;
+	// va vacío en los eventos virtuales, que entran por enlace.
+	QRData string
+}
+
 type UserRegistration struct {
 	ID                  string     `json:"id"`
 	EventID             string     `json:"eventId"`

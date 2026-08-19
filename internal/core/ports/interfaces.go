@@ -113,6 +113,9 @@ type EmailService interface {
 	// del evento: el virtual lleva enlace de acceso y el presencial remite a la
 	// credencial de la app.
 	SendEventRegistrationEmail(datos domain.CorreoInscripcion) error
+	// SendEventPaymentEmail confirma un cobro aprobado y entrega el acceso: el
+	// QR dibujado en el propio correo, o el enlace si el evento es virtual.
+	SendEventPaymentEmail(datos domain.CorreoPago) error
 }
 
 // EmailVerificationRepository identifica a la persona por su id, que es lo que

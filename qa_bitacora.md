@@ -4,6 +4,63 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: El pago aprobado manda su confirmación, con el QR dentro
+
+- **Lo que había:** nada. Se verificó primero, y `VerifyPayment` confirmaba la inscripción y ahí
+  terminaba. **Quien pagaba de verdad no recibía constancia del cobro ni forma de entrar al evento sin
+  abrir la app.** Es lo último que le faltaba al flujo de pago.
+- **Alcance:**
+  - `internal/core/domain/event.go` — tipo `CorreoPago`.
+  - `internal/core/ports/interfaces.go` — `SendEventPaymentEmail`.
+  - `internal/infrastructure/email/gmail_service.go` — plantilla, `sendMessageConImagen` y el dibujo
+    del QR.
+  - `internal/core/services/payment_correo.go` — nuevo. Arma y manda.
+  - `internal/core/services/payment_service.go` — dispara al confirmarse; tres dependencias nuevas.
+  - `internal/core/services/payment_correo_test.go` — nuevo. Cuatro pruebas.
+  - `cmd/server/main.go` — cableado. **No hay rutas nuevas.**
+  - `go.mod` — `github.com/skip2/go-qrcode`.
+- **El QR viaja en el correo, y es un cambio de criterio respecto a la entrega de esta mañana**, donde
+  se escribió que nunca debía salir por correo. Lo pidió el cliente y encaja: es lo que hace cualquier
+  venta de entradas, y el código no es una credencial eterna —el check-in marca la asistencia, así que
+  reenviarlo no cuela dos veces por la puerta—. El correo de **inscripción gratuita** sigue sin
+  llevarlo: ahí no ha habido un cobro que respaldar.
+- 🔴 **Se manda solo en la transición a confirmada.** `ConfirmEventRegistration` es idempotente y
+  devuelve una fila afectada aunque ya estuviera confirmada, así que se consulta el estado **antes** de
+  confirmar. Sin eso el correo saldría en cada verificación, y se verifica dos veces siempre: la app al
+  volver de la pasarela y el webhook por su cuenta. Hay una prueba que lo fija.
+- **La imagen va como `multipart/related` con `cid:`, no como `data:`.** Gmail y Outlook descartan las
+  imágenes en `data:`, así que el correo habría llegado con un hueco justo donde está el acceso. Obligó
+  a añadir un segundo camino de envío: el que había mandaba HTML de una sola parte.
+- **Si el dibujo del QR falla, el correo sale igual** con la constancia del pago y remitiendo a la app.
+  Vale más eso que no mandar nada porque falló una imagen.
+- **En un evento virtual no se manda QR sino el enlace de la sesión**, coherente con el resto: un QR no
+  abre ninguna puerta en una masterclass.
+- **El correo nunca bloquea ni falla la verificación del pago:** goroutine propia, contexto de 45 s y
+  el fallo solo al log. El cobro ya está aprobado en la pasarela.
+- **Destinatario:** primero el contacto escrito en la inscripción, que puede ser distinto al de la
+  cuenta; si no, el del perfil. Los dos llegan cifrados.
+- ⚠️ **`MockEventRepository` reventaba con un gancho sin fijar.** El servicio de pagos empezó a
+  consultar la inscripción previa y el test del webhook murió con un nil pointer. Se arregló el mock
+  —devuelve valores vacíos en vez de reventar— en vez de parchear ese test: un mock compartido que
+  revienta es una trampa para quien escriba el siguiente.
+- ⚠️ **No se puede probar contra la pasarela real**, que sigue bloqueada. Lo verificado son las cuatro
+  pruebas y la generación del PNG; el circuito completo queda pendiente de credenciales.
+- **Verificado:** `go build`, `go vet` y toda la suite en verde. El QR genera un PNG válido de 488
+  bytes con cabecera correcta.
+- **Criterios de QA:**
+  1. **Pagar un evento presencial** con la pasarela simulada: llega correo con importe, referencia,
+     fecha del pago y **el QR visible como imagen**.
+  2. **El QR del correo sirve para el check-in**: escanearlo desde el panel marca la asistencia.
+  3. **Volver a verificar el mismo pago** —recargar la pantalla de retorno— **no manda un segundo
+     correo**.
+  4. **Pagar un evento virtual:** llega el enlace de la sesión y **ningún QR**.
+  5. **Un pago rechazado** no manda nada.
+  6. **Con el servicio de correo caído**, el pago se confirma igual y el fallo solo aparece en el log.
+  7. **Abrir el correo en Gmail y en Outlook**: la imagen del QR se ve en los dos.
+  8. **La inscripción gratuita** sigue sin llevar QR en su correo.
+
+---
+
 ### [2026-08-18]: El correo se normaliza antes de calcular el índice ciego
 
 Salió al ejecutar el caso F6.5 del plan de pruebas, y era peor de lo que decía ese caso.

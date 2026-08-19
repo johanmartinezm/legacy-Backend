@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
+	"strings"
 
+	"github.com/skip2/go-qrcode"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
@@ -42,6 +44,59 @@ func NewGmailService(credentialsFile, impersonateUser string) (*GmailService, er
 		svc:  srv,
 		from: impersonateUser,
 	}, nil
+}
+
+// sendMessageConImagen manda un correo con una imagen incrustada en el cuerpo.
+//
+// Va como `multipart/related` con la imagen referenciada por `cid:`. La
+// alternativa evidente —incrustarla como `data:` en el `src` del `<img>`— **no
+// sirve**: Gmail y Outlook descartan esas imágenes, así que el correo llegaría
+// con un hueco justo donde está el código de acceso.
+//
+// El nombre del recurso lo fija quien llama y tiene que coincidir con el `cid:`
+// que use en el HTML.
+func (s *GmailService) sendMessageConImagen(to, subject, body, cid string, imagen []byte) error {
+	// Separador fijo y suficientemente improbable: no puede aparecer dentro del
+	// cuerpo o rompería el mensaje. El HTML lo generamos nosotros y el base64 de
+	// la imagen solo tiene el alfabeto de base64.
+	const frontera = "----legacy-frontera-9f2c1a7e"
+
+	var b strings.Builder
+	b.WriteString("To: " + to + "\r\n")
+	b.WriteString("From: " + s.from + "\r\n")
+	b.WriteString("Subject: " + encodeHeader(subject) + "\r\n")
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString("Content-Type: multipart/related; boundary=\"" + frontera + "\"\r\n\r\n")
+
+	b.WriteString("--" + frontera + "\r\n")
+	b.WriteString("Content-Type: text/html; charset=UTF-8\r\n\r\n")
+	b.WriteString(body)
+	b.WriteString("\r\n")
+
+	b.WriteString("--" + frontera + "\r\n")
+	b.WriteString("Content-Type: image/png\r\n")
+	b.WriteString("Content-Transfer-Encoding: base64\r\n")
+	b.WriteString("Content-ID: <" + cid + ">\r\n")
+	b.WriteString("Content-Disposition: inline; filename=\"acceso.png\"\r\n\r\n")
+
+	// En líneas de 76 caracteres: el estándar MIME lo pide y algunos servidores
+	// rechazan o parten mal las líneas muy largas.
+	codificada := base64.StdEncoding.EncodeToString(imagen)
+	for i := 0; i < len(codificada); i += 76 {
+		fin := i + 76
+		if fin > len(codificada) {
+			fin = len(codificada)
+		}
+		b.WriteString(codificada[i:fin] + "\r\n")
+	}
+
+	b.WriteString("--" + frontera + "--\r\n")
+
+	msg := &gmail.Message{
+		Raw: base64.URLEncoding.EncodeToString([]byte(b.String())),
+	}
+	_, err := s.svc.Users.Messages.Send("me", msg).Do()
+	return err
 }
 
 func (s *GmailService) sendMessage(to, subject, body string) error {
@@ -157,6 +212,104 @@ func (s *GmailService) SendWelcomeEmail(to, userName string) error {
 	`, userName)
 
 	return s.sendMessage(to, subject, body)
+}
+
+// SendEventPaymentEmail confirma un pago aprobado y entrega el acceso.
+//
+// Lleva el código de acceso dibujado como QR dentro del propio correo. Es lo
+// que hace cualquier venta de entradas —del avión al concierto— y evita que
+// quien pagó dependa de abrir la app para entrar. El QR no es una credencial
+// eterna: el check-in marca la asistencia, así que reutilizarlo no cuela dos
+// veces por la puerta.
+//
+// En un evento virtual no hay QR: lo que se entrega es el enlace de la sesión.
+func (s *GmailService) SendEventPaymentEmail(datos domain.CorreoPago) error {
+	saludo := "Hola"
+	if datos.Nombre != "" {
+		saludo = fmt.Sprintf("Hola, %s", datos.Nombre)
+	}
+
+	moneda := datos.Moneda
+	if moneda == "" {
+		moneda = "COP"
+	}
+
+	detallePago := fmt.Sprintf(`
+		<table style="border-collapse: collapse; margin: 8px 0 18px;">
+			<tr><td style="padding: 4px 16px 4px 0; color: #555;">Evento</td><td style="padding: 4px 0;"><strong>%s</strong></td></tr>
+			<tr><td style="padding: 4px 16px 4px 0; color: #555;">Fecha del evento</td><td style="padding: 4px 0;">%s</td></tr>
+			<tr><td style="padding: 4px 16px 4px 0; color: #555;">Importe pagado</td><td style="padding: 4px 0;"><strong>%s %s</strong></td></tr>
+			<tr><td style="padding: 4px 16px 4px 0; color: #555;">Referencia</td><td style="padding: 4px 0;">%s</td></tr>
+			<tr><td style="padding: 4px 16px 4px 0; color: #555;">Fecha del pago</td><td style="padding: 4px 0;">%s</td></tr>
+		</table>
+	`, datos.Evento, datos.Fecha, formatearImporte(datos.Importe), moneda, datos.Referencia, datos.PagadoEl)
+
+	// Evento virtual: no hay puerta que cruzar, así que se entrega el enlace.
+	if datos.EsVirtual || datos.QRData == "" {
+		acceso := `<p>Tu inscripción quedó confirmada. El acceso está en la app, en <strong>Mi credencial</strong>.</p>`
+		if datos.EsVirtual && datos.EnlaceLugar != "" {
+			acceso = fmt.Sprintf(`
+				<p>Es una <strong>masterclass virtual en vivo</strong>. Entra desde aquí el día de la sesión:</p>
+				<a href="%s" style="display: inline-block; padding: 12px 24px; background-color: #162540; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold;">Entrar a la sesión</a>
+				<br><br>
+				<p style="word-break: break-all; color: #555;">%s</p>
+			`, datos.EnlaceLugar, datos.EnlaceLugar)
+		}
+		return s.sendMessage(datos.Para, fmt.Sprintf("Pago confirmado: %s", datos.Evento),
+			cuerpoPago(saludo, detallePago, acceso))
+	}
+
+	png, err := qrcode.Encode(datos.QRData, qrcode.Medium, 320)
+	if err != nil {
+		// Sin QR el correo sigue valiendo: lleva la constancia del pago y remite
+		// a la app. Vale más eso que no mandar nada porque falló el dibujo.
+		acceso := `<p>Tu código de acceso está en la app, en <strong>Mi credencial</strong>. Preséntalo en la entrada.</p>`
+		return s.sendMessage(datos.Para, fmt.Sprintf("Pago confirmado: %s", datos.Evento),
+			cuerpoPago(saludo, detallePago, acceso))
+	}
+
+	const cid = "acceso-qr"
+	acceso := fmt.Sprintf(`
+		<p><strong>Este es tu código de acceso.</strong> Preséntalo en la entrada del evento:</p>
+		<img src="cid:%s" alt="Código de acceso" width="320" height="320" style="display: block; margin: 12px 0;">
+		<p style="color: #777; font-size: 12px;">Si no ves la imagen, el mismo código está en la app, en <strong>Mi credencial</strong>.</p>
+	`, cid)
+
+	return s.sendMessageConImagen(datos.Para, fmt.Sprintf("Pago confirmado: %s", datos.Evento),
+		cuerpoPago(saludo, detallePago, acceso), cid, png)
+}
+
+func cuerpoPago(saludo, detallePago, acceso string) string {
+	return fmt.Sprintf(`
+		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+			<h2 style="color: #162540;">Pago confirmado</h2>
+			<p>%s,</p>
+			<p>Recibimos tu pago y tu inscripción quedó confirmada.</p>
+			%s
+			%s
+			<hr style="border: none; border-top: 1px solid #eee;">
+			<p style="font-size: 12px; color: #777;">Legacy Network - Conectando líderes.</p>
+		</div>
+	`, saludo, detallePago, acceso)
+}
+
+// formatearImporte escribe el importe con separador de miles y sin decimales
+// cuando no los tiene, que es como se escriben los pesos.
+func formatearImporte(v float64) string {
+	entero := int64(v)
+	if v != float64(entero) {
+		return fmt.Sprintf("%.2f", v)
+	}
+
+	s := fmt.Sprintf("%d", entero)
+	var out []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, '.')
+		}
+		out = append(out, c)
+	}
+	return string(out)
 }
 
 // SendEventRegistrationEmail confirma la inscripción a un evento.

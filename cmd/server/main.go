@@ -197,7 +197,10 @@ func main() {
 	transactionRepo := postgres.NewTransactionRepository(dbPool)
 	// eventRepo entra aqui para que un pago aprobado confirme la inscripcion del
 	// evento; sin el, la inscripcion se quedaria en pending_payment para siempre.
-	paymentService := services.NewPaymentService(transactionRepo, credibancoClient, eventRepo)
+	paymentService := services.ConCorreoDePago(
+		services.NewPaymentService(transactionRepo, credibancoClient, eventRepo),
+		userRepo, emailService, cryptoService,
+	)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 
 	forumRepo := postgres.NewForumRepository(dbPool)

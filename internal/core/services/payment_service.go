@@ -18,6 +18,14 @@ type paymentService struct {
 	txRepo    ports.TransactionRepository
 	gateway   ports.PaymentGateway
 	eventRepo ports.EventRepository
+
+	// Piezas del correo de pago aprobado. Las tres pueden ser nil: sin ellas el
+	// cobro se verifica y la inscripción se confirma igual, y solo se omite el
+	// correo. Se inyectan con ConCorreoDePago para no romper las llamadas
+	// existentes ni los tests, que no lo necesitan.
+	users  ports.UserRepository
+	email  ports.EmailService
+	crypto ports.CryptoService
 }
 
 // NewPaymentService recibe eventRepo para poder confirmar la inscripción cuando
@@ -288,9 +296,23 @@ func (s *paymentService) confirmarInscripcionSiProcede(ctx context.Context, tx *
 		return nil
 	}
 
+	// Se mira el estado ANTES de confirmar para saber si esta verificación es la
+	// que cambia las cosas. `ConfirmEventRegistration` es idempotente y devuelve
+	// una fila afectada aunque ya estuviera confirmada, así que sin esto el
+	// correo saldría otra vez en cada verificación —y la app verifica al volver
+	// de la pasarela, y el webhook también—.
+	yaEstabaConfirmada := false
+	if previa, errPrevia := s.eventRepo.GetRegistrationByUserAndEvent(ctx, tx.UserID.String(), tx.ReferenceID.String()); errPrevia == nil && previa != nil {
+		yaEstabaConfirmada = previa.RegistrationStatus == domain.RegistrationConfirmed
+	}
+
 	err := s.eventRepo.ConfirmEventRegistration(ctx, tx.UserID.String(), tx.ReferenceID.String())
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return fmt.Errorf("payment approved but registration could not be confirmed: %w", err)
+	}
+
+	if err == nil && !yaEstabaConfirmada {
+		s.enviarCorreoDePago(tx)
 	}
 	// ErrNotFound significa que se pagó sin inscripción previa. No se inventa
 	// una aquí: no hay forma de saber qué talleres eligió ni con qué datos, y

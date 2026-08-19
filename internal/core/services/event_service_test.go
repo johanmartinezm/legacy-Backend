@@ -31,6 +31,9 @@ func (m *MockEventRepository) GetRegistrationsByEvent(ctx context.Context, eID s
 
 func (m *MockEventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) { return nil, nil }
 func (m *MockEventRepository) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
+	if m.GetEventByIDFunc == nil {
+		return nil, domain.ErrNotFound
+	}
 	return m.GetEventByIDFunc(ctx, id)
 }
 func (m *MockEventRepository) GetWorkshopsByEventID(ctx context.Context, id string) ([]domain.Workshop, error) {
@@ -54,7 +57,17 @@ func (m *MockEventRepository) CreateRegistration(ctx context.Context, r *domain.
 func (m *MockEventRepository) AddRegistrationWorkshops(ctx context.Context, id string, wIDs []string) error {
 	return m.AddRegistrationWorkshopsFunc(ctx, id, wIDs)
 }
+// Sin gancho fijado devuelve "no hay inscripcion" en vez de reventar.
+//
+// Antes llamaba al campo a secas y cualquier test que no lo fijara moria con un
+// nil pointer en cuanto el codigo bajo prueba consultara la inscripcion —le paso
+// al webhook el 2026-08-18, cuando el servicio de pagos empezo a mirar el estado
+// previo para no repetir el correo—. Un mock compartido que revienta por un
+// gancho sin fijar es una trampa para el siguiente que escriba un test.
 func (m *MockEventRepository) GetRegistrationByUserAndEvent(ctx context.Context, uID, eID string) (*domain.Registration, error) {
+	if m.GetRegistrationByUserAndEventFunc == nil {
+		return nil, nil
+	}
 	return m.GetRegistrationByUserAndEventFunc(ctx, uID, eID)
 }
 func (m *MockEventRepository) CreateWorkshopRating(ctx context.Context, r *domain.WorkshopRating) error {
