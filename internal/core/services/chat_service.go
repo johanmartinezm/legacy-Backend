@@ -32,7 +32,11 @@ func NewChatService(repo ports.ChatRepository, userRepo ports.UserRepository, bl
 // errBloqueado es el mismo mensaje para las dos direcciones del bloqueo, a
 // propósito: si dijera "te han bloqueado" estaría revelando una decisión de la
 // otra persona, y quien busca acosar sabría que debe cambiar de cuenta.
-var errBloqueado = errors.New("no es posible contactar con esta persona")
+//
+// Se mudó a domain el 2026-08-18 para que el handler pueda reconocerlo y
+// responder 403 en vez de 500. Aquí queda el nombre corto, que es el que usan
+// los tres sitios que lo devuelven.
+var errBloqueado = domain.ErrBloqueado
 
 func (s *ChatService) SendInvite(ctx context.Context, requesterID, receiverID string) error {
 	if requesterID == receiverID {
@@ -167,11 +171,11 @@ func (s *ChatService) SendMessage(ctx context.Context, senderID, connectionID, c
 	}
 
 	if conn.Status != domain.StatusAccepted {
-		return nil, errors.New("cannot send messages to an unaccepted connection")
+		return nil, domain.ErrConexionNoAceptada
 	}
 
 	if conn.RequesterID != senderID && conn.ReceiverID != senderID {
-		return nil, errors.New("unauthorized to send messages to this connection")
+		return nil, domain.ErrNoEsDeLaConversacion
 	}
 
 	// El guarda va aquí y no solo en la lista de conversaciones: quien tenga la

@@ -35,3 +35,22 @@ var (
 	// con contraseña. Su cuenta no tiene ninguna.
 	ErrCuentaSocial = errors.New("account uses social login")
 )
+
+// Motivos por los que no se puede escribir en una conversación.
+//
+// Los dos son culpa de quien pide, no del servidor: hasta el 2026-08-18 salían
+// como **500**, que además de mentir sobre de quién es el problema hacía que
+// cualquier panel de errores los contara como caídas del backend.
+var (
+	// ErrConexionNoAceptada es escribir en una invitación que la otra persona
+	// todavía no ha aceptado.
+	ErrConexionNoAceptada = errors.New("cannot send messages to an unaccepted connection")
+
+	// ErrNoEsDeLaConversacion es escribir en una conversación ajena.
+	ErrNoEsDeLaConversacion = errors.New("unauthorized to send messages to this connection")
+
+	// ErrBloqueado cubre las dos direcciones del bloqueo con el mismo mensaje, a
+	// propósito: decir "te han bloqueado" revelaría una decisión de la otra
+	// persona, y quien busca acosar sabría que debe cambiar de cuenta.
+	ErrBloqueado = errors.New("no es posible contactar con esta persona")
+)

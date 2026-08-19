@@ -1,9 +1,11 @@
 package http
 
 import (
+	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
 	"applegacy/backend/internal/infrastructure/websocket"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -119,7 +121,22 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	msg, err := h.chatService.SendMessage(r.Context(), userID, req.ConnectionID, req.Content)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Escribir en una invitación sin aceptar, o en una conversación ajena,
+		// es culpa de quien pide y no del servidor. Hasta el 2026-08-18 los dos
+		// salían como 500: además de mentir sobre de quién era el problema,
+		// cualquier panel de errores los contaba como caídas del backend.
+		switch {
+		case errors.Is(err, domain.ErrConexionNoAceptada):
+			http.Error(w, "la conversación todavía no está aceptada", http.StatusForbidden)
+		case errors.Is(err, domain.ErrNoEsDeLaConversacion):
+			http.Error(w, "no participas en esta conversación", http.StatusForbidden)
+		case errors.Is(err, domain.ErrBloqueado):
+			// El mensaje viene del dominio y es deliberadamente ambiguo: no debe
+			// dejar claro cuál de las dos personas bloqueó a la otra.
+			http.Error(w, err.Error(), http.StatusForbidden)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

@@ -4,6 +4,41 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: Dos errores del chat dejan de salir como 500
+
+Salieron al ejecutar F14 y F15 del plan de pruebas.
+
+- **El problema:** escribir en una conversación que la otra persona todavía no ha aceptado, o a alguien
+  a quien se bloqueó, devolvía **500**. El servicio explicaba el motivo y el handler lo convertía en
+  error de servidor con un `http.Error(..., StatusInternalServerError)` que atrapaba todo.
+- **No es solo cosmético.** Un 500 dice que el backend se rompió cuando el problema es de quien pide, y
+  cualquier panel de errores cuenta esas respuestas como caídas. Además la app no puede distinguir
+  «no puedes escribir aquí» de «el servidor falló, reintenta».
+- **Alcance:**
+  - `internal/core/domain/errors.go` — `ErrConexionNoAceptada`, `ErrNoEsDeLaConversacion` y
+    `ErrBloqueado`.
+  - `internal/core/services/chat_service.go` — usa los del dominio; `errBloqueado` pasa a ser un alias.
+  - `internal/handler/http/chat_handler.go` — los distingue y responde **403**.
+- **Es el tercer caso del mismo patrón en el día**, tras el rol `junta` y el inicio de sesión: el
+  servicio distingue la causa y el controlador la aplana en la última línea. Tres módulos distintos.
+- 🔴 **El mensaje del bloqueo sigue siendo el mismo en las dos direcciones.** Comprobado enviando desde
+  las dos cuentas: las dos reciben `403 no es posible contactar con esta persona`, byte a byte. Decir
+  «te han bloqueado» revelaría una decisión de la otra persona, y quien busca acosar sabría que debe
+  cambiar de cuenta.
+- **Los errores viven en `domain`**, como los del inicio de sesión, para que el handler no tenga que
+  importar el paquete de servicios.
+- **Verificado:** `go build`, `go vet` y la suite en verde salvo el fallo conocido de
+  `postgres/test_update_test.go`. Contra la base local, con dos cuentas reales: 403 en los tres casos.
+- **Criterios de QA:**
+  1. **Invitar a alguien y escribirle antes de que acepte:** la app dice que la conversación todavía no
+     está aceptada, no un error de servidor.
+  2. **Bloquear a un contacto e intentar escribirle:** 403 con el mensaje ambiguo.
+  3. **Que la persona bloqueada intente escribir:** recibe **exactamente el mismo** mensaje.
+  4. **Aceptar la invitación y escribir:** funciona con normalidad.
+  5. **Desbloquear y volver a escribir:** funciona.
+
+---
+
 ### [2026-08-18]: El inicio de sesión dice qué falta, sin delatar quién existe
 
 - **El problema:** quien no había visto el correo de verificación recibía **«Credenciales inválidas»**,
