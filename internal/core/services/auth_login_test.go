@@ -96,6 +96,26 @@ func TestLogin_CuentaVerificadaEntra(t *testing.T) {
 	}
 }
 
+// 🔴 Reenviar la verificación tampoco puede servir para averiguar qué correos
+// están registrados.
+//
+// Hasta el 2026-08-18 devolvía "user not found" —un 400— para una cuenta
+// inexistente y 200 para una real: bastaba mirar el código de respuesta.
+func TestReenviarVerificacion_NoRevelaSiLaCuentaExiste(t *testing.T) {
+	sinCuenta := servicioLogin(t, nil)
+	errSinCuenta := sinCuenta.ResendVerificationEmail(context.Background(), "quien@sea.test")
+
+	yaVerificada := servicioLogin(t, usuarioCon(t, "LaBuena123", true))
+	errVerificada := yaVerificada.ResendVerificationEmail(context.Background(), "quien@sea.test")
+
+	if errSinCuenta != nil {
+		t.Errorf("cuenta inexistente: no debe devolver error y devolvio %v", errSinCuenta)
+	}
+	if errVerificada != nil {
+		t.Errorf("cuenta ya verificada: no debe devolver error y devolvio %v", errVerificada)
+	}
+}
+
 // Quien se registró con Google o Apple no tiene contraseña. Decírselo no filtra
 // nada que no sepa ya al pulsar el botón de su proveedor.
 func TestLogin_CuentaSocialLoDice(t *testing.T) {

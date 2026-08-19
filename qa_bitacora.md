@@ -4,6 +4,38 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: Reenviar la verificación deja de delatar qué cuentas existen
+
+Salió al ejecutar F5.7 del plan de pruebas.
+
+- **El problema:** `POST /resend-verification` respondía **200** con una cuenta real y **400 "user not
+  found"** con una inventada. Bastaba mirar el código de respuesta para ir comprobando direcciones y
+  averiguar quién está registrado en la plataforma.
+- **La regla ya estaba escrita tres funciones más arriba.** `RequestPasswordReset`, en el mismo
+  archivo, lleva el comentario «for security, don't reveal if user exists» y devuelve `nil` siempre.
+  Aquí se había decidido lo contrario, y el comentario del handler lo justificaba: *"since it's a
+  specific action on login failure, we can return the error"*.
+- **Alcance:**
+  - `internal/core/services/auth_service.go` — devuelve `nil` cuando la cuenta no existe o ya está
+    verificada.
+  - `internal/handler/http/user_handler.go` — a ese punto ya solo llegan fallos internos.
+  - `internal/core/services/auth_login_test.go` — una prueba más.
+- **Los tres casos son ahora indistinguibles**, comprobado contra la base local: cuenta sin verificar,
+  cuenta inexistente y cuenta ya verificada devuelven la misma respuesta byte a byte.
+- **Los errores de verdad sí se devuelven**, ahora como 500 y con el detalle solo en el log: no poder
+  guardar el token no dice nada sobre quién está registrado.
+- **Es la cuarta fuga de este tipo cerrada hoy**, tras el inicio de sesión —correo sin verificar— y las
+  dos direcciones del bloqueo en el chat. Conviene revisar cualquier endpoint nuevo que reciba un
+  correo con esta pregunta: *¿la respuesta cambia según si esa cuenta existe?*
+- **Verificado:** `go build`, `go vet` y la suite en verde salvo el fallo conocido de `postgres`.
+- **Criterios de QA:**
+  1. **Pedir reenvío con un correo registrado sin verificar:** responde correctamente y llega el correo.
+  2. **Con un correo que no existe:** **la misma respuesta**, y no llega ningún correo.
+  3. **Con una cuenta ya verificada:** la misma respuesta, y no llega ningún correo.
+  4. **Comparar los tres códigos de estado y los tres cuerpos:** idénticos.
+
+---
+
 ### [2026-08-18]: Dos errores del chat dejan de salir como 500
 
 Salieron al ejecutar F14 y F15 del plan de pruebas.

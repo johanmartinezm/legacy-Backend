@@ -515,14 +515,26 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
+// ResendVerificationEmail vuelve a mandar el correo de verificación.
+//
+// 🔴 **No distingue "esa cuenta no existe" ni "ya está verificada" de un reenvío
+// correcto.** Devolver un error en esos dos casos convertía el endpoint en un
+// comprobador de qué correos están registrados: cualquiera podía ir probando
+// direcciones y leer la respuesta. Se detectó el 2026-08-18 ejecutando F5.7.
+//
+// Es el mismo criterio que ya seguía RequestPasswordReset aquí al lado, y el que
+// se aplicó al inicio de sesión ese mismo día.
+//
+// Los errores de verdad —no poder guardar el token— sí se devuelven: no dicen
+// nada sobre quién está registrado.
 func (s *AuthService) ResendVerificationEmail(ctx context.Context, email string) error {
 	user, err := s.repo.FindByEmailBlindIndex(ctx, s.crypto.BlindIndex(email))
 	if err != nil || user == nil {
-		return errors.New("user not found")
+		return nil
 	}
 
 	if user.EmailVerified {
-		return errors.New("email already verified")
+		return nil
 	}
 
 	b := make([]byte, 32)

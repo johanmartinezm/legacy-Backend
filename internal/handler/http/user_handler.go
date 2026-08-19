@@ -420,9 +420,11 @@ func (h *UserHandler) ResendVerificationEmail(w http.ResponseWriter, r *http.Req
 	}
 
 	if err := h.authService.ResendVerificationEmail(r.Context(), req.Email); err != nil {
-		// Log internal errors, but for user feedback it's usually better not to confirm if email exists.
-		// However, since it's a specific action on login failure, we can return the error.
-		h.respondWithError(w, http.StatusBadRequest, err.Error())
+		// Aquí ya solo llegan fallos internos: el servicio devuelve nil cuando la
+		// cuenta no existe o ya está verificada, precisamente para que la
+		// respuesta no delate cuáles están registradas.
+		log.Printf("ResendVerificationEmail: %v", err)
+		h.respondWithError(w, http.StatusInternalServerError, "No se pudo reenviar el correo. Inténtalo de nuevo.")
 		return
 	}
 
