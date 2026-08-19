@@ -4,6 +4,55 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: El inicio de sesión dice qué falta, sin delatar quién existe
+
+- **El problema:** quien no había visto el correo de verificación recibía **«Credenciales inválidas»**,
+  el mismo texto que si se hubiera equivocado de contraseña. No tenía forma de saber que su cuenta
+  existía, su contraseña estaba bien, y solo faltaba abrir un correo.
+- **La causa no era donde parecía.** El servicio **ya distinguía** el caso y devolvía
+  `email_not_verified`; el handler lo aplanaba en la última línea con un `if err != nil` que colapsaba
+  todo en un único mensaje. La información viajaba hasta ahí y se tiraba.
+- **Y la app ya tenía el flujo entero montado:** `login_screen.dart` compara con `email_not_verified`
+  y abre un diálogo que ofrece reenviar la verificación, con `resendVerificationEmail` ya escrito.
+  **Ese diálogo no se había disparado nunca**, porque el mensaje que llegaba era otro.
+- **Alcance:**
+  - `internal/core/domain/errors.go` — `ErrCredencialesInvalidas`, `ErrCorreoSinVerificar`,
+    `ErrCuentaSocial`.
+  - `internal/core/services/auth_service.go` — **reordena** la comprobación y usa los errores.
+  - `internal/handler/http/user_handler.go` — los distingue; nueva `respondWithErrorCode`.
+  - `internal/core/services/auth_login_test.go` — nuevo. Cuatro pruebas.
+  - `App-Movil/lib/data/services/auth_service.dart` — propaga el código y arregla el envoltorio doble.
+- 🔴 **La contraseña se comprueba AHORA ANTES que la verificación del correo, y el orden es la
+  seguridad del cambio.** Decir «te falta verificar» confirma que esa cuenta existe. Respondiéndolo
+  antes de pedir la contraseña, cualquiera puede probar correos y averiguar quién está registrado.
+  Comprobando primero la contraseña, solo se entera quien ya demostró ser el dueño.
+- **Comprobado que la fuga sigue cerrada:** contraseña incorrecta y correo inexistente devuelven la
+  **misma** respuesta byte a byte, `401 {"message":"Credenciales inválidas"}`. Hay una prueba que lo
+  fija, escrita para que rompa si alguien vuelve a mover ese orden.
+- **Los errores viven en `domain`, no en `services`.** El handler necesita distinguirlos y no debe
+  importar el paquete de servicios: la dirección de las dependencias va de fuera hacia dentro.
+- **La respuesta lleva `code` además de `message`.** El mensaje es para leerlo y puede cambiar de
+  redacción; el código es para que la app decida qué hacer sin comparar textos en español.
+- **Se recupera un tercer caso** que también estaba aplanado: quien se registró con Google o Apple y
+  prueba a entrar con contraseña ahora recibe «Esta cuenta se creó con Google o Apple».
+- **En la app se arregló de paso un envoltorio doble** que convertía cualquier error en «Error de
+  conexión: Exception: …». Es el mismo prefijo que aparecía en la captura del iPhone de esta mañana.
+- **Verificado:** `go vet` y toda la suite en verde salvo el fallo conocido de
+  `postgres/test_update_test.go`, ajeno a esto. **145 tests** en la app. Contra el backend local:
+  contraseña correcta y cuenta sin verificar da **403** con el código; contraseña mala y correo
+  inexistente dan el mismo **401**.
+- **Criterios de QA:**
+  1. **Registrarse y, sin verificar, intentar entrar con la contraseña correcta:** aparece el diálogo
+     «Correo no verificado» ofreciendo reenviar. **Ese diálogo nunca se había visto.**
+  2. **Aceptar el reenvío:** llega un correo de verificación nuevo.
+  3. **Verificar y volver a entrar:** entra.
+  4. **Contraseña incorrecta:** dice «Credenciales inválidas», sin pistas.
+  5. **Correo que no existe:** exactamente el mismo mensaje que el punto 4.
+  6. **Cuenta creada con Google, entrando con contraseña:** dice que entre con ese botón.
+  7. **Sin conexión:** «No hay conexión…», no un `Exception:` anidado.
+
+---
+
 ### [2026-08-18]: El pago aprobado manda su confirmación, con el QR dentro
 
 - **Lo que había:** nada. Se verificó primero, y `VerifyPayment` confirmaba la inscripción y ahí

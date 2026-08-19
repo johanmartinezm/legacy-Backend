@@ -143,6 +143,26 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.authService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
+		// Hasta el 2026-08-18 todo error caía en "Credenciales inválidas". El
+		// servicio ya distinguía los casos y el handler los aplanaba en la
+		// última línea: quien no había visto el correo de verificación recibía
+		// el mismo texto que si se hubiera equivocado de contraseña, y no tenía
+		// forma de saber qué le faltaba.
+		//
+		// Estos dos mensajes solo salen tras acertar la contraseña, así que no
+		// revelan a un tercero si una cuenta existe.
+		switch {
+		case errors.Is(err, domain.ErrCorreoSinVerificar):
+			h.respondWithErrorCode(w, http.StatusForbidden,
+				"Tu cuenta todavía no está verificada. Revisa tu correo —incluida la carpeta de spam— y confirma tu dirección.",
+				"email_not_verified")
+			return
+		case errors.Is(err, domain.ErrCuentaSocial):
+			h.respondWithErrorCode(w, http.StatusForbidden,
+				"Esta cuenta se creó con Google o Apple. Entra con ese mismo botón.",
+				"social_account")
+			return
+		}
 		h.respondWithError(w, http.StatusUnauthorized, "Credenciales inválidas")
 		return
 	}
@@ -357,6 +377,17 @@ func (h *UserHandler) respondWithError(w http.ResponseWriter, code int, message 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"message": message})
+}
+
+// respondWithErrorCode añade un `code` estable junto al mensaje.
+//
+// El mensaje es para leerlo y puede cambiar de redacción; el código es para que
+// la app decida qué hacer —ofrecer reenviar la verificación, o llevar al botón
+// de Google— sin comparar textos en español, que se rompen al primer retoque.
+func (h *UserHandler) respondWithErrorCode(w http.ResponseWriter, status int, message, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"message": message, "code": code})
 }
 
 func (h *UserHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {

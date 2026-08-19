@@ -320,26 +320,35 @@ func (s *AuthService) SocialLogin(ctx context.Context, provider, idToken string)
 	return tokenString, user, nil
 }
 
+// Los motivos por los que un inicio de sesión no prospera están en el dominio
+// (domain.ErrCredencialesInvalidas y compañía), para que el handler pueda
+// distinguirlos sin importar este paquete.
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, error) {
 	// Strictly for regular users (via Flutter app)
 	blindIndex := s.crypto.BlindIndex(email)
 	user, err := s.repo.FindByEmailBlindIndex(ctx, blindIndex)
 	if err != nil || user == nil {
-		return "", errors.New("invalid credentials")
+		return "", domain.ErrCredencialesInvalidas
 	}
 
 	if user.PasswordHash == "" {
-		return "", errors.New("account uses social login, please sign in with Google or Apple")
+		return "", domain.ErrCuentaSocial
 	}
 
-	// Verify email before login
-	if !user.EmailVerified {
-		return "", errors.New("email_not_verified")
-	}
-
-	// Verify password for regular user
+	// 🔴 La contraseña se comprueba ANTES que la verificación del correo, y el
+	// orden importa: hasta el 2026-08-18 era al revés.
+	//
+	// Decirle a alguien "te falta verificar el correo" confirma que esa cuenta
+	// existe. Si eso se responde antes de pedir la contraseña, cualquiera puede
+	// ir probando correos y averiguar quién está registrado. Comprobando primero
+	// la contraseña, solo se entera quien ya demostró ser el dueño, y ahí
+	// explicarle qué le falta no filtra nada.
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return "", errors.New("invalid credentials")
+		return "", domain.ErrCredencialesInvalidas
+	}
+
+	if !user.EmailVerified {
+		return "", domain.ErrCorreoSinVerificar
 	}
 
 	// Generate JWT with role claim
