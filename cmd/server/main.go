@@ -110,7 +110,8 @@ func main() {
 	notificationHandler := handler.NewNotificationHandler(notificationService)
 
 	eventRepo := postgres.NewEventRepository(dbPool)
-	eventService := services.NewEventService(eventRepo, cryptoService)
+	eventService := services.NewEventService(eventRepo, cryptoService).
+		ConCorreoDeInscripcion(userRepo, emailService)
 	eventHandler := handler.NewEventHandler(eventService, notificationService)
 
 	// El repositorio de bloqueos lo usan dos servicios: el suyo propio y el de

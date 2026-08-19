@@ -4,6 +4,137 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: Los eventos virtuales dejan de dar QR, y la inscripción avisa por correo
+
+Puntos 2.3 y 2.2 de `reports/20260818_plan_ajustes.html`. Van juntos porque el segundo depende del
+primero: sin saber si un evento es virtual no había enlace que meter en el correo.
+
+- **El problema:** `events.events` solo tenía `location`, un texto libre, así que **se emitía QR para
+  toda inscripción confirmada**, también para una masterclass virtual, donde no abre ninguna puerta.
+  Y **inscribirse no enviaba ningún correo**: el cliente preguntó literalmente "¿o dónde me da el link
+  de ingreso?".
+- **Alcance:**
+  - `scripts/20260818_modalidad_y_enlace_evento.sql` — nuevo. `is_virtual` y `access_url`.
+  - `internal/core/domain/event.go` — los dos campos, `EventIsVirtual`/`AccessURL` en la inscripción
+    y el tipo `CorreoInscripcion`.
+  - `internal/adapter/storage/postgres/event_repository.go` — cuatro consultas.
+  - `internal/core/services/event_service.go` — regla de qué se entrega según modalidad; el servicio
+    acepta repositorio de usuarios y servicio de correo.
+  - `internal/core/services/event_correo.go` — nuevo. Arma y manda la confirmación.
+  - `internal/core/ports/interfaces.go` e `internal/infrastructure/email/gmail_service.go` —
+    `SendEventRegistrationEmail`.
+  - `cmd/server/main.go` — el servicio de eventos recibe las dos dependencias. **No hay rutas nuevas.**
+- **`is_virtual` booleano en vez de un enum de modalidad.** Hoy solo hay dos casos y son excluyentes.
+  Si aparece el híbrido, un booleano se migra a enum sin perder datos; al revés no.
+- **`DEFAULT false` deja los eventos existentes como presenciales**, que es lo que son todos. La
+  migración no toca ninguna fila.
+- **La regla de qué se entrega vive en el servicio, no en la consulta**, para que esté escrita en un
+  solo sitio: pendiente de pago no recibe nada; virtual recibe enlace y no QR; presencial al revés.
+- **El QR se sigue generando también en los virtuales.** No cuesta nada y deja el caso de un evento
+  que cambia de modalidad resuelto solo: si un virtual pasa a presencial, su credencial ya existe.
+- **El correo nunca bloquea ni falla la inscripción**, igual que los avisos push: sale en su propia
+  goroutine, con contexto propio de 30 s —el de la petición HTTP se cancela al responder— y un fallo
+  solo se registra en el log. El cupo ya está reservado en la base.
+- **El correo cambia con la modalidad:** el virtual lleva el botón con el enlace; el presencial remite
+  a "Mi credencial" en la app. **El QR nunca viaja por correo**: es lo que da derecho a entrar y un
+  buzón reenviado lo repartiría.
+- **Un virtual sin enlace cargado todavía no deja el correo mudo:** dice que el enlace llegará antes
+  de la sesión, en vez de omitir el bloque.
+- **El destinatario sale del contacto de la inscripción y, si viene vacío, del perfil.** Los dos están
+  cifrados; se descifran aquí.
+- **`ConCorreoDeInscripcion` va aparte del constructor** para no romper las llamadas existentes ni
+  obligar a los tests a pasar dos dependencias que no usan.
+- ⚠️ **El correo del flujo de pago no está.** Una inscripción de pago nace pendiente y se confirma en
+  `paymentService.VerifyPayment`; ahí falta la misma llamada. No se añadió porque la pasarela sigue
+  bloqueada y no se puede probar.
+- ⚠️ **La base local estaba once migraciones por detrás.** `levantar.ps1` solo las aplica en una base
+  vacía, así que faltaba desde `20260731`. Se aplicaron las trece en orden y **todas pasaron limpias**,
+  lo que confirma de paso que son reejecutables.
+- **Verificado:** `go build`, `go vet` y `go test ./internal/core/...` en verde, y el flujo probado
+  contra la base local con tres eventos de prueba:
+
+  | Evento | Modalidad | Estado | qrData | accessUrl |
+  |---|---|---|---|---|
+  | Legacy Summit QA | presencial | confirmed | `REG-…` | vacío |
+  | Masterclass Virtual QA | virtual | confirmed | vacío | el enlace |
+  | Masterclass Virtual QA de pago | virtual | pending_payment | vacío | vacío |
+
+- **Criterios de QA:**
+  1. **Aplicar la migración** y comprobar que `events.events` tiene `is_virtual` y `access_url`.
+  2. **Crear un evento virtual con enlace** desde el panel e inscribirse: la respuesta de
+     `GET /api/me/registrations` trae `accessUrl` y **`qrData` vacío**.
+  3. **Crear uno presencial** e inscribirse: trae `qrData` y **`accessUrl` vacío**.
+  4. **Inscribirse a uno de pago sin pagar:** ni `qrData` ni `accessUrl`.
+  5. **Los eventos anteriores a la migración** siguen comportándose como presenciales.
+  6. **Al inscribirse a un evento gratuito llega el correo**, con el enlace si es virtual y con la
+     remisión a "Mi credencial" si es presencial.
+  7. **Con el servicio de correo caído**, la inscripción se crea igual y el fallo solo aparece en el
+     log del servidor.
+  8. **Un evento virtual sin enlace cargado:** el correo dice que el enlace llegará antes de la sesión.
+
+---
+
+### [2026-08-18]: El perfil "miembro de junta" ya se puede registrar
+
+- **El problema:** el onboarding de la app ofrece tres perfiles y el tercero, "Quiero ser miembro de
+  junta o consejo", manda `role=junta`. El enum `core.user_role` solo tenía `familia`, `empresa` y
+  `profesional`, así que ese registro moría en el INSERT con
+  `invalid input value for enum core.user_role: "junta" (SQLSTATE 22P02)`. Visto en un iPhone el
+  2026-08-18 (`docs/ios/error_18-08-2026.jpeg`, en el repo de la app).
+- **Un tercio del onboarding no podía crear cuenta.** Las otras dos opciones sí funcionaban, que es
+  por lo que esto sobrevivió sin que nadie lo notara.
+- **Alcance:**
+  - `scripts/20260818_add_junta_user_role.sql` — nuevo. `ALTER TYPE core.user_role ADD VALUE`.
+  - `internal/core/domain/user.go` — `UserRoles`, `RoleDefault` e `IsValidRole`.
+  - `internal/handler/http/user_handler.go` — valida el rol en `Register` y en `performUpdate`;
+    `Register` deja de devolver `err.Error()`.
+  - **No hay rutas nuevas.**
+- **Se añade el valor en vez de mapear `junta` a `profesional`,** que era la alternativa barata y no
+  habría necesitado migración. La app ya trata `junta` como un perfil propio: el saludo de la home y
+  el texto del destacado semanal tienen su rama (`home_content_screen.dart`, líneas 40 y 299).
+  Mapearlo habría dejado esas dos ramas muertas sin que nada avisara.
+- **`profesional` se conserva** aunque no lo use ni la app ni el backend: el panel lo ofrece en el
+  desplegable y puede haber cuentas creadas con él. Quitarlo de un enum obliga a recrear el tipo.
+- **La validación cubre los dos caminos, no solo el registro.** `performUpdate` vuelca el JSON del
+  cliente sobre el usuario ya cargado, así que un `PUT /api/users/{id}` con un rol inventado llegaba
+  al mismo 22P02.
+- **`Register` ya no devuelve `err.Error()` al cliente.** Ese `500` con el texto crudo de pgx es lo
+  que le enseñó el SQLSTATE al usuario en la captura; ahora el detalle va al log del servidor y la
+  app recibe un mensaje genérico. El `409` de usuario ya existente se mantiene igual.
+- 🔒 **`performUpdate` deja de volcar el usuario entero en el log.** La línea `// Debug logging` con
+  `%+v` escribía en cada edición de perfil el `password_hash` de bcrypt, el correo cifrado y el
+  `email_blind_index` —el HMAC del que depende el inicio de sesión por correo, el mismo que hubo que
+  recalcular al rotar la `encryption_key`—. Se vio en el log al probar el criterio 6. Ahora solo
+  registra el id. Es anterior a este cambio, no una regresión suya. Revisados los demás `log.Printf`
+  del backend: no hay otro que vuelque un struct.
+- ⚠️ **La migración no se ha aplicado en ningún sitio todavía.** Docker no estaba levantado al hacer
+  el cambio, así que no se probó contra una base real. Hay que aplicarla en local y en producción
+  **antes** de desplegar el backend: si sale el binario nuevo sin la migración, `junta` sigue
+  fallando, solo que ahora con un 400 en vez del SQLSTATE.
+- ⚠️ **`ALTER TYPE ... ADD VALUE` no admite transacción** en PostgreSQL anterior a 12, y en 12+ el
+  valor nuevo no se puede usar en la misma transacción que lo crea. Aplicar con psql directamente,
+  sin envolver.
+- **Verificado:** `go build ./...`, `go vet ./...` y `go test ./internal/core/...` en verde.
+- **Criterios de QA:**
+  1. **Aplicar la migración** y comprobar el enum:
+     `select enumlabel from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='user_role'`
+     devuelve cuatro valores, con `junta` entre ellos.
+  2. **Registrarse desde la app** por "Quiero ser miembro de junta o consejo": la cuenta se crea y no
+     aparece ningún error de conexión.
+  3. **Iniciar sesión con esa cuenta:** la home saluda con "Su perfil de gobierno crece." y el
+     destacado semanal menciona la masterclass del consejero independiente.
+  4. **`POST /api/users/register` con `"role": "inventado"`** responde **400** con "Perfil de usuario
+     no válido", no 500 ni un texto de Postgres.
+  5. **`POST /api/users/register` sin `role`** sigue creando la cuenta como `familia`.
+  6. **`PUT /api/users/{id}` con un rol inventado** responde 400; con `junta`, 200.
+  7. **En el panel**, editar un usuario: el desplegable "Rol" ofrece "Miembro de junta o consejo" y
+     al guardar se conserva.
+  8. **Las cuentas ya existentes** (`familia`, `empresa`) siguen entrando y editándose sin cambios.
+  9. **Editar el perfil y mirar la ventana del servidor:** la traza dice `Updating user <id>` y nada
+     más. No debe aparecer `PasswordHash`, `EmailEncrypted` ni `EmailBlindIndex`.
+
+---
+
 ### [2026-08-14]: Un mensaje de chat ya avisa por push (y llega en vivo)
 
 - **El problema:** el chat era el único módulo que no notificaba nada. Crear un evento y publicar

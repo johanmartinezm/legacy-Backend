@@ -108,6 +108,11 @@ type EmailService interface {
 	SendContactoEmail(to, asunto, senderName, senderEmail, messageText string) error
 	SendWelcomeEmail(to, userName string) error
 	SendVerificationEmail(to, link string) error
+	// SendEventRegistrationEmail confirma una inscripción. Recibe una estructura
+	// y no siete parámetros sueltos porque el contenido cambia con la modalidad
+	// del evento: el virtual lleva enlace de acceso y el presencial remite a la
+	// credencial de la app.
+	SendEventRegistrationEmail(datos domain.CorreoInscripcion) error
 }
 
 // EmailVerificationRepository identifica a la persona por su id, que es lo que

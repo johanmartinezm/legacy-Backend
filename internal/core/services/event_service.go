@@ -18,10 +18,27 @@ type EventService struct {
 	// lo usa GetEventRegistrants, y así los tests que no tocan esa lista siguen
 	// construyendo el servicio con el repositorio a secas.
 	crypto ports.CryptoService
+	// users y email sirven el correo de confirmación de la inscripción. Como
+	// crypto, pueden ser nil: sin ellos el correo simplemente no sale y la
+	// inscripción funciona igual, así que los tests que no lo tocan siguen
+	// construyendo el servicio con el repositorio a secas.
+	users ports.UserRepository
+	email ports.EmailService
 }
 
 func NewEventService(repo ports.EventRepository, crypto ports.CryptoService) *EventService {
 	return &EventService{repo: repo, crypto: crypto}
+}
+
+// ConCorreoDeInscripcion habilita el correo de confirmación.
+//
+// Va aparte del constructor para no romper las llamadas existentes ni obligar a
+// los tests a pasar dos dependencias que no usan. Devuelve el servicio para
+// poder encadenarlo en main.go.
+func (s *EventService) ConCorreoDeInscripcion(users ports.UserRepository, email ports.EmailService) *EventService {
+	s.users = users
+	s.email = email
+	return s
 }
 
 func (s *EventService) ListCategories(ctx context.Context) ([]domain.EventCategory, error) {
@@ -218,7 +235,16 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		for _, w := range reg.Workshops {
 			workshopIDs = append(workshopIDs, w.ID)
 		}
-		return s.repo.AddRegistrationWorkshops(ctx, reg.ID, workshopIDs)
+		if err := s.repo.AddRegistrationWorkshops(ctx, reg.ID, workshopIDs); err != nil {
+			return err
+		}
+	}
+
+	// 6. Confirmación por correo. Solo si la inscripción ya da derecho a entrar:
+	// una pendiente de pago todavía no se confirma, y su correo llegaría cuando
+	// la pasarela apruebe el cobro. Nunca devuelve error ni bloquea.
+	if reg.RegistrationStatus == domain.RegistrationConfirmed {
+		s.enviarCorreoInscripcion(reg, event)
 	}
 
 	return nil
@@ -228,8 +254,12 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 //
 // Se devuelven también las inscripciones pendientes de pago: al usuario le sirve
 // ver que su cupo está reservado y que le falta pagar. Lo que no se le manda es
-// su QR —una credencial que no da derecho a entrar no debería salir del
-// servidor—, así que el cliente no tiene que acordarse de ocultarlo.
+// lo que da derecho a entrar —ni el QR ni el enlace de la sesión—, así que el
+// cliente no tiene que acordarse de ocultarlo.
+//
+// Cada modalidad recibe solo lo suyo: un QR en un evento virtual no sirve para
+// nada y un enlace en uno presencial tampoco. Se limpian aquí, en el servicio, y
+// no en la consulta, para que la regla esté escrita en un solo sitio.
 func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([]domain.UserRegistration, error) {
 	registrations, err := s.repo.GetRegistrationsByUser(ctx, userID)
 	if err != nil {
@@ -238,6 +268,13 @@ func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([
 	for i := range registrations {
 		if registrations[i].RegistrationStatus == domain.RegistrationPendingPayment {
 			registrations[i].QRData = ""
+			registrations[i].AccessURL = ""
+			continue
+		}
+		if registrations[i].EventIsVirtual {
+			registrations[i].QRData = ""
+		} else {
+			registrations[i].AccessURL = ""
 		}
 	}
 	return registrations, nil

@@ -1,6 +1,7 @@
 package email
 
 import (
+	"applegacy/backend/internal/core/domain"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -156,6 +157,58 @@ func (s *GmailService) SendWelcomeEmail(to, userName string) error {
 	`, userName)
 
 	return s.sendMessage(to, subject, body)
+}
+
+// SendEventRegistrationEmail confirma la inscripción a un evento.
+//
+// El bloque de acceso cambia con la modalidad: el virtual lleva el botón con el
+// enlace de la sesión —que es lo que el cliente echaba en falta—; el presencial
+// remite a "Mi credencial" en la app, donde está el QR. Nunca se manda el QR por
+// correo: es lo que da derecho a entrar y un buzón reenviado lo repartiría.
+func (s *GmailService) SendEventRegistrationEmail(datos domain.CorreoInscripcion) error {
+	saludo := "Hola"
+	if datos.Nombre != "" {
+		saludo = fmt.Sprintf("Hola, %s", datos.Nombre)
+	}
+
+	var acceso string
+	switch {
+	case datos.EsVirtual && datos.EnlaceLugar != "":
+		acceso = fmt.Sprintf(`
+			<p>Es una <strong>masterclass virtual en vivo</strong>. Entra desde aquí el día de la sesión:</p>
+			<a href="%s" style="display: inline-block; padding: 12px 24px; background-color: #162540; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold;">Entrar a la sesión</a>
+			<br><br>
+			<p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+			<p style="word-break: break-all; color: #555;">%s</p>
+		`, datos.EnlaceLugar, datos.EnlaceLugar)
+	case datos.EsVirtual:
+		// Virtual sin enlace cargado todavía en el panel. Se avisa en vez de
+		// dejar el correo sin decir cómo entrar.
+		acceso = `<p>Es una <strong>masterclass virtual en vivo</strong>. Te enviaremos el enlace de acceso antes de la sesión.</p>`
+	case datos.EnlaceLugar != "":
+		acceso = fmt.Sprintf(`
+			<p>Es un <strong>evento presencial</strong> en %s.</p>
+			<p>Tu código de acceso está en la app, en <strong>Mi credencial</strong>. Preséntalo en la entrada.</p>
+		`, datos.EnlaceLugar)
+	default:
+		acceso = `<p>Tu código de acceso está en la app, en <strong>Mi credencial</strong>. Preséntalo en la entrada.</p>`
+	}
+
+	subject := fmt.Sprintf("Inscripción confirmada: %s", datos.Evento)
+	body := fmt.Sprintf(`
+		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+			<h2 style="color: #162540;">Inscripción confirmada</h2>
+			<p>%s,</p>
+			<p>Tu inscripción a <strong>%s</strong> quedó confirmada.</p>
+			<p><strong>Fecha:</strong> %s</p>
+			<br>
+			%s
+			<hr style="border: none; border-top: 1px solid #eee;">
+			<p style="font-size: 12px; color: #777;">Legacy Network - Conectando líderes.</p>
+		</div>
+	`, saludo, datos.Evento, datos.Fecha, acceso)
+
+	return s.sendMessage(datos.Para, subject, body)
 }
 
 func (s *GmailService) SendVerificationEmail(to, verifyLink string) error {

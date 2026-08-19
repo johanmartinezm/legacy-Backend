@@ -34,6 +34,9 @@ func (c *correoDePrueba) SendAsesoriaEmail(to, senderName, senderEmail, category
 }
 func (c *correoDePrueba) SendWelcomeEmail(to, userName string) error  { return nil }
 func (c *correoDePrueba) SendVerificationEmail(to, link string) error { return nil }
+func (c *correoDePrueba) SendEventRegistrationEmail(datos domain.CorreoInscripcion) error {
+	return nil
+}
 
 func (c *correoDePrueba) SendContactoEmail(to, asunto, senderName, senderEmail, messageText string) error {
 	c.llamado = true

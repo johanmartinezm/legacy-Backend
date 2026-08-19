@@ -20,7 +20,15 @@ type Event struct {
 	Description    *string    `json:"description" db:"description"`
 	ImageUrl       *string    `json:"imageUrl" db:"image_url"`
 	Location       *string    `json:"location" db:"location"`
-	SpeakerMain    *string    `json:"speaker" db:"speaker_main"`
+	// IsVirtual decide qué recibe quien se inscribe: los presenciales dan QR de
+	// acceso; los virtuales, el enlace de la sesión. Añadido el 2026-08-18
+	// (scripts/20260818_modalidad_y_enlace_evento.sql); antes se emitía QR para
+	// todo, también para una masterclass virtual, donde no sirve de nada.
+	IsVirtual bool `json:"isVirtual" db:"is_virtual"`
+	// AccessURL es el enlace de la sesión. NULL en los presenciales, y **solo se
+	// entrega a inscripciones confirmadas**: verlo equivale a poder entrar.
+	AccessURL   *string `json:"accessUrl" db:"access_url"`
+	SpeakerMain *string `json:"speaker" db:"speaker_main"`
 	StartDate      time.Time  `json:"date" db:"start_date"`
 	EndDate        *time.Time `json:"end_date" db:"end_date"`
 	Price          float64    `json:"price" db:"price"`
@@ -93,18 +101,39 @@ func (r *Registration) IsPendingPayment() bool {
 // UserRegistration es una inscripción con los datos del evento que hacen falta
 // para pintarla en la credencial del usuario, sin obligar a pedir cada evento
 // por separado.
+// CorreoInscripcion es lo que necesita la plantilla del correo de confirmación.
+//
+// EnlaceLugar guarda dos cosas según EsVirtual: el enlace de la sesión o la
+// ubicación física. Van en el mismo campo porque la plantilla las pinta en el
+// mismo sitio y nunca coexisten; tener dos campos invitaría a rellenar el que no
+// toca. Puede ir vacío, y entonces la plantilla omite ese bloque.
+type CorreoInscripcion struct {
+	Para        string
+	Nombre      string
+	Evento      string
+	Fecha       string
+	EsVirtual   bool
+	EnlaceLugar string
+}
+
 type UserRegistration struct {
 	ID                  string     `json:"id"`
 	EventID             string     `json:"eventId"`
 	EventTitle          string     `json:"eventTitle"`
 	EventLocation       *string    `json:"eventLocation"`
+	EventIsVirtual      bool       `json:"eventIsVirtual"`
 	EventStartDate      time.Time  `json:"eventStartDate"`
 	EventEndDate        *time.Time `json:"eventEndDate"`
 	EventImageUrl       *string    `json:"eventImageUrl"`
 	PaymentStatus       string     `json:"paymentStatus"`
 	RegistrationStatus  string     `json:"registrationStatus"`
 	RegistrationDate    time.Time  `json:"registrationDate"`
-	QRData              string     `json:"qrData"`
+	// QRData va vacío en los virtuales y en las inscripciones sin confirmar.
+	QRData string `json:"qrData"`
+	// AccessURL es el enlace de la sesión virtual. Vacío en los presenciales y
+	// en cualquier inscripción sin confirmar: verlo equivale a poder entrar, así
+	// que sigue exactamente la misma regla que el QR.
+	AccessURL string `json:"accessUrl"`
 	TotalPaid           float64    `json:"totalPaid"`
 	AttendanceConfirmed bool       `json:"attendanceConfirmed"`
 }
