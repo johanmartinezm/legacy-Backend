@@ -444,6 +444,25 @@ curl -s -o /dev/null -w "%{http_code}\n" https://legacy.intelyclick.com/health  
 Un 200 en `/health` a través del dominio confirma las tres capas a la vez: HAProxy enruta, el
 contenedor responde y el certificado es válido.
 
+### ⚠️ No todas las rutas de raíz llegan al backend — comprobado el 2026-08-18
+
+`main.go` registra siete rutas fuera de `/api`, pero **HAProxy solo enruta cuatro**. Las otras tres
+las atiende el nginx del frontend, que responde **405** a un POST:
+
+| Ruta de raíz | A través del dominio |
+|---|---|
+| `/register`, `/login`, `/forgot-password`, `/reset-password` | llegan al backend |
+| `/verify-email`, `/resend-verification`, `/social-login` | **405 de nginx** |
+
+**Hoy no rompe nada** porque la app usa los alias bajo `/api` para esas tres
+(`/api/auth/social-login`, `/api/auth/resend-verification`, `/api/verify-email`), y esos sí llegan.
+Pero significa que **probar una de esas rutas por la raíz contra producción da un falso negativo**, y
+que registrar una ruta nueva fuera de `/api` no la hace pública: hay que tocar el `haproxy.cfg`, que
+vive en otro proyecto.
+
+Regla práctica: **cualquier ruta nueva va bajo `/api`**. Es la única familia que HAProxy enruta
+entera.
+
 ## Base de datos
 
 **Primera instalación.** `scripts/schema.sql` es un dump de `pg_dump` y **no es idempotente**
