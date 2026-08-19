@@ -225,3 +225,19 @@ type GroupService interface {
 	GetMembers(ctx context.Context, groupID string) ([]string, error)
 	ReplaceMembers(ctx context.Context, groupID string, userIDs []string) error
 }
+
+// CanalDeVideos consulta los videos publicados en un canal externo.
+//
+// La interfaz habla de "canal" y no de YouTube para que el servicio no dependa
+// del proveedor: lo que necesita es una lista de videos, y de dónde salen es
+// asunto del adaptador.
+type CanalDeVideos interface {
+	// VideosDelCanal devuelve las últimas subidas de un canal, de la más
+	// reciente a la más antigua. `handle` es el de la URL, con arroba.
+	VideosDelCanal(ctx context.Context, handle string, max int) ([]domain.VideoDeCanal, error)
+}
+
+// VideoService sirve los videos de los canales a la app.
+type VideoService interface {
+	ListarVideos(ctx context.Context) ([]domain.VideoDeCanal, error)
+}

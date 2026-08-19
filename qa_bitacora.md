@@ -4,6 +4,58 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-18]: Los videos de los canales de YouTube llegan a la app
+
+Punto 1.4 de `reports/20260818_plan_ajustes.html`. El cliente encontró **un solo video** en Contenido
+de Valor y pidió que salieran todos los de los canales de Legacy Network y LSO.
+
+- **El problema:** no existía ninguna integración con YouTube. Los "videos" eran las entradas que
+  alguien hubiera marcado con tipo `video` en WordPress o en el contenido propio, y había una.
+- **Alcance:**
+  - `internal/config/config.go` — sección `youtube` (clave, canales, tope por canal).
+  - `internal/core/domain/video_canal.go` — nuevo. `VideoDeCanal`.
+  - `internal/core/ports/interfaces.go` — `CanalDeVideos` y `VideoService`.
+  - `internal/infrastructure/youtube/client.go` — nuevo. Cliente de la API v3.
+  - `internal/core/services/video_service.go` — nuevo. Reúne canales y cachea.
+  - `internal/handler/http/video_handler.go` — nuevo.
+  - `cmd/server/main.go` — **ruta registrada**: `GET /api/content/videos`, pública.
+- **La llamada la hace el backend y no la app, a propósito.** Los cuatro repositorios son públicos y
+  una clave embarcada en el binario de Flutter se extrae sin dificultad. Además así la cuota se gasta
+  una vez para todos en lugar de una por cada persona que abre la pantalla.
+- 🔴 **`channels.list` + `playlistItems.list`, nunca `search.list`.** Las dos primeras cuestan **1
+  unidad** por llamada; `search.list` cuesta **100**, y con una cuota diaria de 10.000 la agotaría con
+  un puñado de usuarios. Quien toque esto que no lo "simplifique" con una búsqueda.
+- **Se usa `forHandle` y no el identificador `UC…`.** El handle es lo que aparece en la URL del canal;
+  la API lo acepta desde 2023. La página pública del canal **no** expone el identificador —se pinta
+  por JavaScript—, así que sacarlo de ahí no era opción.
+- **La caché es la razón de ser del servicio, no un adorno.** Una hora de TTL: un canal de esta
+  comunidad publica cada pocos días, así que el retraso no se nota y el gasto baja a dos llamadas por
+  canal y hora. Vive en el proceso, igual que el hub de chat, así que no añade una limitación de
+  escalado que no existiera ya.
+- **Si fallan todos los canales se devuelve la caché aunque esté caducada.** Material viejo es mejor
+  que una sección vacía.
+- **El endpoint siempre responde 200 con una lista.** La app une esta fuente con otras dos; un error
+  aquí dejaría la pantalla entera en blanco por un problema de un tercero.
+- **Sin clave configurada el servicio se queda a nil** y el endpoint devuelve lista vacía. Es lo que
+  pasa hoy en cualquier entorno donde no se haya puesto.
+- **Se descartan los videos sin id utilizable** —borrados o privados siguen apareciendo en la lista—
+  porque enlazarlos llevaría a una página de error.
+- **Verificado contra YouTube de verdad**, no con dobles: **87 videos**, 37 de Legacy Network y 50 de
+  LSO (el tope configurado), los 87 con id único, miniatura, enlace y canal. La primera llamada tardó
+  **1,48 s** y las siguientes **0,003 s**, lo que confirma que la caché evita la cuota.
+- ⚠️ **La clave va en `config.yaml`**, cubierto por el `.gitignore`. Falta llevarla a las otras dos
+  copias: el `config.docker.yaml` del servidor y el repositorio privado de secretos.
+- **Criterios de QA:**
+  1. **`GET /api/content/videos`** responde 200 con una lista no vacía.
+  2. **Los videos traen `channel`** con el nombre del canal, y aparecen los dos canales.
+  3. **Segunda llamada seguida:** responde en milisegundos (sale de caché).
+  4. **Con la clave borrada del config:** responde 200 con `[]` y el arranque lo avisa en el log.
+  5. **Con un canal inexistente en la lista:** los demás siguen llegando y el fallo va al log.
+  6. **En la app**, la sección de contenido con el filtro «Videos» muestra decenas, no uno.
+  7. **Abrir uno:** reproduce y la firma es el nombre del canal.
+
+---
+
 ### [2026-08-18]: Los eventos virtuales dejan de dar QR, y la inscripción avisa por correo
 
 Puntos 2.3 y 2.2 de `reports/20260818_plan_ajustes.html`. Van juntos porque el segundo depende del

@@ -11,6 +11,7 @@ import (
 	"applegacy/backend/internal/infrastructure/email"
 	"applegacy/backend/internal/infrastructure/firebase"
 	"applegacy/backend/internal/infrastructure/websocket"
+	"applegacy/backend/internal/infrastructure/youtube"
 	"applegacy/backend/internal/security"
 	"context"
 	"fmt"
@@ -136,6 +137,23 @@ func main() {
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
 	contentHandler := handler.NewContentHandler(contentService, notificationService)
+
+	// Videos de los canales de YouTube. Sin clave configurada el servicio se
+	// queda a nil y el endpoint responde una lista vacía: la sección de
+	// contenido sigue funcionando con sus otras dos fuentes, que es lo que
+	// pasa hoy en cualquier entorno sin la clave puesta.
+	var videoService ports.VideoService
+	if cfg.YouTube.APIKey != "" && len(cfg.YouTube.Canales) > 0 {
+		videoService = services.NewVideoService(
+			youtube.NewClient(cfg.YouTube.APIKey),
+			cfg.YouTube.Canales,
+			cfg.YouTube.MaxPorCanal,
+		)
+		log.Printf("[videos] %d canal(es) de YouTube configurados", len(cfg.YouTube.Canales))
+	} else {
+		log.Println("[videos] sin clave de YouTube: la sección de videos solo traerá el contenido propio")
+	}
+	videoHandler := handler.NewVideoHandler(videoService)
 
 	statsRepo := postgres.NewStatsRepository(dbPool)
 	statsService := services.NewStatsService(statsRepo, cryptoService)
@@ -295,6 +313,9 @@ func main() {
 		r.Get("/api/content/categories", contentHandler.ListCategories)
 		r.Get("/api/content/items", contentHandler.ListContent)
 		r.Get("/api/content/items/{id}", contentHandler.GetContent)
+
+		// Videos de los canales de YouTube (Legacy Network y LSO)
+		r.Get("/api/content/videos", videoHandler.ListVideos)
 
 		// Synergy routes (Public read)
 		r.Get("/api/synergies", synergyHandler.ListSynergies)

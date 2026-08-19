@@ -90,6 +90,27 @@ type Config struct {
 	// una configuración anterior sigue entregando los mensajes en vez de
 	// rechazarlos, que es lo que pasaría con el buzón vacío.
 	ContactoEmail string `yaml:"contacto_email"`
+
+	// YouTube alimenta la sección de videos de Contenido de Valor con los
+	// canales de Legacy Network y de LSO.
+	//
+	// La llamada la hace el backend y no la app **a propósito**: los cuatro
+	// repositorios son públicos y una clave embarcada en el binario de Flutter
+	// se extrae sin dificultad; además así la cuota se gasta una vez para todos
+	// en lugar de una por cada persona que abre la pantalla.
+	//
+	// Sin `api_key` la sección no falla: el servicio devuelve lista vacía y la
+	// app sigue mostrando el contenido de las otras dos fuentes.
+	YouTube struct {
+		APIKey string `yaml:"api_key"`
+		// Handles con arroba, tal como aparecen en la URL del canal
+		// (@LegacyNetworkco). channels.list los acepta en `forHandle` desde
+		// 2023, así que no hace falta el identificador UC….
+		Canales []string `yaml:"canales"`
+		// MaxPorCanal acota cuántos videos se piden por canal. Vacío o 0 usa el
+		// valor por defecto del servicio.
+		MaxPorCanal int `yaml:"max_por_canal"`
+	} `yaml:"youtube"`
 }
 
 // BuzonDeContacto resuelve a dónde van los mensajes de "Contáctenos".
