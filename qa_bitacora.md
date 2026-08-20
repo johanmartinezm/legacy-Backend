@@ -78,6 +78,10 @@ Salió al ejecutar F12.8 del plan de pruebas.
   - `internal/core/services/checkin_repetido_test.go` — nuevo, 2 pruebas.
 - **Verificado:** tres lecturas seguidas del mismo QR dejan **una sola** fila de asistencia; la segunda y
   la tercera vuelven con `alreadyCheckedIn` y la hora de la primera.
+- ✅ **Confirmado en producción el 2026-08-20, con una persona delante.** Sobre un evento de prueba:
+  inscripción desde el teléfono, escaneo del QR en el panel y segundo escaneo del mismo código. La
+  segunda lectura salió en ámbar con la hora de la primera entrada, y el evento quedó con **un**
+  asistente. La migración se había aplicado antes del despliegue, en el orden que exige la guía.
 - **Criterios de QA:**
   1. **Escanear un QR válido:** entra, y el panel lo da por bueno como siempre.
   2. **Escanear el mismo QR otra vez:** avisa de que ya se había usado y dice a qué hora entró.
