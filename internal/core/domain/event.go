@@ -44,6 +44,20 @@ type Event struct {
 	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 }
 
+// OcultarEnlaceDeAcceso borra el enlace de la sesión virtual de este evento.
+//
+// El enlace **equivale a poder entrar**, así que solo debe verlo quien tiene una
+// inscripción confirmada —eso lo resuelve GetMyRegistrations— y el panel, que
+// necesita el valor actual para no borrarlo al editar.
+//
+// Hasta el 2026-08-20 salía en `GET /api/events` y en el detalle, que son rutas
+// públicas: cualquiera sin sesión podía sacar la URL de una masterclass de pago.
+// F12.15 no lo detectó porque comprobaba el otro camino, el de las
+// inscripciones, donde la protección sí existía.
+func (e *Event) OcultarEnlaceDeAcceso() {
+	e.AccessURL = nil
+}
+
 type Workshop struct {
 	ID            string    `json:"id" db:"id"`
 	EventID       string    `json:"eventId" db:"event_id"`

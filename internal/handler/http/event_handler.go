@@ -33,11 +33,21 @@ func (h *EventHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(categories)
 }
 
+// ListEvents y GetEventDetails son rutas **públicas**: responden sin sesión. Por
+// eso el enlace de la sesión virtual se retira salvo que quien pregunte sea
+// administrador —el panel lo necesita para no borrarlo al editar un evento—.
+// Quien está inscrito recibe el suyo por GET /api/me/registrations, que aplica
+// su propia regla.
 func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	events, err := h.service.ListEvents(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if !IsAdmin(r.Context()) {
+		for i := range events {
+			events[i].OcultarEnlaceDeAcceso()
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(events)
@@ -49,6 +59,9 @@ func (h *EventHandler) GetEventDetails(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
+	}
+	if !IsAdmin(r.Context()) {
+		event.OcultarEnlaceDeAcceso()
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(event)

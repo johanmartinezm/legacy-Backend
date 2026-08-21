@@ -4,6 +4,46 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-20]: El enlace de una sesión virtual deja de ser público
+
+Salió al crear un evento virtual de prueba para completar F12.17.
+
+- **El problema:** `GET /api/events` y `GET /api/events/{id}` son **rutas públicas** y devolvían el
+  `domain.Event` entero, `accessUrl` incluido. Una petición sin ninguna cabecera de autorización
+  entregaba la URL de la sesión. El propio dominio decía lo contrario: «solo se entrega a inscripciones
+  confirmadas: verlo equivale a poder entrar».
+- **La regla existía, pero en el otro camino.** `GetMyRegistrations` sí limpia el enlace de una
+  inscripción sin pagar y de los presenciales. El campo se escapaba por la puerta de al lado, y por eso
+  **F12.15 lo dio por bueno**: comprobaba `/api/me/registrations`, no el listado.
+- **Exposición real: ninguna.** El único evento virtual de producción era el de prueba, con un enlace
+  inventado. Pero el día que se publique una masterclass de pago, la URL habría quedado a la vista.
+- **Se oculta a quien no es administrador**, no a todo el mundo: **el panel consume estas mismas rutas**
+  y carga `accessUrl` para rellenar el formulario de edición. Vaciarlo sin más habría hecho que editar
+  un evento virtual **borrara su enlace en silencio** — el mismo daño que la guía de despliegue
+  documenta con `apple.bundle_id`.
+- **Hizo falta tocar `OptionalAuthMiddleware`**, que guardaba el id de usuario pero **no el rol**: sin
+  eso `IsAdmin` devolvía falso en las rutas opcionales aunque preguntara un administrador con un token
+  válido, y el panel se habría quedado sin el enlace igual. Ahora guarda el rol, como `AuthMiddleware`.
+- **Que el evento es virtual sí se sigue diciendo**, y su lugar también: lo que no se entrega es la
+  puerta. Quien está inscrito recibe el enlace por `/api/me/registrations`, que ya aplicaba su regla.
+- **Alcance:**
+  - `internal/handler/http/event_handler.go` — las dos rutas públicas.
+  - `internal/handler/http/middleware.go` — el rol en el middleware opcional.
+  - `internal/core/domain/event.go` — `OcultarEnlaceDeAcceso`.
+  - `internal/handler/http/enlace_acceso_test.go` — nuevo, 4 pruebas.
+- **Verificado:** `go build`, `go vet` y la suite en verde salvo el fallo conocido de `postgres`.
+  Desplegado y comprobado contra producción: sin sesión, `accessUrl` llega vacío en el listado y en el
+  detalle, y `isVirtual` sigue en `true`.
+- **Criterios de QA:**
+  1. **Pedir la lista de eventos sin sesión:** ningún evento trae enlace de acceso.
+  2. **Abrir el detalle de uno virtual sin sesión:** tampoco.
+  3. **Entrar al panel y editar ese evento:** el campo del enlace aparece **con su valor**.
+  4. **Guardar sin tocarlo:** el enlace sigue ahí. Es el caso que más importa.
+  5. **Inscribirse desde la app y mirar «Mi credencial»:** el enlace aparece.
+  6. **Una inscripción sin pagar:** sigue sin enlace y sin QR.
+
+---
+
 ### [2026-08-19]: El mínimo de 6 caracteres de la contraseña deja de ser cosa del formulario
 
 Salió al ejecutar F8.5 del plan de pruebas.

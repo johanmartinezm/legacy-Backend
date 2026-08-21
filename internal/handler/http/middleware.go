@@ -137,6 +137,14 @@ func OptionalAuthMiddleware(jwtSecret []byte) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			// El rol también, igual que en AuthMiddleware. Sin esto IsAdmin
+			// devuelve falso en las rutas opcionales aunque quien pregunte sea
+			// administrador con un token válido, y el panel —que consume el
+			// listado público de eventos— perdería el enlace de acceso al
+			// editarlos.
+			if role, ok := claims["role"].(string); ok {
+				ctx = context.WithValue(ctx, UserRoleKey, role)
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
