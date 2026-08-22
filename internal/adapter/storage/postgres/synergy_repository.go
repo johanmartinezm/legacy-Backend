@@ -68,7 +68,7 @@ func (r *SynergyRepository) ListSynergies(ctx context.Context, category string, 
 	}
 	defer rows.Close()
 
-	var synergies []domain.Synergy
+	synergies := make([]domain.Synergy, 0)
 	for rows.Next() {
 		var s domain.Synergy
 		var author domain.User
