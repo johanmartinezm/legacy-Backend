@@ -4,6 +4,62 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-22]: `GET /api/synergies` ya no devuelve `null` en vacío
+
+Detalle completo en `App-Movil/qa_bitacora.md` («Cinco hallazgos del tramo 5»), que es donde se
+detectó: la app revienta al intentar tratar `null` como lista.
+
+- **El problema:** `ListSynergies` (`internal/adapter/storage/postgres/synergy_repository.go`)
+  declaraba `var synergies []domain.Synergy`. Sin filas que coincidan con el filtro, el slice se queda
+  `nil` y `encoding/json` lo serializa como `null`, no `[]`.
+- **El fix:** `synergies := make([]domain.Synergy, 0)`.
+- **Alcance:** `internal/adapter/storage/postgres/synergy_repository.go`.
+- **Verificado:** `go build`, `go vet` limpios. `curl "localhost:8080/api/synergies?category=NoExiste123"`
+  da `[]`; sin filtro sigue devolviendo la lista real.
+- **Criterios de QA:** pedir `/api/synergies` con un filtro que no matchee ninguna fila y confirmar que
+  el cuerpo es `[]`, no `null`.
+
+### [2026-08-22]: El panel ya puede editar una cuenta con fecha de nacimiento
+
+Salió en la ronda de pruebas manuales del 21-08 (tramo 4, F20.5) y bloqueaba también F9.2, F9.4 y
+F9.7 del tramo 5. Documentado en `reports/20260820_ruta_pruebas_manuales.html`.
+
+- **El problema:** `performUpdate` decodificaba el body de `PUT /api/users/{id}` (y de `PUT /api/me`)
+  directo sobre `domain.User`, cuyo `BirthDate` es `*time.Time`. El panel manda fecha sola
+  (`"1990-01-15"`), y el `UnmarshalJSON` de `time.Time` solo entiende RFC3339: el `Decode` fallaba
+  entero y devolvía 400, aunque el resto del body —nombre, rol— fuera válido.
+- **Doble daño:** como `users-list.component.ts` no tenía callback de error en el `subscribe`, el
+  diálogo se cerraba igual que si hubiera guardado. Toda cuenta con fecha de nacimiento —cualquiera
+  registrada desde la app, que la exige— quedaba de hecho no editable desde el panel, sin ningún aviso.
+- **El fix separa `birth_date` del resto del decode.** `performUpdate` ahora saca esa clave del JSON
+  antes de decodificar el resto sobre `user`, la parsea con `parseBirthDate` —acepta RFC3339, fecha
+  sola (lo que manda el panel) y `DD/MM/YYYY` (lo que manda el registro)— y solo entonces la asigna.
+  Si la clave no viene en el body (como en el `PUT /api/me` del móvil, que nunca manda fecha), no se
+  toca la que ya tenía el usuario.
+- **El panel avisa si falla.** `updateUser`/`createUser` ahora tienen `error` en el `subscribe` y
+  muestran un `MatSnackBar`, igual que el resto de módulos del panel (antes solo `banners` y
+  `reset-password` lo hacían).
+- **Alcance:**
+  - `Backend/internal/handler/http/user_handler.go` — `parseBirthDate` y `performUpdate`.
+  - `Backend/internal/handler/http/user_birthdate_test.go` — nuevo, 5 pruebas (fecha sola, RFC3339,
+    `DD/MM/YYYY`, sin `birth_date` conserva la previa, fecha inválida sigue dando 400).
+  - `Sitio-Administrativo/src/app/features/admin/users/users-list/users-list.component.ts` — aviso de
+    error al guardar/crear.
+- **Verificado:** `go build`, `go vet` y `go test ./...` en verde salvo el fallo conocido de
+  `test_update_test.go` (usuario `postgres` en vez de `dba`, no es una regresión). `npx tsc --noEmit`
+  limpio en el panel. Desplegado a producción (backend y panel) y reproducido en vivo contra la cuenta
+  real «QA Junta Prueba» (F20.5): antes del despliegue, `PUT /api/users/d400386e-...` daba 400 con la
+  traza de red; después, 200, y la fecha (15/01/1990) y el rol (junta) sobrevivieron a guardar y
+  reabrir.
+- **Criterios de QA:**
+  1. En el panel, abrir para editar cualquier usuario que tenga fecha de nacimiento y guardar sin
+     tocar nada: no debe aparecer ningún error, y al reabrirlo la fecha sigue igual.
+  2. Cambiar la fecha de nacimiento de un usuario, guardar y reabrir: debe verse la fecha nueva.
+  3. Con las herramientas de red del navegador abiertas, confirmar que el `PUT` a `/api/users/{id}`
+     responde 200, no 400.
+  4. Provocar un fallo de guardado (por ejemplo, apagando la red un instante) y comprobar que el panel
+     muestra un aviso en vez de cerrar el diálogo en silencio.
+
 ### [2026-08-20]: El enlace de una sesión virtual deja de ser público
 
 Salió al crear un evento virtual de prueba para completar F12.17.

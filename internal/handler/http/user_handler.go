@@ -5,6 +5,7 @@ import (
 	"applegacy/backend/internal/core/ports"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -324,6 +325,20 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Password has been reset successfully"})
 }
 
+// parseBirthDate acepta los formatos que de hecho llegan a este handler: fecha
+// sola (lo que manda el panel, "2006-01-02"), RFC3339 completo y DD/MM/YYYY
+// (lo que manda el registro desde la app). Antes se decodificaba birth_date
+// directo sobre *time.Time, que solo entiende RFC3339: cualquier cuenta con
+// fecha de nacimiento devolvía 400 al editarla desde el panel.
+func parseBirthDate(value string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02", "02/01/2006"} {
+		if t, err := time.Parse(layout, value); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, errors.New("formato de fecha no reconocido")
+}
+
 func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id string) {
 	user, err := h.authService.GetProfile(r.Context(), id)
 	if err != nil {
@@ -331,7 +346,44 @@ func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id s
 		return
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(user); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// birth_date se procesa aparte y se saca del mapa antes de decodificar el
+	// resto sobre user: así el Decode de abajo ya no choca con su *time.Time.
+	if rawBirth, ok := raw["birth_date"]; ok {
+		delete(raw, "birth_date")
+		var birthStr *string
+		if err := json.Unmarshal(rawBirth, &birthStr); err != nil {
+			h.respondWithError(w, http.StatusBadRequest, "Fecha de nacimiento inválida")
+			return
+		}
+		if birthStr == nil || *birthStr == "" {
+			user.BirthDate = nil
+		} else {
+			t, err := parseBirthDate(*birthStr)
+			if err != nil {
+				h.respondWithError(w, http.StatusBadRequest, "Fecha de nacimiento inválida")
+				return
+			}
+			user.BirthDate = &t
+		}
+		if body, err = json.Marshal(raw); err != nil {
+			h.respondWithError(w, http.StatusInternalServerError, "Invalid request body")
+			return
+		}
+	}
+
+	if err := json.Unmarshal(body, user); err != nil {
 		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
