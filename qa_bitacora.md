@@ -4,6 +4,45 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-26]: El contenido publicado ya guarda su fecha de publicación
+
+Sale de auditar la misma clase de fallo que el de la modalidad de los eventos: **columnas que el
+`UPDATE` escribe y que el panel no envía nunca**. Se cruzaron los seis `UPDATE` de formulario del
+backend contra lo que manda cada servicio del panel.
+
+- **El problema:** `published_at` la ponía quien llamara, es decir nadie. El formulario del panel no
+  tiene ese campo, así que llegaba nula y el `UPDATE` la escribía nula. En producción **los dos
+  contenidos publicados la tenían vacía**.
+- **Lo que se ve:** la app usa ese campo para la fecha que muestra bajo el título
+  (`custom_content_model.dart:63`), así que el vídeo se pinta como «0 vistas • » con la fecha en
+  blanco (`video_detail_screen.dart:214`).
+- **El fix:** `sellarPublicacion()` en `ContentService`. Pone la fecha cuando el contenido está
+  publicado y todavía no la tiene, tanto al crear como al guardar.
+- **Va en el servidor y no en el cliente** porque es un dato del servidor: la hora del navegador de
+  quien administra no tiene por qué ser la buena, y así vale para cualquier cliente que llame a la API.
+- **Al guardar se recupera la fecha ya guardada** antes de sellar. Sin eso, como el panel tampoco
+  envía el campo en el segundo guardado, cada edición la reescribiría con la del momento y dejaría de
+  ser la fecha en que se publicó.
+- **Despublicar no borra la fecha.** Retirar algo de la app no significa que nunca se publicara; si
+  se vuelve a publicar, la buena sigue siendo la primera.
+- **Lo que salió limpio de la auditoría**, para no repetirla: usuarios (el handler carga el usuario y
+  vuelca el JSON encima, así que lo que no viene se conserva), foros (el servicio protege `status` y
+  `cover_url` con `if != ""`), banners y categorías de contenido (el modelo del panel cubre todas las
+  columnas, con los mismos nombres). El de administradores sí tenía uno y va en la bitácora del panel.
+- **Alcance:** `internal/core/services/content_service.go`,
+  `internal/core/services/fecha_publicacion_test.go` (nuevo, 5 casos).
+- **Verificado:** `go build ./...` y `go vet ./...` limpios; los 5 casos en verde.
+- ⚠️ **Los dos contenidos que ya están en producción siguen sin fecha.** El arreglo solo sella al
+  guardar, así que hay que abrirlos en el panel y volver a guardarlos —o ponerles la fecha a mano—.
+- **Criterios de QA:**
+  1. **Crear un contenido publicado** desde el panel y mirar la app: bajo el título sale la fecha, no
+     un «•» suelto.
+  2. **Volver a guardarlo** sin tocar nada: la fecha sigue siendo la misma, no la de ahora.
+  3. **Despublicarlo y volver a publicarlo**: conserva la fecha original.
+  4. **Crear un borrador** (sin publicar): no tiene fecha hasta que se publique.
+
+---
+
 ### [2026-08-26]: Un evento oculto ya se puede reactivar desde el panel
 
 Sale de comprobar el ⚠️ que dejó abierto la entrada de más abajo («falta comprobar en el panel»).
