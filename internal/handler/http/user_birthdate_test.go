@@ -62,7 +62,7 @@ func (s *stubAuthServiceEdicion) ChangePassword(ctx context.Context, id string, 
 func (s *stubAuthServiceEdicion) RequestPasswordReset(ctx context.Context, email string) error {
 	return nil
 }
-func (s *stubAuthServiceEdicion) ResetPassword(ctx context.Context, email, token, newPassword string) error {
+func (s *stubAuthServiceEdicion) ResetPassword(ctx context.Context, token, newPassword string) error {
 	return nil
 }
 func (s *stubAuthServiceEdicion) VerifyEmail(ctx context.Context, token string) error { return nil }

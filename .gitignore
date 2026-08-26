@@ -30,6 +30,13 @@ config*.bak*
 *.exe
 *.exe~
 
+# --- Archivos que suben los usuarios ----------------------------------------
+# Donde ImageHandler.UploadImage deja las imagenes: fotos de perfil, imagenes de
+# foros y sinergias. Son datos de personas y este repositorio es publico, asi que
+# no pueden acabar versionadas ni por descuido. La carpeta se crea sola al
+# arrancar; lo que se versiona es su ausencia.
+uploads/
+
 # --- Temporales de compilación ----------------------------------------------
 # GOTMPDIR local que usan run.sh y build.sh (~166 MB)
 tmp/

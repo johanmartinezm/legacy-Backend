@@ -4,6 +4,50 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-25]: El correo deja de viajar en el enlace de recuperar contraseña
+
+- **El problema:** `RequestPasswordReset` armaba el enlace como
+  `"<url>?token=<token>&email=<correo>"`, así que la dirección de la persona iba en la barra del
+  navegador. De ahí se filtra a sitios que nadie controla: el historial, la cabecera `Referer` hacia
+  cualquier recurso de terceros que cargue esa página, los registros de los proxies del camino y,
+  si el enlace se reenvía o se pega en cualquier parte, a quien lo reciba. Iba además **sin escapar**,
+  de modo que un `+` en la dirección llegaba al panel convertido en espacio y el enlace no servía.
+- **El fix:** el enlace lleva **solo el token** (32 bytes aleatorios, ya escapado). `ResetPassword`
+  dejó de recibir el correo y lo resuelve desde el token con `GetEmailByToken`. Aceptarlo del cuerpo
+  además permitía probar un token contra direcciones ajenas.
+- **Migración:** `scripts/20260825_password_reset_token_index.sql`. La tabla solo tenía clave primaria
+  por `email`, así que buscar por token haría recorrido completo. El índice se crea **único**: dos
+  filas con el mismo token serían un fallo del generador, y la unicidad garantiza que la consulta
+  devuelve como mucho una fila, que es la propiedad de la que depende la seguridad del flujo. Limpia
+  antes las filas caducadas.
+- **Los enlaces ya enviados siguen funcionando:** llevan el token, que es lo único que se usa ahora;
+  el `&email=` sobrante se ignora. El handler también sigue aceptando el campo `email` en el cuerpo
+  de clientes antiguos, sin usarlo.
+- **Se rechaza el token vacío antes de consultar.** Sin esa guarda, un cuerpo sin token consultaría la
+  tabla con la cadena vacía y el resultado dependería de que no hubiera ninguna fila así.
+- **Alcance:** `internal/core/services/auth_service.go`,
+  `internal/adapter/storage/postgres/password_reset_repository.go`,
+  `internal/core/ports/interfaces.go`, `internal/handler/http/user_handler.go`,
+  `scripts/20260825_password_reset_token_index.sql`,
+  `internal/core/services/reset_sin_correo_en_url_test.go` (nuevo, 5 casos),
+  `internal/core/services/contrasena_minima_test.go` y
+  `internal/handler/http/user_birthdate_test.go` (adaptan la firma).
+  Contraparte en `Sitio-Administrativo`, misma fecha.
+- **Verificado:** `go build ./...` y `go vet ./...` limpios; `go test ./...` en verde salvo
+  `TestExhaustiveUserUpdate`, el test suelto que falla siempre por tener la cadena de conexión con el
+  usuario `postgres` en vez de `dba` (documentado en `CLAUDE.md`, no es regresión).
+- **Criterios de QA** (hace falta aplicar la migración antes):
+  1. **Pedir recuperar contraseña** y mirar el enlace del correo: lleva `?token=...` y **no** lleva
+     `&email=`.
+  2. **Abrir el enlace y cambiar la contraseña**: funciona, y se puede entrar con la nueva.
+  3. **Reutilizar el mismo enlace** después de cambiarla: da error, el token ya se consumió.
+  4. **Alterar el token a mano** en la URL: da error y la contraseña no cambia.
+  5. **Un enlace antiguo** que todavía lleve `&email=`: sigue funcionando igual.
+  6. **Una contraseña de menos de seis caracteres**: se rechaza y el enlace **sigue sirviendo** para
+     reintentar.
+
+---
+
 ### [2026-08-22]: `GET /api/synergies` ya no devuelve `null` en vacío
 
 Detalle completo en `App-Movil/qa_bitacora.md` («Cinco hallazgos del tramo 5»), que es donde se

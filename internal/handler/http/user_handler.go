@@ -305,8 +305,10 @@ func (h *UserHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	// El correo ya no se lee del cuerpo: el token lo identifica, y aceptarlo de
+	// fuera permitiría probar un token contra direcciones ajenas. Los clientes
+	// antiguos pueden seguir mandándolo; se ignora.
 	var req struct {
-		Email       string `json:"email"`
 		Token       string `json:"token"`
 		NewPassword string `json:"new_password"`
 	}
@@ -316,7 +318,7 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.authService.ResetPassword(r.Context(), req.Email, req.Token, req.NewPassword); err != nil {
+	if err := h.authService.ResetPassword(r.Context(), req.Token, req.NewPassword); err != nil {
 		h.respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
