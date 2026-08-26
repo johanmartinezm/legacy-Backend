@@ -52,6 +52,14 @@ se marcaron inactivos en producción solo se podían recuperar por SQL.
   entorno local: reactivar el evento lo devuelve al listado público (8 → 9 eventos), volver a
   ocultarlo lo retira (9 → 8), un estado inventado da 400, un id que no existe da 404, sin token da
   401, y guardar el formulario completo por el `PUT` de siempre **no** cambia la visibilidad.
+- **Desplegado el 2026-08-26.** Respaldo previo de la base, migración aplicada (la columna quedó
+  `not null` con su `CHECK`) y `docker compose up -d --build`. Comprobado desde fuera:
+  `/health` responde 200, `GET /api/events` devuelve los 4 públicos y **ya trae el campo `status`**, y
+  `PUT /api/events/{id}/status` sin token responde **401** —o sea que la ruta existe—, frente al 404
+  de una ruta inventada, que es el control.
+- **De paso se comprobó la migración del 25-08**, la del índice del token de recuperación: está
+  aplicada en producción (`password_reset_tokens_token_key`). Era una duda abierta, porque llevar la
+  cuenta de las migraciones es manual.
 - ⚠️ **No se pudo pilotar el panel en el navegador** (la extensión de Chrome no estaba conectada), así
   que el chip y el botón están cubiertos por un spec que renderiza la tabla de verdad, pero nadie los
   ha visto con el ratón. Es lo que cubren los criterios 1 y 2 de aquí abajo.
