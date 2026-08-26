@@ -52,6 +52,10 @@ justo los que más duelen.
   `X-Total-Count: 71`; `?limit=1000000` se queda en el techo; `?limit=abc` responde 200 sin romper; y
   **recorrer las 8 páginas de 10 reconstruye exactamente las 71 filas, en el mismo orden y sin
   repetir ninguna**, que es la propiedad que hace correcta la paginación.
+- **Desplegado el 2026-08-26**, junto con el panel. El binario del servidor tiene el mismo `sha256`
+  que el compilado en local, y el panel publicado sirve los bundles con el paginador. **La paginación
+  en sí no se pudo ejercitar contra producción**: las tres rutas van bajo `AdminOnly` y desde aquí no
+  hay token de administrador de producción. Los criterios de abajo son justo eso.
 - **Criterios de QA:**
   1. **Abrir «Usuarios»** en el panel: aparece el paginador abajo y el total es el de cuentas, no el
      de la página.
