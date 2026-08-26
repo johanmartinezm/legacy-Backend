@@ -213,10 +213,17 @@ func (r *EventRepository) ConfirmEventRegistration(ctx context.Context, userID, 
 // junta dos textos cifrados en uno que ya no se puede descifrar por partes, que
 // es justo lo que le pasa hoy a GetRegistrationByQR.
 //
-// Sin LIMIT ni OFFSET, como el resto de listados del repositorio. Un evento con
-// miles de inscritos devolverá miles de filas de una vez; el día que se añada
-// paginación, este es uno de los sitios a tocar.
-func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID string) ([]domain.EventRegistrant, error) {
+// Pagina desde el 2026-08-26. Antes traía todas las filas de una vez: un evento
+// con miles de inscritos devolvía miles de filas, y **cada una se descifra
+// después en el servicio**, así que el coste no era solo la consulta.
+//
+// El orden es `registration_date DESC, id DESC`. El id desempata a propósito:
+// con solo la fecha, dos inscripciones del mismo instante —que las hay, porque
+// la columna guarda hasta el microsegundo pero un lote de altas puede repetir—
+// pueden salir en distinto orden en dos consultas, y entonces la página 2 se
+// salta una fila o repite otra. Un orden total es lo que hace que paginar sea
+// correcto, no solo rápido.
+func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, error) {
 	query := `
 		SELECT r.id, r.user_id,
 		       COALESCE(u.first_name, ''), COALESCE(u.last_name, ''),
@@ -226,9 +233,10 @@ func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID s
 		FROM events.registrations r
 		JOIN core.users u ON r.user_id = u.id
 		WHERE r.event_id = $1
-		ORDER BY r.registration_date DESC
+		ORDER BY r.registration_date DESC, r.id DESC
+		LIMIT $2 OFFSET $3
 	`
-	rows, err := r.db.Query(ctx, query, eventID)
+	rows, err := r.db.Query(ctx, query, eventID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +259,20 @@ func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID s
 		registrants = append(registrants, reg)
 	}
 	return registrants, rows.Err()
+}
+
+// CountRegistrationsByEvent es el total de inscritos, para que el panel sepa
+// cuántas páginas hay.
+//
+// Va en consulta aparte y no como `COUNT(*) OVER ()` dentro del listado porque
+// con OFFSET más allá de la última fila el listado no devuelve ninguna fila, y
+// entonces tampoco devolvería el total: la pantalla se quedaría sin saber a
+// dónde volver.
+func (r *EventRepository) CountRegistrationsByEvent(ctx context.Context, eventID string) (int, error) {
+	var total int
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM events.registrations WHERE event_id = $1`, eventID).Scan(&total)
+	return total, err
 }
 
 // GetRegistrationsByUser devuelve las inscripciones del usuario con los datos

@@ -134,14 +134,22 @@ func (s *contactoService) EnviarMensaje(ctx context.Context, userID, asunto, rem
 }
 
 // Listar devuelve la bandeja con todo descifrado y listo para el panel.
-func (s *contactoService) Listar(ctx context.Context, estado string) ([]*domain.MensajeDeContacto, error) {
+func (s *contactoService) Listar(ctx context.Context, estado string, limit, offset int) ([]*domain.MensajeDeContacto, int, error) {
 	if estado != "" && !slices.Contains(domain.EstadosDeContactoValidos, estado) {
-		return nil, fmt.Errorf("estado no válido: %s", estado)
+		return nil, 0, fmt.Errorf("estado no válido: %s", estado)
 	}
 
-	mensajes, err := s.repo.Listar(ctx, estado)
+	// El total se cuenta con el mismo estado que se lista: si se contara sin
+	// filtro, al mirar solo los pendientes el paginador ofrecería páginas de
+	// mensajes que no están en pantalla.
+	total, err := s.repo.Contar(ctx, estado)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	mensajes, err := s.repo.Listar(ctx, estado, limit, offset)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	for _, m := range mensajes {
@@ -153,7 +161,7 @@ func (s *contactoService) Listar(ctx context.Context, estado string) ([]*domain.
 		m.RemitenteApellido = ""
 		m.RemitenteEmail = s.descifrar(m.RemitenteEmail)
 	}
-	return mensajes, nil
+	return mensajes, total, nil
 }
 
 func (s *contactoService) CambiarEstado(ctx context.Context, id, estado string) error {

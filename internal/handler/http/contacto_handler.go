@@ -77,12 +77,20 @@ func (h *ContactoHandler) Enviar(w http.ResponseWriter, r *http.Request) {
 }
 
 // Listar atiende GET /api/admin/contacto?estado=nuevo (bajo AdminOnly).
+// Listar pagina con `?limit=` y `?offset=`, y publica el total en X-Total-Count.
+//
+// 25 por página: cada mensaje trae su cuerpo entero, así que las filas pesan
+// bastante más que las de una tabla de usuarios. Ruta de AdminOnly, solo la usa
+// el panel.
 func (h *ContactoHandler) Listar(w http.ResponseWriter, r *http.Request) {
-	mensajes, err := h.contactoService.Listar(r.Context(), r.URL.Query().Get("estado"))
+	limit, offset := Paginacion(r, 25)
+
+	mensajes, total, err := h.contactoService.Listar(r.Context(), r.URL.Query().Get("estado"), limit, offset)
 	if err != nil {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
 		return
 	}
+	EscribirTotal(w, total)
 	respondJSON(w, http.StatusOK, mensajes)
 }
 

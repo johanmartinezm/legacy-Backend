@@ -4,6 +4,68 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-26]: Paginan los tres listados del panel que crecían sin techo
+
+`CLAUDE.md` decía que ningún listado paginaba. **Era falso desde hacía tiempo**: mensajes de chat,
+publicaciones de foro, sinergias e historial de avisos ya lo hacían. Lo que faltaba eran tres, y son
+justo los que más duelen.
+
+| Listado | Antes | Ahora |
+|---|---|---|
+| Inscritos de un evento | todas las filas, **descifrando cada una** | 50 por página |
+| Usuarios (`GET /api/users`) | toda la tabla, **descifrando cada fila** | 50 por página |
+| Mensajes de contacto | toda la bandeja | 25 por página |
+
+- **El coste no era el tamaño de la respuesta, era el trabajo por fila.** Usuarios e inscritos se
+  descifran uno a uno en el servicio (AES-256), así que traer la tabla entera costaba tantos
+  descifrados como filas hubiera.
+- **El total va en la cabecera `X-Total-Count`, no en el cuerpo.** Envolver la respuesta en
+  `{items, total}` habría roto de golpe a toda app ya instalada, que recorre el array directamente.
+  La cabecera se publica además en `Access-Control-Expose-Headers`: sin eso el navegador la recibe
+  pero **no deja al panel leerla**, y el paginador saldría en cero sin que nada falle en el servidor.
+- **Los tres son `AdminOnly`**, y por eso se les puede poner tamaño de página por defecto: solo los
+  consume el panel. Los listados que sí consume la app se quedan como estaban.
+- **Techo de 200** en `handler/http/paginacion.go`. Sin techo, `?limit=1000000` devuelve la tabla
+  entera y la paginación no protege de nada.
+- **El `ORDER BY` pasó a ser total** (se añadió el `id` de desempate) en los tres. Sin eso, dos filas
+  del mismo instante pueden intercambiarse entre consultas y la página 2 se salta una fila o repite
+  otra: un orden total no es un lujo, es lo que hace correcto el recorrido.
+- 🔴 **Los inscritos ya no se ordenan por nombre, y no es un descuido.** Se ordenaban en Go porque en
+  la base están cifrados. Ese orden y la paginación no pueden convivir: ordenar en Go solo alcanza a
+  las filas ya traídas, así que con páginas quedaría una lista alfabética **que vuelve a empezar en
+  cada página** —la A después de la Z—, que parece un orden y no lo es. Ahora manda el `ORDER BY` de
+  la consulta: fecha de inscripción descendente, que además es el orden útil para quien organiza. Si
+  algún día hace falta el alfabético sobre el total, la vía es una columna auxiliar con el nombre
+  normalizado, al estilo del `email_blind_index`.
+- **El total se cuenta antes de pedir la página**, y con el mismo filtro. Si se contara después,
+  alguien que se inscriba entre las dos consultas dejaría el paginador describiendo algo distinto de
+  lo que se acaba de mostrar; y contar los mensajes de contacto sin el filtro de estado ofrecería
+  páginas de mensajes que no están en pantalla.
+- **Alcance:** `internal/handler/http/paginacion.go` (nuevo) y su test (6 casos),
+  `event_repository.go` (+`CountRegistrationsByEvent`), `user_repository.go` (+`CountAll`),
+  `contacto_repository.go` (+`Contar`), los tres puertos, `event_service.go`, `auth_service.go`,
+  `contacto_service.go`, `event_handler.go`, `user_handler.go`, `contacto_handler.go`,
+  `inscritos_evento_test.go` (se sustituyó el test de orden alfabético por tres del contrato nuevo) y
+  ocho stubs que adaptan firmas. Contraparte en `Sitio-Administrativo`, misma fecha.
+- **Verificado:** `go build`, `go vet` y `go test ./...` limpios salvo `TestExhaustiveUserUpdate`, el
+  de siempre. Y ejercitado contra el entorno local con 71 cuentas: sin parámetros devuelve 50 con
+  `X-Total-Count: 71`; `?limit=1000000` se queda en el techo; `?limit=abc` responde 200 sin romper; y
+  **recorrer las 8 páginas de 10 reconstruye exactamente las 71 filas, en el mismo orden y sin
+  repetir ninguna**, que es la propiedad que hace correcta la paginación.
+- **Criterios de QA:**
+  1. **Abrir «Usuarios»** en el panel: aparece el paginador abajo y el total es el de cuentas, no el
+     de la página.
+  2. **Pasar a la página 2 y volver**: no se repite ni falta nadie.
+  3. **Abrir los inscritos de un evento**: siguen saliendo todos y los totales —confirmados,
+     pendientes, recaudado— cuadran con el evento entero.
+  4. **Buscar a un inscrito** por nombre o correo: lo encuentra aunque no estuviera en la primera
+     página.
+  5. **Bandeja de contacto**: cambiar de filtro vuelve a la primera página, sin quedarse vacía.
+  6. **Selector de miembros de un grupo y envío de notificaciones**: siguen ofreciendo **todas** las
+     cuentas, no 50.
+
+---
+
 ### [2026-08-26]: El contenido publicado ya guarda su fecha de publicación
 
 Sale de auditar la misma clase de fallo que el de la modalidad de los eventos: **columnas que el

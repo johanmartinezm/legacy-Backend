@@ -25,7 +25,8 @@ func (r *repoUsuarios) Create(ctx context.Context, u *domain.User) error { retur
 func (r *repoUsuarios) FindByEmailBlindIndex(ctx context.Context, b string) (*domain.User, error) {
 	return nil, nil
 }
-func (r *repoUsuarios) FindAll(ctx context.Context) ([]*domain.User, error) { return nil, nil }
+func (r *repoUsuarios) FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error) { return nil, nil }
+func (r *repoUsuarios) CountAll(ctx context.Context) (int, error) { return 0, nil }
 func (r *repoUsuarios) FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error) {
 	return nil, errors.New("user not found")
 }

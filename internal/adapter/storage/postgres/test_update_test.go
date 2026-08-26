@@ -21,7 +21,7 @@ func TestExhaustiveUserUpdate(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Get a user
-	users, err := repo.FindAll(ctx)
+	users, err := repo.FindAll(ctx, 50, 0)
 	if err != nil || len(users) == 0 {
 		t.Fatalf("No users found or error: %v", err)
 	}

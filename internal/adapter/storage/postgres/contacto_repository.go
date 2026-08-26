@@ -42,7 +42,13 @@ func (r *ContactoRepository) MarcarEnviado(ctx context.Context, id string) error
 // El nombre y el apellido se devuelven por separado a proposito: van cifrados
 // cada uno por su cuenta, asi que unirlos aqui daria una cadena imposible de
 // descifrar despues.
-func (r *ContactoRepository) Listar(ctx context.Context, estado string) ([]*domain.MensajeDeContacto, error) {
+// Listar pagina desde el 2026-08-26. Es una bandeja: crece con cada mensaje que
+// escribe cualquiera y nadie la vacía.
+//
+// El id desempata el orden por la misma razón que en el resto: sin un orden
+// total, dos mensajes del mismo instante pueden cambiar de sitio entre consultas
+// y una página se salta uno o lo repite.
+func (r *ContactoRepository) Listar(ctx context.Context, estado string, limit, offset int) ([]*domain.MensajeDeContacto, error) {
 	sql := `
 		SELECT m.id, m.user_id, m.subject, m.body, m.status, m.email_enviado,
 		       m.created_at, m.updated_at,
@@ -50,9 +56,10 @@ func (r *ContactoRepository) Listar(ctx context.Context, estado string) ([]*doma
 		FROM core.contact_messages m
 		LEFT JOIN core.users u ON u.id = m.user_id
 		WHERE ($1 = '' OR m.status = $1)
-		ORDER BY m.created_at DESC
+		ORDER BY m.created_at DESC, m.id DESC
+		LIMIT $2 OFFSET $3
 	`
-	rows, err := r.db.Query(ctx, sql, estado)
+	rows, err := r.db.Query(ctx, sql, estado, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +75,17 @@ func (r *ContactoRepository) Listar(ctx context.Context, estado string) ([]*doma
 		mensajes = append(mensajes, &m)
 	}
 	return mensajes, rows.Err()
+}
+
+// Contar es el total con el mismo filtro de estado que Listar. Si cambia el
+// WHERE de allí, tiene que cambiar aquí: si no, el paginador ofrece páginas
+// vacías.
+func (r *ContactoRepository) Contar(ctx context.Context, estado string) (int, error) {
+	var total int
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM core.contact_messages m WHERE ($1 = '' OR m.status = $1)`,
+		estado).Scan(&total)
+	return total, err
 }
 
 func (r *ContactoRepository) CambiarEstado(ctx context.Context, id, estado string) error {

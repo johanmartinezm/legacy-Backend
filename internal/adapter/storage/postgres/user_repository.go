@@ -207,7 +207,14 @@ func (r *UserRepository) LinkSocialID(ctx context.Context, userID, provider, soc
 	return nil
 }
 
-func (r *UserRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
+// FindAll pagina desde el 2026-08-26.
+//
+// El orden es `created_at DESC, id DESC`. El id desempata a propósito: sin él,
+// dos cuentas creadas en el mismo instante pueden salir en distinto orden en dos
+// consultas, y entonces una página se salta una fila o repite otra. Con
+// paginación, un orden total no es un lujo: es lo que hace que el recorrido sea
+// correcto.
+func (r *UserRepository) FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error) {
 	sql := `
 		SELECT 
 			id, 
@@ -237,10 +244,11 @@ func (r *UserRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
 			COALESCE(updated_at, CURRENT_TIMESTAMP),
 			COALESCE(alias, '')
 		FROM core.users
-		ORDER BY created_at DESC
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1 OFFSET $2
 	`
 
-	rows, err := r.db.Query(ctx, sql)
+	rows, err := r.db.Query(ctx, sql, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -284,6 +292,17 @@ func (r *UserRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
 	}
 
 	return users, nil
+}
+
+// CountAll es el total de cuentas, para el paginador del panel.
+//
+// Cuenta lo mismo que lista FindAll, sin filtro de borradas: si un día se añade
+// un WHERE allí, hay que añadirlo aquí o el paginador prometerá páginas que no
+// existen.
+func (r *UserRepository) CountAll(ctx context.Context) (int, error) {
+	var total int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM core.users`).Scan(&total)
+	return total, err
 }
 
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {

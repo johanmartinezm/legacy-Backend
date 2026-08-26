@@ -42,8 +42,8 @@ func (s *stubAuthServiceEdicion) UpdateAdmin(ctx context.Context, admin *domain.
 	return nil
 }
 func (s *stubAuthServiceEdicion) DeleteAdmin(ctx context.Context, id string) error { return nil }
-func (s *stubAuthServiceEdicion) ListUsers(ctx context.Context) ([]*domain.User, error) {
-	return nil, nil
+func (s *stubAuthServiceEdicion) ListUsers(ctx context.Context, limit, offset int) ([]*domain.User, int, error) {
+	return nil, 0, nil
 }
 func (s *stubAuthServiceEdicion) UpdateUser(ctx context.Context, user *domain.User) error {
 	s.recibido = user

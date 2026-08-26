@@ -256,15 +256,25 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 // GetEventRegistrants sirve la lista de inscritos de un evento. Va registrada
 // en el bloque AdminOnly de main.go: son nombres, correos y teléfonos de
 // terceros, además de quién debe dinero.
+// GetEventRegistrants pagina con `?limit=` y `?offset=`, y devuelve el total en
+// la cabecera X-Total-Count.
+//
+// 50 por página por defecto: es una tabla que se recorre buscando a alguien
+// concreto, no una pantalla de lectura. La ruta va bajo AdminOnly y solo la
+// consume el panel, así que poner un tamaño por defecto no rompe ninguna app ya
+// instalada —que es el motivo por el que los listados que sí consume la app se
+// dejan como estaban—.
 func (h *EventHandler) GetEventRegistrants(w http.ResponseWriter, r *http.Request) {
 	eventID := chi.URLParam(r, "id")
+	limit, offset := Paginacion(r, 50)
 
-	registrants, err := h.service.GetEventRegistrants(r.Context(), eventID)
+	registrants, total, err := h.service.GetEventRegistrants(r.Context(), eventID, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	EscribirTotal(w, total)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(registrants)
 }

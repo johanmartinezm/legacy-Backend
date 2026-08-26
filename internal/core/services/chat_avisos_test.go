@@ -73,7 +73,8 @@ func (r *repoUsuariosChat) Create(ctx context.Context, u *domain.User) error { r
 func (r *repoUsuariosChat) FindByEmailBlindIndex(ctx context.Context, b string) (*domain.User, error) {
 	return nil, nil
 }
-func (r *repoUsuariosChat) FindAll(ctx context.Context) ([]*domain.User, error) { return nil, nil }
+func (r *repoUsuariosChat) FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error) { return nil, nil }
+func (r *repoUsuariosChat) CountAll(ctx context.Context) (int, error) { return 0, nil }
 func (r *repoUsuariosChat) FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error) {
 	return nil, errors.New("user not found")
 }

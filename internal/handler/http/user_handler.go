@@ -213,13 +213,21 @@ func (h *UserHandler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
+// List pagina con `?limit=` y `?offset=`, y publica el total en X-Total-Count.
+//
+// 50 por página: la tabla de usuarios del panel se recorre buscando a alguien,
+// no se lee de arriba abajo. La ruta va bajo AdminOnly —solo la usa el panel—,
+// así que un tamaño por defecto no alcanza a ninguna app instalada.
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
-	users, err := h.authService.ListUsers(r.Context())
+	limit, offset := Paginacion(r, 50)
+
+	users, total, err := h.authService.ListUsers(r.Context(), limit, offset)
 	if err != nil {
 		h.respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	EscribirTotal(w, total)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
 }

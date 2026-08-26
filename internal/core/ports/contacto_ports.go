@@ -16,7 +16,9 @@ import (
 //	BoardService    -> board_contacts, escribe a un miembro de junta concreto
 type ContactoService interface {
 	EnviarMensaje(ctx context.Context, userID, asunto, remitenteNombre, remitenteEmail, mensaje string) error
-	Listar(ctx context.Context, estado string) ([]*domain.MensajeDeContacto, error)
+	// Listar pagina y devuelve además el total con ese mismo filtro de estado,
+	// que es lo que el panel necesita para su paginador.
+	Listar(ctx context.Context, estado string, limit, offset int) ([]*domain.MensajeDeContacto, int, error)
 	CambiarEstado(ctx context.Context, id, estado string) error
 }
 
@@ -25,7 +27,9 @@ type ContactoRepository interface {
 	// MarcarEnviado separa "se guardó" de "salió el correo": lo primero ocurre
 	// siempre, lo segundo puede fallar.
 	MarcarEnviado(ctx context.Context, id string) error
-	Listar(ctx context.Context, estado string) ([]*domain.MensajeDeContacto, error)
+	Listar(ctx context.Context, estado string, limit, offset int) ([]*domain.MensajeDeContacto, error)
+	// Contar es el total con el mismo filtro de estado que Listar.
+	Contar(ctx context.Context, estado string) (int, error)
 	CambiarEstado(ctx context.Context, id, estado string) error
 	// ContarDesde cuenta los mensajes de una persona a partir de un momento,
 	// para el límite de frecuencia.

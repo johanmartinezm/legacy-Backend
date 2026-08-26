@@ -59,8 +59,8 @@ func (s *stubEventService) SubmitWorkshopRating(ctx context.Context, r *domain.W
 func (s *stubEventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
 	return nil, nil
 }
-func (s *stubEventService) GetEventRegistrants(ctx context.Context, eventID string) ([]domain.EventRegistrant, error) {
-	return nil, nil
+func (s *stubEventService) GetEventRegistrants(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, int, error) {
+	return nil, 0, nil
 }
 func (s *stubEventService) SubmitEventSurvey(ctx context.Context, sv *domain.EventSurvey) error {
 	return nil

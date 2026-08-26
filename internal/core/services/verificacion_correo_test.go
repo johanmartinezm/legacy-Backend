@@ -49,9 +49,10 @@ func (r *repoUsuariosVerificacion) Create(ctx context.Context, u *domain.User) e
 func (r *repoUsuariosVerificacion) FindByEmailBlindIndex(ctx context.Context, b string) (*domain.User, error) {
 	return nil, nil
 }
-func (r *repoUsuariosVerificacion) FindAll(ctx context.Context) ([]*domain.User, error) {
+func (r *repoUsuariosVerificacion) FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error) {
 	return nil, nil
 }
+func (r *repoUsuariosVerificacion) CountAll(ctx context.Context) (int, error) { return 0, nil }
 func (r *repoUsuariosVerificacion) FindByID(ctx context.Context, id string) (*domain.User, error) {
 	return nil, nil
 }

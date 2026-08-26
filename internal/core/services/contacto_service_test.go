@@ -72,8 +72,12 @@ func (r *repoDePrueba) MarcarEnviado(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *repoDePrueba) Listar(ctx context.Context, estado string) ([]*domain.MensajeDeContacto, error) {
+func (r *repoDePrueba) Listar(ctx context.Context, estado string, limit, offset int) ([]*domain.MensajeDeContacto, error) {
 	return r.guardados, nil
+}
+
+func (r *repoDePrueba) Contar(ctx context.Context, estado string) (int, error) {
+	return len(r.guardados), nil
 }
 
 func (r *repoDePrueba) CambiarEstado(ctx context.Context, id, estado string) error {
@@ -238,7 +242,7 @@ func TestContactoListarDescifra(t *testing.T) {
 		RemitenteNombre: nombre, RemitenteApellido: apellido, RemitenteEmail: email,
 	}}
 
-	mensajes, err := s.Listar(context.Background(), "")
+	mensajes, _, err := s.Listar(context.Background(), "", 25, 0)
 	if err != nil {
 		t.Fatalf("no debia fallar: %v", err)
 	}
@@ -268,7 +272,7 @@ func TestContactoRechazaEstadosInventados(t *testing.T) {
 	if repo.estados["id-1"] != domain.ContactoRespondido {
 		t.Error("no se guardo el estado nuevo")
 	}
-	if _, err := s.Listar(context.Background(), "inventado"); err == nil {
+	if _, _, err := s.Listar(context.Background(), "inventado", 25, 0); err == nil {
 		t.Error("filtrar por un estado inventado debia rechazarse")
 	}
 }

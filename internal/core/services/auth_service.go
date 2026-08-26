@@ -426,17 +426,27 @@ func (s *AuthService) AdminLogin(ctx context.Context, email, password string) (s
 	return token.SignedString(s.jwtSecret)
 }
 
-func (s *AuthService) ListUsers(ctx context.Context) ([]*domain.User, error) {
-	users, err := s.repo.FindAll(ctx)
+// ListUsers devuelve una página de cuentas y el total.
+//
+// Cada fila se descifra una por una, así que traer la tabla entera no costaba
+// solo la consulta: costaba tantos descifrados AES como cuentas hubiera. Ese es
+// el motivo de fondo para paginar aquí, más que el tamaño de la respuesta.
+func (s *AuthService) ListUsers(ctx context.Context, limit, offset int) ([]*domain.User, int, error) {
+	total, err := s.repo.CountAll(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	users, err := s.repo.FindAll(ctx, limit, offset)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	for _, user := range users {
 		s.decryptUser(user)
 	}
 
-	return users, nil
+	return users, total, nil
 }
 
 // ListAdmins returns all admin users.

@@ -78,7 +78,10 @@ func (u *usuariosDePrueba) FindBySocialID(ctx context.Context, p, s string) (*do
 	return nil, nil
 }
 func (u *usuariosDePrueba) LinkSocialID(ctx context.Context, uID, p, s string) error { return nil }
-func (u *usuariosDePrueba) FindAll(ctx context.Context) ([]*domain.User, error)      { return nil, nil }
+func (u *usuariosDePrueba) FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error) {
+	return nil, nil
+}
+func (u *usuariosDePrueba) CountAll(ctx context.Context) (int, error) { return 0, nil }
 func (u *usuariosDePrueba) Update(ctx context.Context, user *domain.User) error      { return nil }
 func (u *usuariosDePrueba) Delete(ctx context.Context, id string) error              { return nil }
 func (u *usuariosDePrueba) AnonymizeUser(ctx context.Context, id string) error       { return nil }

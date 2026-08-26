@@ -28,7 +28,8 @@ type UserRepository interface {
 	FindBySocialID(ctx context.Context, provider, socialID string) (*domain.User, error)
 	// LinkSocialID deja constancia de con qué cuenta social entra alguien.
 	LinkSocialID(ctx context.Context, userID, provider, socialID string) error
-	FindAll(ctx context.Context) ([]*domain.User, error)
+	FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error)
+	CountAll(ctx context.Context) (int, error)
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, user *domain.User) error
 	Delete(ctx context.Context, id string) error
@@ -84,7 +85,9 @@ type AuthService interface {
 	ListAdmins(ctx context.Context) ([]*domain.AdminUser, error)
 	UpdateAdmin(ctx context.Context, admin *domain.AdminUser) error
 	DeleteAdmin(ctx context.Context, id string) error
-	ListUsers(ctx context.Context) ([]*domain.User, error)
+	// ListUsers pagina y devuelve además el total de cuentas, que el panel
+	// necesita para su paginador.
+	ListUsers(ctx context.Context, limit, offset int) ([]*domain.User, int, error)
 	UpdateUser(ctx context.Context, user *domain.User) error
 	DeleteUser(ctx context.Context, id string) error
 	GetProfile(ctx context.Context, id string) (*domain.User, error)

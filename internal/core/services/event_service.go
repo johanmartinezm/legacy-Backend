@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -301,10 +300,19 @@ func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([
 // sigue el patrón del resto de servicios —StatsService, SynergyService—: si el
 // descifrado falla se deja el valor tal cual, porque las filas anteriores al
 // cifrado están en claro y perderlas sería peor que mostrarlas.
-func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string) ([]domain.EventRegistrant, error) {
-	registrants, err := s.repo.GetRegistrationsByEvent(ctx, eventID)
+func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, int, error) {
+	// El total se pide antes que la página: si se pidiera después y alguien se
+	// inscribiera entre las dos consultas, el panel pintaría un paginador que no
+	// corresponde a lo que acaba de mostrar. Así, como mucho, el total se queda
+	// corto un instante, que es el lado inocuo del error.
+	total, err := s.repo.CountRegistrationsByEvent(ctx, eventID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	registrants, err := s.repo.GetRegistrationsByEvent(ctx, eventID, limit, offset)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	for i := range registrants {
@@ -323,19 +331,26 @@ func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string) 
 		registrants[i].FullName = strings.TrimSpace(nombre + " " + apellido)
 	}
 
-	// Se ordena aquí y no en la consulta porque en la base los nombres están
-	// cifrados: un ORDER BY los ordenaría por su texto cifrado, que no guarda
-	// ninguna relación con el alfabeto. El desempate por fecha deja el orden
-	// estable cuando dos personas se llaman igual.
-	sort.SliceStable(registrants, func(i, j int) bool {
-		a, b := registrants[i], registrants[j]
-		if strings.EqualFold(a.FullName, b.FullName) {
-			return a.RegistrationDate.Before(b.RegistrationDate)
-		}
-		return strings.ToLower(a.FullName) < strings.ToLower(b.FullName)
-	})
-
-	return registrants, nil
+	// **Ya no se ordena por nombre, y no es un descuido.**
+	//
+	// Hasta el 2026-08-26 esta lista se traía entera y se ordenaba aquí por
+	// nombre, porque en la base están cifrados y un ORDER BY los ordenaría por
+	// su texto cifrado, que no guarda ninguna relación con el alfabeto.
+	//
+	// Ese orden y la paginación no pueden convivir. Ordenar en Go solo alcanza a
+	// las filas que ya se trajeron, así que con páginas quedaría una lista
+	// alfabética que **vuelve a empezar en cada página**: la A después de la Z.
+	// Peor que no ordenar, porque parece un orden y no lo es.
+	//
+	// Se pagina por fecha de inscripción descendente, que además es el orden
+	// útil para quien organiza —quién se acaba de inscribir— y el único que la
+	// base puede ordenar de verdad. Quien quiera alfabético puede ordenar la
+	// página en el panel.
+	//
+	// Si algún día hace falta el alfabético sobre el total, la vía es una
+	// columna auxiliar con el nombre normalizado para ordenar, al estilo del
+	// `email_blind_index` que ya existe; no traerse la tabla entera otra vez.
+	return registrants, total, nil
 }
 
 func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error {

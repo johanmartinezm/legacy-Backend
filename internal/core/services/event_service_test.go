@@ -20,14 +20,22 @@ type MockEventRepository struct {
 	GetEventSurveySummaryFunc         func(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
 	GetRegistrationByQRFunc           func(ctx context.Context, qr string) (*domain.Registration, *domain.CheckInResponse, error)
 	RecordAttendanceFunc              func(ctx context.Context, regID, staffID string) (time.Time, bool, error)
-	GetRegistrationsByEventFunc       func(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
+	GetRegistrationsByEventFunc       func(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, error)
+	CountRegistrationsByEventFunc     func(ctx context.Context, eventID string) (int, error)
 }
 
-func (m *MockEventRepository) GetRegistrationsByEvent(ctx context.Context, eID string) ([]domain.EventRegistrant, error) {
+func (m *MockEventRepository) GetRegistrationsByEvent(ctx context.Context, eID string, limit, offset int) ([]domain.EventRegistrant, error) {
 	if m.GetRegistrationsByEventFunc == nil {
 		return nil, nil
 	}
-	return m.GetRegistrationsByEventFunc(ctx, eID)
+	return m.GetRegistrationsByEventFunc(ctx, eID, limit, offset)
+}
+
+func (m *MockEventRepository) CountRegistrationsByEvent(ctx context.Context, eID string) (int, error) {
+	if m.CountRegistrationsByEventFunc == nil {
+		return 0, nil
+	}
+	return m.CountRegistrationsByEventFunc(ctx, eID)
 }
 
 func (m *MockEventRepository) GetEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error) {

@@ -30,8 +30,11 @@ type EventRepository interface {
 	GetRegistrationsByUser(ctx context.Context, userID string) ([]domain.UserRegistration, error)
 	// GetRegistrationsByEvent devuelve los inscritos de un evento con sus datos
 	// personales todavía cifrados: descifrar es cosa del servicio, que es quien
-	// tiene el CryptoService.
-	GetRegistrationsByEvent(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
+	// tiene el CryptoService. Pagina: el orden es total (fecha e id) para que
+	// dos páginas seguidas no se solapen ni se salten filas.
+	GetRegistrationsByEvent(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, error)
+	// CountRegistrationsByEvent es el total, para saber cuántas páginas hay.
+	CountRegistrationsByEvent(ctx context.Context, eventID string) (int, error)
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 
@@ -69,7 +72,10 @@ type EventService interface {
 	GetMyRegistrations(ctx context.Context, userID string) ([]domain.UserRegistration, error)
 	// GetEventRegistrants es la lista de inscritos de un evento, para quien lo
 	// organiza. Va bajo AdminOnly: son datos personales de terceros.
-	GetEventRegistrants(ctx context.Context, eventID string) ([]domain.EventRegistrant, error)
+	//
+	// Devuelve también el total de inscritos, que no es el largo de la página:
+	// el panel lo necesita para pintar el paginador.
+	GetEventRegistrants(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, int, error)
 	SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 
