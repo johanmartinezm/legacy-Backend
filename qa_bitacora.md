@@ -4,6 +4,39 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-26]: El listado público de eventos respeta la columna `status`
+
+- **El problema:** `events.events` tiene una columna `status` desde el esquema inicial, y
+  `GetEvents` la **ignoraba por completo**. Todo evento salía en la app sin importar su estado, así
+  que **no había forma de retirar uno sin borrarlo**: los tres eventos de verificación interna se
+  veían igual que el Legacy Summit para cualquiera que abriera la aplicación.
+- **El fix:** el listado filtra por `status = 'active'`. Quien llama decide si incluye los inactivos.
+- **El panel los sigue viendo todos.** Consume este mismo `GET /api/events` —no hay una ruta de
+  listado propia para administración—, así que el handler pasa `IsAdmin(r.Context())`. Sin eso, un
+  evento marcado como inactivo habría desaparecido también del panel y no habría forma de
+  reactivarlo desde ninguna pantalla. `OptionalAuthMiddleware` ya deja el rol en el contexto.
+- **`GetEventByID` NO filtra, a propósito.** Lo usan `payment_service`, `payment_correo`, las
+  inscripciones y las encuestas. Si un evento inactivo dejara de resolverse por id, quien ya
+  estuviera inscrito perdería su credencial y la confirmación de pago fallaría.
+- **Alcance:** `internal/adapter/storage/postgres/event_repository.go`,
+  `internal/core/ports/event_ports.go`, `internal/core/services/event_service.go`,
+  `internal/handler/http/event_handler.go`,
+  `internal/handler/http/eventos_inactivos_test.go` (nuevo, 4 casos), y tres stubs de tests que
+  adaptan la firma.
+- **Verificado:** `go build` y `go vet` limpios; `go test ./...` en verde salvo
+  `TestExhaustiveUserUpdate`, el test suelto de siempre. **Desplegado y comprobado contra
+  producción**: los tres eventos internos se marcaron `inactive` y `GET /api/events` pasó de
+  devolver 7 a devolver 4.
+- ⚠️ **Falta comprobar en el panel** que los inactivos siguen listándose ahí. El camino está cubierto
+  por tests, pero no se ejercitó con un token de administrador real.
+- **Criterios de QA:**
+  1. **Abrir la app sin sesión**: no aparece ningún evento «Verificación interna».
+  2. **Entrar al panel**: los tres siguen apareciendo y se pueden editar.
+  3. **Reactivar uno desde el panel**: vuelve a verse en la app.
+  4. **Quien ya está inscrito** a un evento inactivo sigue viendo su credencial con el QR.
+
+---
+
 ### [2026-08-25]: El correo deja de viajar en el enlace de recuperar contraseña
 
 - **El problema:** `RequestPasswordReset` armaba el enlace como
