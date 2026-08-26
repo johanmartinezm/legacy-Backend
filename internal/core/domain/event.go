@@ -35,6 +35,13 @@ type Event struct {
 	PriceLabel     string     `json:"priceLabel" db:"-"`
 	IsFree         bool       `json:"isFree" db:"is_free"`
 	ActionStatus   string     `json:"actionStatus" db:"action_status"`
+	// Status decide si el evento se ve en la app: solo salen los `active`
+	// (event_repository.go:66). Se lee aquí para que el panel pueda mostrar
+	// cuál está oculto, pero **no se escribe por UpdateEvent**: el formulario
+	// del panel no lo envía, así que incluirlo en el UPDATE lo dejaría vacío en
+	// cada guardado y el evento desaparecería de la app al editarlo. Cambiarlo
+	// es una acción aparte, PUT /api/events/{id}/status.
+	Status         string     `json:"status" db:"status"`
 	ButtonText     string     `json:"buttonText" db:"button_text"`
 	AttendeesLimit *int       `json:"attendees_limit" db:"attendees_limit"`
 	Includes       *string    `json:"includes" db:"includes"`
@@ -70,6 +77,24 @@ type Workshop struct {
 	StartDateTime time.Time `json:"startDateTime" db:"start_date_time"`
 	EndDateTime   time.Time `json:"endDateTime" db:"end_date_time"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+}
+
+// Estados de un evento. Se corresponden con el CHECK de events.events.status.
+const (
+	// EventoActivo: se ve en la app. Es el valor por defecto de la columna, así
+	// que todo evento creado desde el panel nace activo.
+	EventoActivo = "active"
+	// EventoInactivo: sigue existiendo y quien ya está inscrito conserva su
+	// credencial —GetEventByID no filtra—, pero desaparece del listado público.
+	EventoInactivo = "inactive"
+)
+
+// EstadoDeEventoValido rechaza cualquier otro valor antes de que llegue a la
+// base. Sin esta guarda, un estado escrito a mano ("activo", "") no lo atrapa
+// nadie: no pasaría el filtro `= 'active'` y el evento se quedaría oculto sin
+// que la pantalla mostrara nada raro.
+func EstadoDeEventoValido(estado string) bool {
+	return estado == EventoActivo || estado == EventoInactivo
 }
 
 // Estados de una inscripción. Se corresponden con el CHECK de

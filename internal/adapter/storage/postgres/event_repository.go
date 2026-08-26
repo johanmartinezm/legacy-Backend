@@ -72,6 +72,7 @@ func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) 
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
 		       e.location, e.is_virtual, e.access_url, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
 		       e.action_status, e.button_text, e.attendees_limit, e.includes,
+		       COALESCE(e.status, '') AS status,
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
 		LEFT JOIN events.categories c ON e.category_id = c.id
@@ -90,7 +91,7 @@ func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) 
 		err := rows.Scan(
 			&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
 			&e.Location, &e.IsVirtual, &e.AccessURL, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
-			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.CategoryOrder,
+			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Status, &e.CategoryOrder,
 		)
 		if err != nil {
 			return nil, err
@@ -111,6 +112,7 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
 		       e.location, e.is_virtual, e.access_url, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
 		       e.action_status, e.button_text, e.attendees_limit, e.includes,
+		       COALESCE(e.status, '') AS status,
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
 		LEFT JOIN events.categories c ON e.category_id = c.id
@@ -120,7 +122,7 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
 		&e.Location, &e.IsVirtual, &e.AccessURL, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
-		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.CategoryOrder,
+		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Status, &e.CategoryOrder,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -371,6 +373,30 @@ func (r *EventRepository) UpdateEvent(ctx context.Context, e *domain.Event) erro
 		e.ID,
 	)
 	return err
+}
+
+// UpdateEventStatus cambia solo la visibilidad del evento.
+//
+// Va aparte de UpdateEvent —y no como una columna más de aquel UPDATE— porque
+// el formulario del panel no envía `status`: incluirlo allí escribiría la
+// cadena vacía en cada guardado, y como el listado filtra por `= 'active'`, el
+// evento desaparecería de la app al editarlo sin que nadie lo hubiera ocultado.
+// Ocultar un evento es una acción deliberada, no un efecto secundario de
+// guardar el formulario.
+//
+// Devuelve domain.ErrNotFound si el id no existe: sin esa comprobación, el
+// panel recibiría un 200 sobre un evento que no está, que es justo el silencio
+// que tenía antes el PUT genérico al ignorar el campo.
+func (r *EventRepository) UpdateEventStatus(ctx context.Context, id, status string) error {
+	query := `UPDATE events.events SET status = $1, updated_at = NOW() WHERE id = $2`
+	tag, err := r.db.Exec(ctx, query, status, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *EventRepository) DeleteEvent(ctx context.Context, id string) error {

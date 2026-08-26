@@ -432,6 +432,10 @@ func main() {
 		// token de rol "admin" (auth_service.go:301).
 		r.Post("/api/events", eventHandler.CreateEvent)
 		r.Put("/api/events/{id}", eventHandler.UpdateEvent)
+		// Ocultar o volver a mostrar un evento en la app. Aparte del PUT de
+		// arriba a proposito: aquel no escribe `status` —el formulario del
+		// panel no lo envia— y meterlo alli lo borraria en cada guardado.
+		r.Put("/api/events/{id}/status", eventHandler.UpdateEventStatus)
 		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
 		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)

@@ -47,6 +47,9 @@ func (m *MockEventRepository) ListCategories(ctx context.Context) ([]domain.Even
 }
 func (m *MockEventRepository) CreateEvent(ctx context.Context, event *domain.Event) error { return nil }
 func (m *MockEventRepository) UpdateEvent(ctx context.Context, event *domain.Event) error { return nil }
+func (m *MockEventRepository) UpdateEventStatus(ctx context.Context, id, status string) error {
+	return nil
+}
 func (m *MockEventRepository) DeleteEvent(ctx context.Context, id string) error           { return nil }
 func (m *MockEventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop) error {
 	return nil

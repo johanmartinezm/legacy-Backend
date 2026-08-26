@@ -99,6 +99,42 @@ func (h *EventHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(event)
 }
 
+// UpdateEventStatus oculta un evento de la app o lo vuelve a mostrar. Va bajo
+// AdminOnly.
+//
+// Existe como ruta propia porque el PUT del evento **no** escribe `status`: el
+// formulario del panel no lo envía, así que incluirlo allí lo borraría en cada
+// guardado y el evento desaparecería de la app al editarlo. Hasta ahora no
+// había ninguna forma de reactivar un evento desde el panel —solo por SQL—, y
+// mandar `"status"` en el PUT devolvía 200 sin cambiar nada.
+func (h *EventHandler) UpdateEventStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var payload struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	err := h.service.UpdateEventStatus(r.Context(), id, payload.Status)
+	switch {
+	case errors.Is(err, domain.ErrEstadoDeEventoInvalido):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		http.Error(w, "event not found", http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": id, "status": payload.Status})
+}
+
 func (h *EventHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var event domain.Event

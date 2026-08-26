@@ -62,4 +62,9 @@ var (
 	// El mensaje está en español porque los controladores de restablecer y de
 	// cambiar contraseña devuelven err.Error() tal cual al cliente.
 	ErrContrasenaCorta = errors.New("la contraseña debe tener al menos 6 caracteres")
+
+	// ErrEstadoDeEventoInvalido es un `status` distinto de "active"/"inactive".
+	//
+	// En español y por la misma razón: el controlador lo devuelve tal cual.
+	ErrEstadoDeEventoInvalido = errors.New("el estado del evento debe ser 'active' o 'inactive'")
 )

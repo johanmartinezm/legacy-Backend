@@ -4,6 +4,69 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-26]: Un evento oculto ya se puede reactivar desde el panel
+
+Sale de comprobar el ⚠️ que dejó abierto la entrada de más abajo («falta comprobar en el panel»).
+La comprobación se hizo contra el entorno local con un administrador real —token emitido por
+`POST /api/admin/login`, con `role: admin`— y dio dos resultados opuestos.
+
+**Lo que sí funcionaba (criterio 2, cerrado):** el panel ve los inactivos. `GET /api/events` sin
+token devuelve 8 eventos y con el Bearer de admin devuelve 9, y el noveno es el inactivo. Los tres
+eslabones estaban puestos: la ruta cuelga del grupo con `OptionalAuthMiddleware` (`main.go:308`), el
+interceptor del panel añade el `Authorization` a toda petición (`auth.interceptor.ts`) y está
+registrado en `app.config.ts`.
+
+**Lo que no existía (criterio 3):** reactivar. No es que fallara, es que no había forma de hacerlo.
+`domain.Event` no tenía campo `Status`, el `UPDATE` del repositorio no incluía la columna y el panel
+no la mencionaba en ninguna parte. Comprobado forzándolo: `PUT /api/events/{id}` con
+`"status":"active"` en el cuerpo respondía **200 y el evento seguía inactivo**. Los tres eventos que
+se marcaron inactivos en producción solo se podían recuperar por SQL.
+
+- **El fix:** ruta propia, `PUT /api/events/{id}/status` bajo `AdminOnly`, y `Status` en el dominio
+  para poder **leerlo** en el listado.
+- **Por qué una ruta aparte y no una columna más en el `UPDATE` de siempre.** El formulario del panel
+  no envía `status`. Si el `UPDATE` lo escribiera, cada guardado normal mandaría la cadena vacía; como
+  el listado filtra por `= 'active'`, **el evento desaparecería de la app al editarlo**, sin que nadie
+  lo hubiera ocultado. Hoy eso no puede pasar precisamente porque aquel `UPDATE` no toca la columna, y
+  así se queda: hay un test que lo fija (`TestGuardarElFormularioNoCambiaLaVisibilidad`).
+- **La validación vive en el servicio, no en el handler**, porque la propiedad es de negocio:
+  cualquier valor fuera de los dos conocidos —`"activo"`, `"ACTIVE"`, `""`— deja el evento fuera del
+  filtro, o sea invisible en la app, y ninguna pantalla muestra nada raro. Se escribe mal más fácil de
+  lo que se nota.
+- **`UpdateEventStatus` devuelve `ErrNotFound`** si el id no existe. Sin esa comprobación el panel
+  recibiría un 200 sobre un evento que no está, que es el mismo silencio que tenía antes el PUT.
+- **Migración:** `scripts/20260826_event_status_not_null.sql`. La columna existía con
+  `DEFAULT 'active'` pero **sin NOT NULL y sin CHECK**: un NULL tampoco cumple `= 'active'`, así que
+  un evento podía desaparecer de la app sin que nadie lo hubiera ocultado y con una fila que a simple
+  vista parece correcta. Es idempotente; aplicada y repetida en local.
+- **Alcance:** `internal/core/domain/event.go` (campo `Status`, constantes y `EstadoDeEventoValido`),
+  `internal/core/domain/errors.go`, `internal/core/ports/event_ports.go`,
+  `internal/adapter/storage/postgres/event_repository.go` (los dos SELECT y `UpdateEventStatus`),
+  `internal/core/services/event_service.go`, `internal/handler/http/event_handler.go`,
+  `cmd/server/main.go` (la ruta), `scripts/20260826_event_status_not_null.sql`,
+  `internal/handler/http/estado_evento_test.go` (nuevo, 6 casos),
+  `internal/core/services/estado_evento_test.go` (nuevo, 3 casos) y dos stubs que adaptan la firma.
+  Contraparte en `Sitio-Administrativo`, misma fecha.
+- **Verificado:** `go build ./...` y `go vet ./...` limpios; `go test ./...` en verde salvo
+  `TestExhaustiveUserUpdate`, el test suelto de siempre. Y ejercitado de punta a punta contra el
+  entorno local: reactivar el evento lo devuelve al listado público (8 → 9 eventos), volver a
+  ocultarlo lo retira (9 → 8), un estado inventado da 400, un id que no existe da 404, sin token da
+  401, y guardar el formulario completo por el `PUT` de siempre **no** cambia la visibilidad.
+- ⚠️ **No se pudo pilotar el panel en el navegador** (la extensión de Chrome no estaba conectada), así
+  que el chip y el botón están cubiertos por un spec que renderiza la tabla de verdad, pero nadie los
+  ha visto con el ratón. Es lo que cubren los criterios 1 y 2 de aquí abajo.
+- **Criterios de QA** (aplicar antes la migración):
+  1. **Abrir «Administrar Eventos»**: aparece la columna «En la app», con «Visible» en verde y
+     «Oculto» en gris. Los eventos de verificación interna salen como «Oculto».
+  2. **Tocar el ojo de un evento oculto** y aceptar: el chip pasa a «Visible» y sale el aviso abajo.
+  3. **Abrir la app**: ese evento ya aparece en el listado.
+  4. **Volver a ocultarlo** desde el panel y recargar la app: desaparece.
+  5. **Editar ese mismo evento oculto** por el formulario de siempre y guardar: **sigue oculto**, no
+     se reactiva solo.
+  6. **Quien ya está inscrito** a un evento oculto sigue viendo su credencial con el QR.
+
+---
+
 ### [2026-08-26]: El listado público de eventos respeta la columna `status`
 
 - **El problema:** `events.events` tiene una columna `status` desde el esquema inicial, y

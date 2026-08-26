@@ -114,6 +114,20 @@ func (s *EventService) UpdateEvent(ctx context.Context, e *domain.Event) error {
 	return nil
 }
 
+// UpdateEventStatus oculta un evento de la app o lo vuelve a mostrar.
+//
+// Valida el estado aquí y no en el handler porque la propiedad que protege es
+// de negocio, no de transporte: cualquier valor distinto de los dos conocidos
+// deja el evento fuera del filtro `= 'active'`, o sea invisible en la app, sin
+// que ninguna pantalla muestre nada raro. Es más fácil de escribir mal que de
+// notar.
+func (s *EventService) UpdateEventStatus(ctx context.Context, id, status string) error {
+	if !domain.EstadoDeEventoValido(status) {
+		return domain.ErrEstadoDeEventoInvalido
+	}
+	return s.repo.UpdateEventStatus(ctx, id, status)
+}
+
 func (s *EventService) DeleteEvent(ctx context.Context, id string) error {
 	// Workshops will be deleted via cascade if set up, or explicitly here
 	_ = s.repo.DeleteWorkshopsByEventID(ctx, id)

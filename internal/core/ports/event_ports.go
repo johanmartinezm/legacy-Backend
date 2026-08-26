@@ -13,6 +13,11 @@ type EventRepository interface {
 	ListCategories(ctx context.Context) ([]domain.EventCategory, error)
 	CreateEvent(ctx context.Context, event *domain.Event) error
 	UpdateEvent(ctx context.Context, event *domain.Event) error
+	// UpdateEventStatus cambia solo la visibilidad. Aparte de UpdateEvent a
+	// propósito: el formulario del panel no envía `status`, y meterlo en aquel
+	// UPDATE lo borraría en cada guardado. Devuelve domain.ErrNotFound si el id
+	// no existe.
+	UpdateEventStatus(ctx context.Context, id, status string) error
 	DeleteEvent(ctx context.Context, id string) error
 	CreateWorkshop(ctx context.Context, workshop *domain.Workshop) error
 	DeleteWorkshopsByEventID(ctx context.Context, eventID string) error
@@ -54,6 +59,9 @@ type EventService interface {
 	ListCategories(ctx context.Context) ([]domain.EventCategory, error)
 	CreateEvent(ctx context.Context, event *domain.Event) error
 	UpdateEvent(ctx context.Context, event *domain.Event) error
+	// UpdateEventStatus oculta o vuelve a mostrar un evento en la app. Solo
+	// acepta domain.EventoActivo y domain.EventoInactivo.
+	UpdateEventStatus(ctx context.Context, id, status string) error
 	DeleteEvent(ctx context.Context, id string) error
 	RegisterUser(ctx context.Context, reg *domain.Registration) error
 	// GetMyRegistrations alimenta la pantalla "Mi credencial": todos los eventos

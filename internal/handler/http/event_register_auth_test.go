@@ -49,6 +49,9 @@ func (s *stubEventService) ListCategories(ctx context.Context) ([]domain.EventCa
 }
 func (s *stubEventService) CreateEvent(ctx context.Context, e *domain.Event) error { return nil }
 func (s *stubEventService) UpdateEvent(ctx context.Context, e *domain.Event) error { return nil }
+func (s *stubEventService) UpdateEventStatus(ctx context.Context, id, status string) error {
+	return nil
+}
 func (s *stubEventService) DeleteEvent(ctx context.Context, id string) error       { return nil }
 func (s *stubEventService) SubmitWorkshopRating(ctx context.Context, r *domain.WorkshopRating) error {
 	return nil
