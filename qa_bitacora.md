@@ -4,6 +4,31 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-08-26]: El panel deja de listar cuentas borradas
+
+Salió al paginar el listado de usuarios: `FindAll` no tenía filtro por `deleted_at` y `CountAll`
+tampoco.
+
+- **El problema:** borrar una cuenta la **anonimiza** —«Usuario eliminado», sin correo ni datos— y le
+  pone `deleted_at`, pero la fila se queda. El listado del panel no filtraba, así que esas filas
+  salían en la tabla y contaban en el paginador. `ListMembers` del chat sí lo filtra
+  (`chat_repository.go:197`); este era el que se había quedado fuera.
+- **En producción no se veía**: hay 0 cuentas borradas. **En la base local sí**, y ahí quedó la
+  prueba: el total pasó de **71 a 68** al añadir el filtro, o sea que tres filas anonimizadas se
+  estaban listando.
+- **Comprobado marcando una cuenta como borrada** en local: el total bajó de 68 a 67 y esa cuenta
+  desapareció del listado. Se dejó como estaba al terminar.
+- **`CountAll` filtra igual que `FindAll`, y eso importa más de lo que parece:** si los dos se
+  separan, el paginador ofrece páginas que al pedirlas salen vacías y nadie sabría por qué.
+- **Alcance:** `internal/adapter/storage/postgres/user_repository.go`.
+- **Verificado:** `go build` y `go vet` limpios. No lleva test: el filtro está en el SQL y los tests
+  de este repositorio no tocan base, así que la comprobación es la de arriba, contra la base local.
+- **Criterios de QA:**
+  1. **Borrar una cuenta** desde la app y abrir «Usuarios» en el panel: no aparece, y el total baja.
+  2. **El resto del listado** sigue completo.
+
+---
+
 ### [2026-08-26]: Paginan los tres listados del panel que crecían sin techo
 
 `CLAUDE.md` decía que ningún listado paginaba. **Era falso desde hacía tiempo**: mensajes de chat,

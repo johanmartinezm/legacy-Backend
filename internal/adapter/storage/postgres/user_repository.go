@@ -207,7 +207,17 @@ func (r *UserRepository) LinkSocialID(ctx context.Context, userID, provider, soc
 	return nil
 }
 
-// FindAll pagina desde el 2026-08-26.
+// FindAll lista las cuentas para el panel: **solo las vivas**.
+//
+// El filtro por `deleted_at` faltaba. Una cuenta borrada queda anonimizada
+// —«Usuario eliminado», sin correo ni datos— pero la fila sigue ahí, así que
+// salía en el listado del panel y contaba en el paginador. Hoy no se notaba
+// porque no hay ninguna borrada en producción; se habría notado la primera vez
+// que alguien borrara su cuenta, y como una fila anonimizada no dice nada, el
+// síntoma habría sido «aparecen usuarios vacíos». `ListMembers` del chat sí lo
+// filtraba (chat_repository.go:197): este era el que se quedó fuera.
+//
+// Pagina desde el 2026-08-26.
 //
 // El orden es `created_at DESC, id DESC`. El id desempata a propósito: sin él,
 // dos cuentas creadas en el mismo instante pueden salir en distinto orden en dos
@@ -244,6 +254,7 @@ func (r *UserRepository) FindAll(ctx context.Context, limit, offset int) ([]*dom
 			COALESCE(updated_at, CURRENT_TIMESTAMP),
 			COALESCE(alias, '')
 		FROM core.users
+		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC, id DESC
 		LIMIT $1 OFFSET $2
 	`
@@ -294,14 +305,15 @@ func (r *UserRepository) FindAll(ctx context.Context, limit, offset int) ([]*dom
 	return users, nil
 }
 
-// CountAll es el total de cuentas, para el paginador del panel.
+// CountAll es el total de cuentas vivas, para el paginador del panel.
 //
-// Cuenta lo mismo que lista FindAll, sin filtro de borradas: si un día se añade
-// un WHERE allí, hay que añadirlo aquí o el paginador prometerá páginas que no
-// existen.
+// Cuenta **exactamente lo mismo que lista FindAll**, filtro de borradas
+// incluido. Si los dos se separan, el paginador ofrece páginas que al pedirlas
+// salen vacías, y nadie sabría por qué.
 func (r *UserRepository) CountAll(ctx context.Context) (int, error) {
 	var total int
-	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM core.users`).Scan(&total)
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM core.users WHERE deleted_at IS NULL`).Scan(&total)
 	return total, err
 }
 
