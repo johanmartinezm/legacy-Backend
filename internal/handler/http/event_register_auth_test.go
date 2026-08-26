@@ -38,7 +38,9 @@ func (s *stubEventService) GetMyRegistrations(ctx context.Context, userID string
 	return nil, nil
 }
 
-func (s *stubEventService) ListEvents(ctx context.Context) ([]domain.Event, error) { return nil, nil }
+func (s *stubEventService) ListEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error) {
+	return nil, nil
+}
 func (s *stubEventService) GetEventDetails(ctx context.Context, id string) (*domain.Event, error) {
 	return nil, nil
 }

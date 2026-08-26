@@ -7,7 +7,7 @@ import (
 )
 
 type EventRepository interface {
-	GetEvents(ctx context.Context) ([]domain.Event, error)
+	GetEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error)
 	GetEventByID(ctx context.Context, id string) (*domain.Event, error)
 	GetWorkshopsByEventID(ctx context.Context, eventID string) ([]domain.Workshop, error)
 	ListCategories(ctx context.Context) ([]domain.EventCategory, error)
@@ -49,7 +49,7 @@ type EventRepository interface {
 }
 
 type EventService interface {
-	ListEvents(ctx context.Context) ([]domain.Event, error)
+	ListEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error)
 	GetEventDetails(ctx context.Context, id string) (*domain.Event, error)
 	ListCategories(ctx context.Context) ([]domain.EventCategory, error)
 	CreateEvent(ctx context.Context, event *domain.Event) error

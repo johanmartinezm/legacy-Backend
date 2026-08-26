@@ -50,7 +50,23 @@ func (r *EventRepository) ListCategories(ctx context.Context) ([]domain.EventCat
 // declara CategoryID, Category y CategoryOrder como valores no anulables, así que
 // un nulo rompería el Scan. El 9999 del orden manda los eventos sin categoría al
 // final de la lista, que es donde estorban menos.
-func (r *EventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) {
+// El filtro por `status` existía en la tabla desde el principio y esta consulta
+// lo ignoraba, así que **todo** evento salía en el listado público sin importar
+// su estado. No había forma de retirar un evento de la app sin borrarlo: los de
+// verificación interna se veían igual que los reales.
+//
+// `incluirInactivos` lo decide quien llama: el panel necesita verlos todos para
+// poder reactivarlos, y consume este mismo endpoint.
+//
+// Ojo: GetEventByID **no** filtra a propósito. Lo usan los pagos, las
+// inscripciones y las encuestas; si un evento inactivo dejara de resolverse por
+// id, quien ya estuviera inscrito perdería su credencial y la confirmación de
+// pago fallaría.
+func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error) {
+	filtro := "WHERE e.status = 'active'"
+	if incluirInactivos {
+		filtro = ""
+	}
 	query := `
 		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
@@ -59,6 +75,7 @@ func (r *EventRepository) GetEvents(ctx context.Context) ([]domain.Event, error)
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
 		LEFT JOIN events.categories c ON e.category_id = c.id
+		` + filtro + `
 		ORDER BY COALESCE(c.order_index, 9999) ASC, e.start_date ASC
 	`
 	rows, err := r.db.Query(ctx, query)

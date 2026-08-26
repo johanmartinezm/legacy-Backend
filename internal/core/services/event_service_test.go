@@ -30,7 +30,9 @@ func (m *MockEventRepository) GetRegistrationsByEvent(ctx context.Context, eID s
 	return m.GetRegistrationsByEventFunc(ctx, eID)
 }
 
-func (m *MockEventRepository) GetEvents(ctx context.Context) ([]domain.Event, error) { return nil, nil }
+func (m *MockEventRepository) GetEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error) {
+	return nil, nil
+}
 func (m *MockEventRepository) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
 	if m.GetEventByIDFunc == nil {
 		return nil, domain.ErrNotFound

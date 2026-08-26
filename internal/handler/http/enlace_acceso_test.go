@@ -28,7 +28,7 @@ type eventosDePrueba struct {
 	evento domain.Event
 }
 
-func (e *eventosDePrueba) ListEvents(ctx context.Context) ([]domain.Event, error) {
+func (e *eventosDePrueba) ListEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error) {
 	return []domain.Event{e.evento}, nil
 }
 

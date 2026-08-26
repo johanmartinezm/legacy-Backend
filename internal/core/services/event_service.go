@@ -45,8 +45,8 @@ func (s *EventService) ListCategories(ctx context.Context) ([]domain.EventCatego
 	return s.repo.ListCategories(ctx)
 }
 
-func (s *EventService) ListEvents(ctx context.Context) ([]domain.Event, error) {
-	events, err := s.repo.GetEvents(ctx)
+func (s *EventService) ListEvents(ctx context.Context, incluirInactivos bool) ([]domain.Event, error) {
+	events, err := s.repo.GetEvents(ctx, incluirInactivos)
 	if err != nil {
 		return nil, err
 	}

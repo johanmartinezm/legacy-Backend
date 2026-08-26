@@ -39,7 +39,9 @@ func (h *EventHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 // Quien está inscrito recibe el suyo por GET /api/me/registrations, que aplica
 // su propia regla.
 func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
-	events, err := h.service.ListEvents(r.Context())
+	// El panel consume este mismo listado y necesita ver los inactivos para
+	// poder reactivarlos; a todos los demas se les ocultan.
+	events, err := h.service.ListEvents(r.Context(), IsAdmin(r.Context()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
