@@ -32,6 +32,7 @@ backend contra lo que manda cada servicio del panel.
 - **Alcance:** `internal/core/services/content_service.go`,
   `internal/core/services/fecha_publicacion_test.go` (nuevo, 5 casos).
 - **Verificado:** `go build ./...` y `go vet ./...` limpios; los 5 casos en verde.
+- **Desplegado el 2026-08-26**, junto con el arreglo de nombres del panel.
 - ⚠️ **Los dos contenidos que ya están en producción siguen sin fecha.** El arreglo solo sella al
   guardar, así que hay que abrirlos en el panel y volver a guardarlos —o ponerles la fecha a mano—.
 - **Criterios de QA:**
