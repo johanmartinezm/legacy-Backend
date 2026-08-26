@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"regexp"
 	"time"
 
@@ -85,11 +86,26 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) er
 	}
 
 	// 4. Send email
-	resetLink := fmt.Sprintf("%s?token=%s&email=%s", s.resetURL, token, email)
+	//
+	// El enlace lleva SOLO el token. La dirección de correo iba antes como
+	// segundo parámetro, y todo lo que viaja en una URL se filtra a sitios que
+	// nadie controla: el historial del navegador, la cabecera Referer hacia
+	// cualquier recurso de terceros de esa página, los registros de los proxies
+	// del camino y quien reciba el enlace si se reenvía. Además iba sin escapar,
+	// así que un "+" en la dirección llegaba convertido en espacio.
+	//
+	// El token basta para identificar la solicitud: son 32 bytes aleatorios y la
+	// tabla guarda el correo junto a él (ver ResetPassword).
+	resetLink := fmt.Sprintf("%s?token=%s", s.resetURL, url.QueryEscape(token))
 	return s.emailService.SendResetPasswordEmail(email, resetLink)
 }
 
-func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPassword string) error {
+// ResetPassword cambia la contraseña a partir del token del correo.
+//
+// El correo NO se recibe de fuera: se resuelve desde el token. Aceptarlo del
+// cuerpo de la petición permitiría probar un token contra direcciones ajenas, y
+// obligaba a que el enlace lo llevase en la URL.
+func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
 	// 0. La contraseña se valida ANTES de tocar el token: si se hiciera después,
 	// un intento rechazado se llevaría por delante el enlace del correo y
 	// obligaría a pedir otro.
@@ -97,14 +113,15 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return err
 	}
 
-	// 1. Verify token
-	storedToken, err := s.tokenRepo.GetToken(ctx, email)
-	if err != nil {
+	if token == "" {
 		return errors.New("invalid or expired token")
 	}
 
-	if storedToken != token {
-		return errors.New("invalid token")
+	// 1. El token identifica la solicitud y, con ella, a su dueño. La consulta
+	// ya descarta los caducados.
+	email, err := s.tokenRepo.GetEmailByToken(ctx, token)
+	if err != nil {
+		return errors.New("invalid or expired token")
 	}
 
 	// 2. Hash new password

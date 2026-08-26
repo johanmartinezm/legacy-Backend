@@ -66,6 +66,15 @@ func (t *tokensDeReinicio) StoreToken(ctx context.Context, email, token string) 
 func (t *tokensDeReinicio) GetToken(ctx context.Context, email string) (string, error) {
 	return t.token, nil
 }
+
+// El token es lo único que llega desde fuera: el correo sale de aquí.
+func (t *tokensDeReinicio) GetEmailByToken(ctx context.Context, token string) (string, error) {
+	if t.token == "" || token != t.token {
+		return "", errors.New("no such token")
+	}
+	return "quien@sea.test", nil
+}
+
 func (t *tokensDeReinicio) DeleteToken(ctx context.Context, email string) error {
 	t.borrado = true
 	return nil
@@ -139,7 +148,7 @@ func TestResetPassword_LaContrasenaCortaNoGastaElToken(t *testing.T) {
 	tokens := &tokensDeReinicio{token: "token-valido"}
 	s := servicioContrasena(t, repo, tokens)
 
-	err := s.ResetPassword(context.Background(), "quien@sea.test", "token-valido", "ab123")
+	err := s.ResetPassword(context.Background(), "token-valido", "ab123")
 
 	if !errors.Is(err, domain.ErrContrasenaCorta) {
 		t.Fatalf("se esperaba ErrContrasenaCorta y llegó: %v", err)
@@ -157,7 +166,7 @@ func TestResetPassword_ConUnaContrasenaValidaSiCambia(t *testing.T) {
 	tokens := &tokensDeReinicio{token: "token-valido"}
 	s := servicioContrasena(t, repo, tokens)
 
-	if err := s.ResetPassword(context.Background(), "quien@sea.test", "token-valido", "NuevaQa456"); err != nil {
+	if err := s.ResetPassword(context.Background(), "token-valido", "NuevaQa456"); err != nil {
 		t.Fatalf("restablecer con una contraseña válida falló: %v", err)
 	}
 	if repo.guardado == "" {

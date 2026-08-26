@@ -46,6 +46,9 @@ type UserRepository interface {
 type PasswordResetRepository interface {
 	StoreToken(ctx context.Context, email, token string) error
 	GetToken(ctx context.Context, email string) (string, error)
+	// GetEmailByToken resuelve el correo a partir del token, para que el enlace
+	// de recuperación no tenga que llevarlo en la URL.
+	GetEmailByToken(ctx context.Context, token string) (string, error)
 	DeleteToken(ctx context.Context, email string) error
 }
 
@@ -90,7 +93,9 @@ type AuthService interface {
 	DeleteMyAccount(ctx context.Context, userID string) error
 	ChangePassword(ctx context.Context, id string, oldPassword, newPassword string) error
 	RequestPasswordReset(ctx context.Context, email string) error
-	ResetPassword(ctx context.Context, email, token, newPassword string) error
+	// ResetPassword no recibe el correo: lo resuelve desde el token. Ver la nota
+	// en services.AuthService.ResetPassword.
+	ResetPassword(ctx context.Context, token, newPassword string) error
 	VerifyEmail(ctx context.Context, token string) error
 	ResendVerificationEmail(ctx context.Context, email string) error
 }
