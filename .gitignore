@@ -37,6 +37,13 @@ config*.bak*
 # arrancar; lo que se versiona es su ausencia.
 uploads/
 
+# --- Informes ---------------------------------------------------------------
+# Los informes van todos en la carpeta reports/ de la raiz del monorepo, que
+# esta fuera de git. Este repositorio es publico y esos documentos describen
+# debilidades abiertas de produccion, decisiones internas y datos del cliente.
+# Los tres que estaban versionados aqui se retiraron el 2026-09-02.
+reports/
+
 # --- Temporales de compilación ----------------------------------------------
 # GOTMPDIR local que usan run.sh y build.sh (~166 MB)
 tmp/
