@@ -4,6 +4,7 @@ import (
 	"applegacy/backend/internal/core/domain"
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -26,13 +27,46 @@ type correoDeCredencialEspia struct {
 	credenciales []domain.CorreoCredencial
 	inscripcion  []domain.CorreoInscripcion
 	aviso        chan struct{}
+
+	// dentro cuenta cuántos envíos están ocurriendo a la vez, y solapados
+	// guarda el máximo que se llegó a ver. Con la cola tiene que ser 1.
+	dentro    int
+	solapados int
+}
+
+// entrando y saliendo envuelven un envío para medir el solapamiento. El envío
+// tarda un poco a propósito: sin eso, dos goroutines simultáneas podrían no
+// llegar a coincidir por casualidad y la prueba no diría nada.
+func (c *correoDeCredencialEspia) entrando() {
+	c.mu.Lock()
+	c.dentro++
+	if c.dentro > c.solapados {
+		c.solapados = c.dentro
+	}
+	c.mu.Unlock()
+	time.Sleep(2 * time.Millisecond)
+}
+
+func (c *correoDeCredencialEspia) saliendo() {
+	c.mu.Lock()
+	c.dentro--
+	c.mu.Unlock()
+}
+
+func (c *correoDeCredencialEspia) maximoSolapados() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.solapados
 }
 
 func nuevoEspiaDeCredenciales() *correoDeCredencialEspia {
-	return &correoDeCredencialEspia{aviso: make(chan struct{}, 16)}
+	return &correoDeCredencialEspia{aviso: make(chan struct{}, 128)}
 }
 
 func (c *correoDeCredencialEspia) SendEventCredentialEmail(d domain.CorreoCredencial) error {
+	c.entrando()
+	defer c.saliendo()
+
 	c.mu.Lock()
 	c.credenciales = append(c.credenciales, d)
 	c.mu.Unlock()
@@ -455,5 +489,41 @@ func TestAlta_DesdeLaAppUnEventoVirtualSigueComoEstaba(t *testing.T) {
 
 	if guardada.QRData == "" {
 		t.Error("se cambió el comportamiento de la app sin pedirlo")
+	}
+}
+
+func TestGenerarCredenciales_LosCorreosSalenDeUnoEnUno(t *testing.T) {
+	// Hasta el 2026-09-03 cada correo salía en su propia goroutine, así que
+	// generar credenciales para trescientas personas abría trescientas
+	// conexiones contra Gmail a la vez. Gmail limita por tasa: lo previsible no
+	// es que tarde, es que rechace una parte — y esos correos llevan la única
+	// copia de la contraseña de alguien.
+	//
+	// Lo que se comprueba aquí no es la velocidad sino que **no hay dos envíos
+	// solapados**: el espía cuenta cuántos hay dentro a la vez.
+	const cuantas = 40
+
+	var regs []domain.Registration
+	for i := 0; i < cuantas; i++ {
+		regs = append(regs, inscripcionSinCodigo(fmt.Sprintf("r%d", i), domain.RegistrationConfirmed))
+	}
+
+	repo := repoConPendientes(eventoPresencialGratuito(), regs...)
+	espia := nuevoEspiaDeCredenciales()
+	svc := NewEventService(repo, nil).ConCorreoDeInscripcion(&usuariosDePrueba{}, espia)
+
+	if _, err := svc.GenerarCredenciales(context.Background(), "evento-summit", nil, true); err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+
+	for i := 0; i < cuantas; i++ {
+		espia.esperarUnCorreo(t)
+	}
+
+	if n := espia.maximoSolapados(); n != 1 {
+		t.Errorf("hubo %d envíos a la vez; la cola tiene que dejarlos de uno en uno", n)
+	}
+	if n := len(espia.credenciales); n != cuantas {
+		t.Errorf("salieron %d correos de %d", n, cuantas)
 	}
 }

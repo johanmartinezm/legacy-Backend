@@ -4,6 +4,54 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-03]: Los correos salen de uno en uno
+
+Cada correo salía en su propia goroutine, y eso estaba bien mientras los correos fueran de uno en
+uno: alguien se inscribe, se le avisa. La carga masiva rompió esa suposición sin que nadie lo
+notara, porque hay **tres caminos que disparan un correo por persona**:
+
+- importar con «avisar» encendido —uno por fila del archivo—;
+- «Generar credenciales» en bloque —uno por persona sin credencial—;
+- y los dos a la vez, si la carga genera credenciales y avisa.
+
+Trescientas personas eran **trescientas goroutines abriendo trescientas conexiones contra Gmail en
+el mismo instante**. Gmail limita por tasa, así que lo previsible no es que tarde: es que rechace una
+parte. Y esos correos son justamente los que llevan **la única copia de la contraseña** de alguien
+recién importado (§4.3 del plan): uno que no sale es una persona que no puede entrar y que no sabe
+por qué.
+
+**Ahora hay una cola con un solo trabajador**, y los envíos salen en fila.
+
+- **No acelera nada ni lo pretende.** Un correo tarda lo que tarda; lo que cambia es que no salen
+  todos a la vez. El ritmo lo marca la red, sin esperas artificiales.
+- **Nunca bloquea a quien llama.** La inscripción ya está en la base y una cola llena no puede
+  retrasar la respuesta de la petición HTTP. Si se llena —el correo caído y miles esperando— el
+  envío sale por su cuenta, como antes: es peor que la fila, pero mucho mejor que perderlo callando.
+- **La cola se crea la primera vez que hace falta**, no en el constructor, para que los tests que
+  arman el servicio sin correo no dejen una goroutine viva.
+- **Cada envío conserva su contexto propio y su timeout**, que es lo que ya hacía y por lo mismo: el
+  contexto de la petición HTTP se cancela al responder y cortaría el envío a medias.
+
+**El test tiene dientes, y se comprobó.** `TestGenerarCredenciales_LosCorreosSalenDeUnoEnUno` cuenta
+cuántos envíos coinciden en el tiempo. Con la cola: 1. Quitándola a mano para probar el test: **40 a
+la vez**, que es exactamente el fallo que se venía a arreglar.
+
+- **Alcance:** `internal/core/services/event_correo.go` (`encolarCorreo`, `atenderCola`; los dos
+  envíos pasan por ahí), `internal/core/services/event_service.go` (los dos campos de la cola),
+  `internal/core/services/credenciales_test.go` (el caso nuevo y la instrumentación del espía).
+  **Ninguna migración, ninguna ruta nueva.**
+- **Verificado:** `go build`, `go vet` y `go test` limpios salvo el `test_update_test.go` de siempre.
+
+- **Criterios de QA:**
+  1. Importar un archivo con «avisar por correo» encendido y comprobar que **llegan todos** los
+     correos, no una parte.
+  2. Generar credenciales en bloque para un grupo grande, con aviso: igual.
+  3. Mirar el log del servidor: no aparece «la cola está llena».
+  4. Una inscripción suelta desde la app sigue recibiendo su correo como siempre, sin retraso
+     apreciable.
+
+---
+
 ### [2026-09-03]: Carga masiva · fase 4, el ensayo, y `/api/me` decía que nadie aceptó nada
 
 Cuarta y última fase del plan (`reports/20260826_plan_carga_masiva.md` §5): simular con el archivo

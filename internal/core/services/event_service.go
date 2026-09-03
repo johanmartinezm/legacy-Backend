@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 )
@@ -23,6 +24,11 @@ type EventService struct {
 	// construyendo el servicio con el repositorio a secas.
 	users ports.UserRepository
 	email ports.EmailService
+
+	// colaCorreos serializa los envíos. Ver event_correo.go: una carga masiva
+	// dispara un correo por persona, y sin esto salían todos a la vez.
+	colaCorreos  chan func()
+	arrancarCola sync.Once
 }
 
 func NewEventService(repo ports.EventRepository, crypto ports.CryptoService) *EventService {

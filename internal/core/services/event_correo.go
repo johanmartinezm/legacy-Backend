@@ -53,15 +53,9 @@ func (s *EventService) enviarCorreoInscripcion(reg *domain.Registration, event *
 		EnlaceLugar: lugarOEnlace(event),
 	}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), tiempoMaximoCorreo)
-		defer cancel()
-		_ = ctx // el puerto de correo no recibe contexto; el timeout acota la goroutine
-
-		if err := s.email.SendEventRegistrationEmail(datos); err != nil {
-			log.Printf("[correo inscripción] %s: %v", reg.ID, err)
-		}
-	}()
+	s.encolarCorreo("correo inscripción "+reg.ID, func() error {
+		return s.email.SendEventRegistrationEmail(datos)
+	})
 }
 
 // enviarCorreoCredencial entrega el código de acceso, con el QR dibujado dentro
@@ -103,19 +97,82 @@ func (s *EventService) enviarCorreoCredencial(reg *domain.Registration, event *d
 		Contrasena:  contrasena,
 	}
 
-	// Contexto propio y goroutine, por lo mismo que el correo de inscripción: el
-	// de la petición HTTP se cancela al responder y cortaría el envío a medias,
-	// y un fallo del correo no puede deshacer una inscripción que ya está en la
-	// base.
-	go func() {
+	// Por la cola, no por una goroutine suelta: generar credenciales en bloque
+	// manda un correo por persona, y todos a la vez es lo que Gmail rechaza.
+	s.encolarCorreo("correo credencial "+reg.ID, func() error {
+		return s.email.SendEventCredentialEmail(datos)
+	})
+}
+
+// --------------------------------------------------------------------------
+// La cola de envíos
+// --------------------------------------------------------------------------
+//
+// Hasta el 2026-09-03 cada correo salía en su propia goroutine, y eso estaba
+// bien mientras los correos fueran de uno en uno: alguien se inscribe, se le
+// avisa. Con la carga masiva dejó de serlo. Los tres caminos que hacen ráfaga:
+//
+//   - importar con «avisar» encendido: un correo por fila del archivo;
+//   - «Generar credenciales» en bloque: uno por persona sin credencial;
+//   - y los dos a la vez, si la carga genera credenciales y avisa.
+//
+// Trescientas personas eran trescientas goroutines abriendo trescientas
+// conexiones contra Gmail en el mismo instante. Gmail limita por tasa, así que
+// lo previsible no es que tarde: es que rechace una parte, y esos correos son
+// justamente los que llevan **la única copia** de la contraseña de alguien
+// (§4.3 del plan de carga masiva).
+//
+// La cola no acelera nada ni lo pretende: pone los envíos en fila para que
+// salgan de uno en uno. Un correo tarda lo que tarda y el ritmo lo marca la
+// propia red, sin esperas artificiales.
+
+// capacidadDeLaCola es el techo de correos esperando. Sobra para el Summit —el
+// importador no acepta más de 5000 filas de golpe— y acota la memoria si el
+// servidor de correo se atasca.
+const capacidadDeLaCola = 5000
+
+// encolarCorreo pone un envío en la fila. **Nunca bloquea a quien llama:** la
+// inscripción ya está en la base y una cola llena no puede retrasar la
+// respuesta de la petición HTTP.
+//
+// Si la cola está llena —que solo pasaría con el correo caído y miles
+// esperando— el envío sale por su cuenta, como se hacía antes. Es peor que la
+// fila, pero mucho mejor que perder el correo en silencio.
+func (s *EventService) encolarCorreo(que string, enviar func() error) {
+	tarea := func() {
+		// Contexto propio: el de la petición HTTP se cancela al responder y
+		// cortaría el envío a medias. El timeout acota la espera.
 		ctx, cancel := context.WithTimeout(context.Background(), tiempoMaximoCorreo)
 		defer cancel()
-		_ = ctx // el puerto de correo no recibe contexto; el timeout acota la goroutine
+		_ = ctx // el puerto de correo no recibe contexto
 
-		if err := s.email.SendEventCredentialEmail(datos); err != nil {
-			log.Printf("[correo credencial] %s: %v", reg.ID, err)
+		if err := enviar(); err != nil {
+			log.Printf("[%s] %v", que, err)
 		}
-	}()
+	}
+
+	// La cola se crea la primera vez que hace falta, no en el constructor: así
+	// los tests que arman el servicio sin correo no dejan una goroutine viva.
+	s.arrancarCola.Do(func() {
+		s.colaCorreos = make(chan func(), capacidadDeLaCola)
+		go s.atenderCola()
+	})
+
+	select {
+	case s.colaCorreos <- tarea:
+	default:
+		log.Printf("[correo] la cola está llena (%d esperando); %s sale por su cuenta",
+			capacidadDeLaCola, que)
+		go tarea()
+	}
+}
+
+// atenderCola manda los correos de uno en uno. Vive lo que viva el proceso,
+// como el hub del chat.
+func (s *EventService) atenderCola() {
+	for tarea := range s.colaCorreos {
+		tarea()
+	}
 }
 
 // lugarOEnlace devuelve lo que la persona necesita para llegar al evento: el
