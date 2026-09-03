@@ -4,6 +4,64 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-03]: Desplegado a producción — carga masiva completa, fases 1 a 4
+
+`carga-masiva` fusionada a `main` en los tres repositorios y publicada. Las fusiones fueron de
+**avance rápido**: `main` no había divergido en ninguno.
+
+> **Fusionar la carga masiva arrastró Legacy Board**, y era conocido: las tres ramas salían de
+> `legacy-board`, que tampoco estaba fusionada. Se publicó también, con decisión explícita.
+
+**Orden seguido**, que importa y no es el que parece:
+
+1. **Respaldo de la base** — `backup_20260903_1945_precargamasiva.sql.gz`, 40K, verificado con
+   `gunzip -t` (que exista no basta).
+2. **Comprobar qué faltaba de verdad en producción, no fiarse de la cuenta a mano.** Resultó que de
+   las tres migraciones **solo faltaban dos**: la de páginas informativas ya estaba aplicada.
+
+   | Migración | Estado antes |
+   |---|---|
+   | `20260902_usuarios_sexo_departamento_direccion.sql` | faltaba |
+   | `20260902_usuarios_debe_cambiar_contrasena.sql` | faltaba |
+   | `20260902_paginas_informativas.sql` | **ya aplicada** |
+
+3. **Migraciones antes que el binario**, y esta vez el orden no era una precaución: `FindByID` pasó a
+   leer `sexo`, `departamento`, `direccion` y `debe_cambiar_contrasena`, así que un backend nuevo
+   contra la base vieja habría fallado en **cada** `/api/me`.
+4. `./build-linux.sh` → binario estático de 59 MB.
+5. **`sha256sum` de `config.docker.yaml` local contra el del servidor: idénticos**, y también el
+   `Dockerfile`. Por eso **solo se subió el binario**: no subir lo que no cambia es la forma más
+   barata de no repetir lo de `apple.bundle_id`.
+6. `cp server_linux server_linux.bak` en el servidor **antes** del `scp`, que es todo el rollback que
+   hay.
+7. `docker compose up -d --build backend`.
+
+**Verificado contra el dominio, no contra el contenedor:**
+
+| Comprobación | Resultado |
+|---|---|
+| `docker compose logs backend` | `Connected to Database` · `Starting server on port 8080` |
+| `/health`, `/api/events`, `/api/categories` | 200 |
+| `POST /api/admin/importaciones/usuarios` sin token | **401** (existe, pide admin) |
+| `POST /api/events/{id}/registrations/credenciales` sin token | **401** |
+| `POST /api/admin/inventada` sin token | **404** — el contraste que prueba que los 401 de arriba son rutas reales y no un middleware que responde igual a todo |
+| Las cuatro columnas nuevas, leídas sobre las 16 filas reales | sin error |
+| `GET /api/paginas/legacy-board` | 200 con contenido real |
+
+- **No se creó ni una cuenta de prueba en producción.** Las rutas se comprobaron por su código de
+  respuesta, no ejecutando una carga: importar gente de mentira en la base real para «ver si
+  funciona» deja basura que luego hay que distinguir de la de verdad.
+- **Lo que no se puede verificar sin credenciales** —entrar al panel, abrir el diálogo de
+  importación, hacer una carga real— queda para quien las tenga. El circuito completo ya se probó de
+  punta a punta en local: ver la entrada de la fase 4.
+
+- **Rollback:** `cp server_linux.bak server_linux && docker compose up -d --build backend`. Para la
+  base, `backup_20260903_1945_precargamasiva.sql.gz`. Las dos migraciones son aditivas —columnas
+  nuevas y anulables, o con `DEFAULT false`—, así que el binario viejo funciona con la base nueva sin
+  tocar nada: no hay que revertirlas para volver atrás.
+
+---
+
 ### [2026-09-03]: La prueba de integración deja de destrozar una cuenta real
 
 `test_update_test.go` era la única del backend que fallaba siempre, y estaba documentada en
