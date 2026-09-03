@@ -4,6 +4,70 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-02]: Legacy Board sale del código: páginas de información que edita el panel
+
+El texto de Legacy Board vivía dentro de la app —los dos nombres en `assets/data/board_contacts.json`
+y los textos en `comunidad_screen.dart`—, así que cambiar una palabra exigía publicar en las dos
+tiendas. Ahora hay una tabla que edita el panel y la app pide por HTTP.
+
+- **Corte vertical completo**, en el orden de la skill `nuevo-endpoint`: `domain` → `ports` →
+  `postgres` → `services` → `handler` → **rutas en `main.go`**.
+- **La clave es el `slug`, no un uuid.** La app pide `legacy-board` por su nombre, y ese nombre está
+  escrito en su propio código: con un uuid, la fila de producción y la de la base local serían
+  identificadores distintos y la app solo funcionaría contra una de las dos.
+- **No hay crear ni borrar, a propósito.** Cada página tiene una pantalla en la app que la pinta;
+  una página creada desde el panel no la vería nadie. El panel lista y edita, y la siembra la
+  migración.
+- **Despublicar responde 404 en la ruta pública**, no un cuerpo vacío: si la API devolviera el
+  contenido igualmente, apagar la casilla del panel no serviría de nada. El listado de admin sí la
+  sigue mostrando, que es donde se vuelve a encender.
+- **Los errores no se devuelven crudos** (`log.Printf` + mensaje genérico), siguiendo la regla de la
+  skill. El 400 distingue título vacío y cuerpo demasiado largo, que son cosas que el panel puede
+  corregir; lo demás es 500 sin detalle.
+- **Trampa encontrada al probar:** la primera versión respondía **500 en vez de 404** para un slug
+  inexistente, porque el repositorio no traducía `pgx.ErrNoRows` a `domain.ErrNotFound`. Se vio
+  golpeando la ruta, no leyendo el código: compilaba igual.
+
+- **Alcance:**
+  - `internal/core/domain/pagina_informativa.go` (nuevo)
+  - `internal/core/ports/interfaces.go` (`PaginaRepository`, `PaginaService`)
+  - `internal/adapter/storage/postgres/pagina_repository.go` (nuevo)
+  - `internal/core/services/pagina_service.go` (nuevo)
+  - `internal/handler/http/pagina_handler.go` (nuevo)
+  - `cmd/server/main.go` (cableado + `GET /api/paginas/{slug}`, `GET /api/admin/paginas`,
+    `PUT /api/admin/paginas/{slug}`)
+  - `scripts/20260902_paginas_informativas.sql` (nuevo, idempotente, siembra `legacy-board`)
+- **Verificado:** `go build ./...`, `go vet ./...` y `go test ./...` —solo falla
+  `test_update_test.go`, el de siempre por conectarse con el usuario `postgres`—. Y contra el
+  servidor local, con la migración aplicada:
+
+  | Petición | Respuesta |
+  |---|---|
+  | `GET /api/paginas/legacy-board` | 200 con el contenido sembrado |
+  | `GET /api/paginas/no-existe` | 404 |
+  | `GET /api/admin/paginas` sin token | 401 |
+  | `GET /api/admin/paginas` con token de admin | 200, un elemento |
+  | `PUT /api/admin/paginas/legacy-board` | 200, y el `GET` público devuelve lo guardado |
+  | `PUT` con `titulo: "   "` | 400, «el título de la página no puede estar vacío» |
+  | `PUT /api/admin/paginas/no-existe` | 404 |
+  | `PUT` con `publicada: false` | el `GET` público pasa a 404; el listado de admin la sigue viendo |
+
+- **Desplegado a producción el 2026-09-02**, en este orden: respaldo de la base
+  (`respaldo_previo_paginas_20260903_0117.sql.gz` en el servidor), migración aplicada —`CREATE TABLE`
+  + `INSERT 0 1`—, `server_linux` subido (sha256 comparado en los dos extremos) y
+  `docker compose up -d --build`. **No se subió `config.docker.yaml`**: este cambio no toca
+  configuración y la copia buena es la del servidor. Verificado por el dominio: `/health` 200,
+  `/api/paginas/legacy-board` 200 con el texto, `/api/paginas/no-existe` 404 y `/api/admin/paginas`
+  sin token 401.
+
+- **Criterios de QA:**
+  1. **Aplicar la migración** en el servidor y comprobar que `core.paginas_informativas` tiene la
+     fila `legacy-board`. Volver a aplicarla no debe fallar ni pisar lo editado.
+  2. **Pedir `GET /api/paginas/legacy-board` sin token**: responde 200 con el texto.
+  3. **Editar el texto desde el panel y repetir la petición**: devuelve lo nuevo, sin reiniciar nada.
+  4. **Despublicar desde el panel**: la misma petición pasa a 404 y la app muestra su aviso.
+  5. **Pedir `/api/admin/paginas` sin token**: 401.
+
 ### [2026-08-26]: El panel deja de listar cuentas borradas
 
 Salió al paginar el listado de usuarios: `FindAll` no tenía filtro por `deleted_at` y `CountAll`

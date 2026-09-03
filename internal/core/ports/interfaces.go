@@ -179,6 +179,21 @@ type BannerService interface {
 	ListAllBanners(ctx context.Context) ([]*domain.Banner, error)
 }
 
+type PaginaRepository interface {
+	GetBySlug(ctx context.Context, slug string) (*domain.PaginaInformativa, error)
+	ListAll(ctx context.Context) ([]*domain.PaginaInformativa, error)
+	Update(ctx context.Context, pagina *domain.PaginaInformativa) error
+}
+
+// PaginaService no expone crear ni borrar a propósito: las páginas las siembra
+// una migración porque cada una tiene una pantalla que la pinta. Dejar que el
+// panel creara una sin pantalla solo produciría contenido que nadie ve.
+type PaginaService interface {
+	GetPaginaPublicada(ctx context.Context, slug string) (*domain.PaginaInformativa, error)
+	ListPaginas(ctx context.Context) ([]*domain.PaginaInformativa, error)
+	ActualizarPagina(ctx context.Context, pagina *domain.PaginaInformativa) error
+}
+
 type ContentCategoryRepository interface {
 	Create(ctx context.Context, cat *domain.ContentCategory) error
 	ListAll(ctx context.Context) ([]*domain.ContentCategory, error)

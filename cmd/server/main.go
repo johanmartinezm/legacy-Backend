@@ -133,6 +133,13 @@ func main() {
 	bannerService := services.NewBannerService(bannerRepo)
 	bannerHandler := handler.NewBannerHandler(bannerService)
 
+	// Páginas informativas: contenido que el panel edita y la app pinta tal cual
+	// (hoy, Legacy Board). Sin repositorio de creación: las siembra la migración
+	// scripts/20260902_paginas_informativas.sql.
+	paginaRepo := postgres.NewPaginaRepository(dbPool)
+	paginaService := services.NewPaginaService(paginaRepo)
+	paginaHandler := handler.NewPaginaHandler(paginaService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -312,6 +319,9 @@ func main() {
 		// Banner routes (Public)
 		r.Get("/api/banners", bannerHandler.ListActive)
 
+		// Páginas informativas (Public read): la app las pide por slug.
+		r.Get("/api/paginas/{slug}", paginaHandler.Get)
+
 		// Custom Content routes (Public)
 		r.Get("/api/content/categories", contentHandler.ListCategories)
 		r.Get("/api/content/items", contentHandler.ListContent)
@@ -447,6 +457,11 @@ func main() {
 		r.Post("/api/admin/banners", bannerHandler.AdminCreate)
 		r.Put("/api/admin/banners/{id}", bannerHandler.AdminUpdate)
 		r.Delete("/api/admin/banners/{id}", bannerHandler.AdminDelete)
+
+		// Admin: páginas informativas. Solo listar y editar; no se crean ni se
+		// borran desde el panel porque cada una tiene su pantalla en la app.
+		r.Get("/api/admin/paginas", paginaHandler.AdminList)
+		r.Put("/api/admin/paginas/{slug}", paginaHandler.AdminUpdate)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)
