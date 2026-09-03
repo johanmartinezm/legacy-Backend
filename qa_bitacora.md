@@ -4,6 +4,52 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-03]: La prueba de integración deja de destrozar una cuenta real
+
+`test_update_test.go` era la única del backend que fallaba siempre, y estaba documentada en
+`CLAUDE.md` como «test suelto, no una regresión». Al ir a arreglarle la cadena de conexión resultó
+que el fallo visible tapaba uno peor.
+
+🔴 **Machacaba a un usuario real.** Cogía el primero de `FindAll` y le sobreescribía nombre,
+apellido, teléfono, país, documento y estado de cliente con basura de prueba —y **en texto plano**,
+saltándose el cifrado, que vive en el servicio y no en el repositorio—. No lo restauraba nunca.
+
+Es decir: **arreglar solo la cadena de conexión lo habría puesto en verde y habría empezado a
+destrozar una cuenta en cada ejecución**, dejándola además con campos que la app ya no podría
+descifrar. El fallo de conexión llevaba meses siendo lo único que impedía que eso pasara.
+
+**Lo que se cambió:**
+
+- **Crea su propia cuenta desechable y la borra al terminar**, con `t.Cleanup` para que el borrado
+  ocurra también si la comprobación falla a mitad. No toca ninguna cuenta existente.
+- **Se salta si no hay base**, en vez de fallar. Es la diferencia entre una suite que sirve de puerta
+  y una que no: `go test ./...` tiene que poder correr en una máquina sin Postgres sin dar un rojo
+  que no significa nada, porque un rojo de fondo esconde el siguiente.
+- **La conexión sale de `LEGACY_TEST_DB_URL`**, con el contenedor de desarrollo por defecto —las
+  mismas credenciales que ya están en `CLAUDE.md`; no es un secreto de producción—.
+- **Comprueba también los tres campos que añadió la carga masiva** —sexo, departamento y dirección—,
+  que estaban fuera. Y compara campo a campo diciendo cuál falla: «no coincide» a secas obligaba a
+  releer el test para saber de cuál hablaba.
+
+**Comprobado que la prueba tiene dientes**, no solo que está en verde: se quitó a mano `direccion`
+del `UPDATE` del repositorio y la prueba falló señalando ese campo. Restaurado después.
+
+- **Alcance:** `internal/adapter/storage/postgres/test_update_test.go` y la nota de `CLAUDE.md` en la
+  raíz. **Ni una línea de código de producción.**
+- **Verificado:** `go test ./...` **entero en verde**, por primera vez. Con la base parada, esa
+  prueba sale como `SKIP` y el resto sigue pasando. Y contra la base local: pasa, y el número de
+  filas de `core.users` es el mismo antes y después —no deja rastro—.
+
+- **Criterios de QA:**
+  1. Con la base levantada: `go test ./...` termina sin ningún `FAIL`.
+  2. Con la base parada (`.\levantar.ps1 -Detener`): sigue sin `FAIL`, y esa prueba sale `SKIP` con
+     el motivo escrito.
+  3. Contar las filas de `core.users` antes y después de correrla: el mismo número.
+  4. Mirar el primer usuario de la base antes y después: sus datos no cambian. Esto es lo que antes
+     no se cumplía.
+
+---
+
 ### [2026-09-03]: Los correos salen de uno en uno
 
 Cada correo salía en su propia goroutine, y eso estaba bien mientras los correos fueran de uno en
