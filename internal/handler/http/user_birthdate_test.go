@@ -23,6 +23,12 @@ type stubAuthServiceEdicion struct {
 func (s *stubAuthServiceEdicion) Register(ctx context.Context, user *domain.User, password string) error {
 	return nil
 }
+func (s *stubAuthServiceEdicion) RegistrarImportado(ctx context.Context, user *domain.User, password string) error {
+	return nil
+}
+func (s *stubAuthServiceEdicion) ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error) {
+	return false, nil
+}
 func (s *stubAuthServiceEdicion) Login(ctx context.Context, email, password string) (string, error) {
 	return "", nil
 }

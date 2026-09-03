@@ -341,12 +341,7 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 // directo sobre *time.Time, que solo entiende RFC3339: cualquier cuenta con
 // fecha de nacimiento devolvía 400 al editarla desde el panel.
 func parseBirthDate(value string) (time.Time, error) {
-	for _, layout := range []string{time.RFC3339, "2006-01-02", "02/01/2006"} {
-		if t, err := time.Parse(layout, value); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, errors.New("formato de fecha no reconocido")
+	return domain.ParsearFechaDeNacimiento(value)
 }
 
 func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id string) {
@@ -393,11 +388,19 @@ func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id s
 		}
 	}
 
+	// El decode de abajo vuelca el JSON entero sobre el usuario ya cargado, así
+	// que un cliente podría mandar {"debe_cambiar_contrasena": false} y quitarse
+	// la obligación sin cambiar de contraseña. Se guarda antes y se restaura
+	// después; el UPDATE del repositorio tampoco escribe esa columna, así que
+	// son dos cierres para la misma puerta.
+	debeCambiarContrasena := user.DebeCambiarContrasena
+
 	if err := json.Unmarshal(body, user); err != nil {
 		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 	user.ID = id
+	user.DebeCambiarContrasena = debeCambiarContrasena
 	// El decode de arriba vuelca el JSON sobre el usuario ya cargado, así que el
 	// cliente también puede cambiar el rol por aquí y llegar al mismo 22P02.
 	if !domain.IsValidRole(user.Role) {

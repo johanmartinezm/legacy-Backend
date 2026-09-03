@@ -34,8 +34,9 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 			generation, is_public_profile, allow_messages_from_strangers, show_activity,
 			terms_accepted, data_sharing_accepted, email_verified,
 			created_at, updated_at, alias,
-			terms_version, terms_accepted_at, data_sharing_version, data_sharing_accepted_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, NULLIF($28, ''), $29, $30, $31, $32)
+			terms_version, terms_accepted_at, data_sharing_version, data_sharing_accepted_at,
+			sexo, departamento, direccion, debe_cambiar_contrasena
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, NULLIF($28, ''), $29, $30, $31, $32, $33, $34, $35, $36)
 		RETURNING id
 	`
 	// NULLIF sobre el alias: users_alias_key es UNIQUE y la cadena vacía SÍ
@@ -77,6 +78,10 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		user.TermsAcceptedAt,
 		user.DataSharingVersion,
 		user.DataSharingAcceptedAt,
+		user.Sexo,
+		user.Departamento,
+		user.Direccion,
+		user.DebeCambiarContrasena,
 	).Scan(&user.ID)
 
 	if err != nil {
@@ -346,7 +351,11 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 			COALESCE(created_at, CURRENT_TIMESTAMP), 
 			COALESCE(updated_at, CURRENT_TIMESTAMP),
 			password_hash,
-			COALESCE(alias, '')
+			COALESCE(alias, ''),
+			COALESCE(sexo, ''),
+			COALESCE(departamento, ''),
+			COALESCE(direccion, ''),
+			COALESCE(debe_cambiar_contrasena, false)
 		FROM core.users
 		WHERE id = $1
 	`
@@ -380,6 +389,10 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 		&user.UpdatedAt,
 		&user.PasswordHash,
 		&user.Alias,
+		&user.Sexo,
+		&user.Departamento,
+		&user.Direccion,
+		&user.DebeCambiarContrasena,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -402,9 +415,13 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 			identification_number = $16, customer_status = $17,
 			generation = $18, is_public_profile = $19,
 			allow_messages_from_strangers = $20, show_activity = $21,
-			updated_at = $22, alias = NULLIF($23, '')
+			updated_at = $22, alias = NULLIF($23, ''),
+			sexo = $25, departamento = $26, direccion = $27
 		WHERE id = $24
 	`
+	// debe_cambiar_contrasena NO se escribe aquí a propósito: solo la baja
+	// UpdatePassword. Si entrara en este UPDATE, cualquiera se la quitaría
+	// editando su perfil, porque performUpdate vuelca el JSON entero.
 
 	_, err := r.db.Exec(ctx, sql,
 		user.EmailBlindIndex,
@@ -431,6 +448,9 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 		user.UpdatedAt,
 		user.Alias,
 		user.ID,
+		user.Sexo,
+		user.Departamento,
+		user.Direccion,
 	)
 
 	if err != nil {
@@ -491,6 +511,10 @@ func (r *UserRepository) AnonymizeUser(ctx context.Context, id string) error {
 			identification_number = NULL,
 			customer_status = NULL,
 			birth_date = NULL,
+			sexo = NULL,
+			departamento = NULL,
+			direccion = NULL,
+			debe_cambiar_contrasena = false,
 			refresh_token = NULL,
 			is_public_profile = false,
 			allow_messages_from_strangers = false,
@@ -527,14 +551,24 @@ func (r *UserRepository) AnonymizeUser(ctx context.Context, id string) error {
 	return tx.Commit(ctx)
 }
 
+// UpdatePassword guarda la contraseña nueva y **baja debe_cambiar_contrasena**.
+// Es el único sitio que la baja: quien entró con una contraseña impuesta por la
+// carga masiva deja de estar obligado en cuanto elige la suya.
 func (r *UserRepository) UpdatePassword(ctx context.Context, userID, newHash string) error {
-	sql := "UPDATE core.users SET password_hash = $1, updated_at = $2 WHERE id = $3"
+	sql := `UPDATE core.users
+		   SET password_hash = $1, updated_at = $2, debe_cambiar_contrasena = false
+		 WHERE id = $3`
 	_, err := r.db.Exec(ctx, sql, newHash, time.Now(), userID)
 	return err
 }
 
+// UpdatePasswordByEmail es el "olvidé mi contraseña". También baja la bandera:
+// quien llega por ahí ya eligió una contraseña propia, y dejársela puesta lo
+// mandaría a cambiarla otra vez nada más entrar.
 func (r *UserRepository) UpdatePasswordByEmail(ctx context.Context, emailBlindIndex, newHash string) error {
-	sql := "UPDATE core.users SET password_hash = $1, updated_at = $2 WHERE email_blind_index = $3"
+	sql := `UPDATE core.users
+		   SET password_hash = $1, updated_at = $2, debe_cambiar_contrasena = false
+		 WHERE email_blind_index = $3`
 	_, err := r.db.Exec(ctx, sql, newHash, time.Now(), emailBlindIndex)
 	return err
 }

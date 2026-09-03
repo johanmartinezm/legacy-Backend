@@ -148,6 +148,26 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 // cliente, una app antigua o manipulada podría declarar una versión que nunca
 // mostró. Y no se sella lo que no se aceptó — marcar una fecha sobre un
 // consentimiento negado sería fabricar prueba de lo contrario de lo ocurrido.
+// cifrarDatosSensibles cifra los once campos que no pueden quedar legibles en
+// la base. Vive en un solo sitio porque lo llaman el registro, la edición de
+// perfil y la carga masiva: con una copia por sitio, añadir un campo nuevo y
+// olvidarse de uno deja ese dato en claro sin que nada falle.
+//
+// `departamento` y `country` NO se cifran a propósito: se usan para agrupar.
+func (s *AuthService) cifrarDatosSensibles(user *domain.User) {
+	user.EmailEncrypted, _ = s.crypto.Encrypt(user.Email)
+	user.FirstName, _ = s.crypto.Encrypt(user.FirstName)
+	user.LastName, _ = s.crypto.Encrypt(user.LastName)
+	user.Phone, _ = s.crypto.Encrypt(user.Phone)
+	user.Location, _ = s.crypto.Encrypt(user.Location)
+	user.Bio, _ = s.crypto.Encrypt(user.Bio)
+	user.CompanyName, _ = s.crypto.Encrypt(user.CompanyName)
+	user.JobTitle, _ = s.crypto.Encrypt(user.JobTitle)
+	user.IdentificationNumber, _ = s.crypto.Encrypt(user.IdentificationNumber)
+	user.Sexo, _ = s.crypto.Encrypt(user.Sexo)
+	user.Direccion, _ = s.crypto.Encrypt(user.Direccion)
+}
+
 func sellarConsentimiento(user *domain.User, cuando time.Time) {
 	if user.TermsAccepted {
 		v := domain.TermsVersionVigente
@@ -197,15 +217,7 @@ func (s *AuthService) Register(ctx context.Context, user *domain.User, password 
 
 	// 3. Encrypt PII
 	user.EmailBlindIndex = blindIndex
-	user.EmailEncrypted, _ = s.crypto.Encrypt(user.Email)
-	user.FirstName, _ = s.crypto.Encrypt(user.FirstName)
-	user.LastName, _ = s.crypto.Encrypt(user.LastName)
-	user.Phone, _ = s.crypto.Encrypt(user.Phone)
-	user.Location, _ = s.crypto.Encrypt(user.Location)
-	user.Bio, _ = s.crypto.Encrypt(user.Bio)
-	user.CompanyName, _ = s.crypto.Encrypt(user.CompanyName)
-	user.JobTitle, _ = s.crypto.Encrypt(user.JobTitle)
-	user.IdentificationNumber, _ = s.crypto.Encrypt(user.IdentificationNumber)
+	s.cifrarDatosSensibles(user)
 
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
@@ -245,6 +257,81 @@ func (s *AuthService) Register(ctx context.Context, user *domain.User, password 
 	}
 
 	return nil
+}
+
+// usuarioNoEncontrado reconoce el "no existe" del repositorio de usuarios.
+//
+// No es un sentinela: `FindByEmailBlindIndex` devuelve un `errors.New("user not
+// found")` y ese texto está comparado a mano en varios sitios y replicado en una
+// docena de dobles de prueba. Se reconoce aquí, en un solo lugar, en vez de
+// repetir la comparación —y en vez de cambiar el repositorio, que rompería esos
+// dobles sin ganar nada hoy—.
+func usuarioNoEncontrado(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, domain.ErrNotFound) || err.Error() == "user not found"
+}
+
+// ExisteCuentaConCorreo dice si ya hay una cuenta con ese correo, sin traerla.
+//
+// Lo usa la simulación de la carga masiva para contar cuántas filas crearían
+// cuenta y cuántas ya la tienen, que es la mitad del informe que se le enseña a
+// quien preparó el archivo.
+func (s *AuthService) ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error) {
+	existente, err := s.repo.FindByEmailBlindIndex(ctx, s.crypto.BlindIndex(email))
+	if err != nil && !usuarioNoEncontrado(err) {
+		// Un fallo de la base no puede confundirse con "no existe": diría que
+		// hay que crear la cuenta y el INSERT chocaría contra el índice único.
+		return false, err
+	}
+	return existente != nil, nil
+}
+
+// RegistrarImportado crea una cuenta venida de una carga masiva.
+//
+// Es hermana de Register y comparte con ella lo que importa —el cifrado y el
+// sellado de consentimientos—, pero se aparta en tres cosas que solo valen aquí
+// (reports/20260826_plan_carga_masiva.md §2.2):
+//
+//  1. **El correo nace verificado.** Nadie va a pinchar un enlace: la lista la
+//     trae la organización del evento. Sin esto, el acceso quedaría bloqueado
+//     por auth_service y la contraseña asignada no serviría de nada.
+//  2. **No manda ningún correo.** Register manda verificación o bienvenida; una
+//     carga de trescientas filas dispararía trescientos correos, y avisar es un
+//     interruptor de la importación, no un efecto secundario.
+//  3. **Obliga a cambiar la contraseña**, porque la asignada es el número de
+//     documento y viene en el archivo.
+func (s *AuthService) RegistrarImportado(ctx context.Context, user *domain.User, password string) error {
+	blindIndex := s.crypto.BlindIndex(user.Email)
+	existente, err := s.repo.FindByEmailBlindIndex(ctx, blindIndex)
+	if err != nil && !usuarioNoEncontrado(err) {
+		return err
+	}
+	if existente != nil {
+		return errors.New("user already exists")
+	}
+
+	if err := domain.ValidarContrasena(password); err != nil {
+		return err
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = string(hashed)
+
+	user.EmailBlindIndex = blindIndex
+	s.cifrarDatosSensibles(user)
+
+	user.CreatedAt = time.Now()
+	user.UpdatedAt = time.Now()
+	user.EmailVerified = true
+	user.DebeCambiarContrasena = true
+
+	sellarConsentimiento(user, user.CreatedAt)
+
+	return s.repo.Create(ctx, user)
 }
 
 func (s *AuthService) SocialLogin(ctx context.Context, provider, idToken string) (string, *domain.User, error) {
@@ -489,6 +576,8 @@ func (s *AuthService) decryptUser(user *domain.User) {
 	user.CompanyName, _ = s.crypto.Decrypt(user.CompanyName)
 	user.JobTitle, _ = s.crypto.Decrypt(user.JobTitle)
 	user.IdentificationNumber, _ = s.crypto.Decrypt(user.IdentificationNumber)
+	user.Sexo, _ = s.crypto.Decrypt(user.Sexo)
+	user.Direccion, _ = s.crypto.Decrypt(user.Direccion)
 }
 
 func (s *AuthService) UpdateUser(ctx context.Context, user *domain.User) error {
@@ -501,15 +590,7 @@ func (s *AuthService) UpdateUser(ctx context.Context, user *domain.User) error {
 
 	// 1. Re-calculate Blind Index and Encrypt PII if they changed (or just always do it for simplicity in MVP)
 	user.EmailBlindIndex = s.crypto.BlindIndex(user.Email)
-	user.EmailEncrypted, _ = s.crypto.Encrypt(user.Email)
-	user.FirstName, _ = s.crypto.Encrypt(user.FirstName)
-	user.LastName, _ = s.crypto.Encrypt(user.LastName)
-	user.Phone, _ = s.crypto.Encrypt(user.Phone)
-	user.Location, _ = s.crypto.Encrypt(user.Location)
-	user.Bio, _ = s.crypto.Encrypt(user.Bio)
-	user.CompanyName, _ = s.crypto.Encrypt(user.CompanyName)
-	user.JobTitle, _ = s.crypto.Encrypt(user.JobTitle)
-	user.IdentificationNumber, _ = s.crypto.Encrypt(user.IdentificationNumber)
+	s.cifrarDatosSensibles(user)
 
 	user.UpdatedAt = time.Now()
 

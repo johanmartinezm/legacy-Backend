@@ -133,6 +133,11 @@ func main() {
 	bannerService := services.NewBannerService(bannerRepo)
 	bannerHandler := handler.NewBannerHandler(bannerService)
 
+	// Carga masiva de asistentes. El archivo lo lee el panel: aquí llegan filas
+	// en JSON. Ver reports/20260826_plan_carga_masiva.md.
+	importacionService := services.NewImportacionService(authService)
+	importacionHandler := handler.NewImportacionHandler(importacionService)
+
 	// Páginas informativas: contenido que el panel edita y la app pinta tal cual
 	// (hoy, Legacy Board). Sin repositorio de creación: las siembra la migración
 	// scripts/20260902_paginas_informativas.sql.
@@ -457,6 +462,10 @@ func main() {
 		r.Post("/api/admin/banners", bannerHandler.AdminCreate)
 		r.Put("/api/admin/banners/{id}", bannerHandler.AdminUpdate)
 		r.Delete("/api/admin/banners/{id}", bannerHandler.AdminDelete)
+
+		// Admin: carga masiva de asistentes. Crea cuentas, así que va donde
+		// tiene que ir: dentro de AdminOnly.
+		r.Post("/api/admin/importaciones/usuarios", importacionHandler.ImportarUsuarios)
 
 		// Admin: páginas informativas. Solo listar y editar; no se crean ni se
 		// borran desde el panel porque cada una tiene su pantalla en la app.

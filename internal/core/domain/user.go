@@ -39,6 +39,22 @@ func IsValidRole(role string) bool {
 // del correo en BlindIndex.
 const LongitudMinimaContrasena = 6
 
+// ParsearFechaDeNacimiento acepta los tres formatos que de hecho llegan: el
+// RFC3339 de la app, la fecha sola del panel ("1990-01-15") y el DD/MM/YYYY del
+// registro y de los archivos de carga masiva.
+//
+// Vive en el dominio porque lo usan el handler de usuarios y el importador, y
+// tener dos copias es cómo se acaba aceptando un formato en un sitio y no en el
+// otro.
+func ParsearFechaDeNacimiento(valor string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02", "02/01/2006"} {
+		if t, err := time.Parse(layout, valor); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, ErrFechaNoReconocida
+}
+
 // ValidarContrasena aplica LongitudMinimaContrasena.
 //
 // Cuenta caracteres y no bytes: "contraseña" son diez caracteres, no once.
@@ -61,28 +77,47 @@ type User struct {
 	GoogleID *string `json:"google_id" db:"google_id"`
 	AppleID  *string `json:"apple_id" db:"apple_id"`
 
-	PasswordHash               string     `json:"-" db:"password_hash"`
-	FirstName                  string     `json:"first_name" db:"first_name"`
-	LastName                   string     `json:"last_name" db:"last_name"`
-	BirthDate                  *time.Time `json:"birth_date" db:"birth_date"`
-	Phone                      string     `json:"phone" db:"phone"`
-	Location                   string     `json:"location" db:"location"`
-	Bio                        string     `json:"bio" db:"bio"`
-	Industry                   string     `json:"industry" db:"industry"`
-	ProfileImageUrl            string     `json:"profile_image_url" db:"profile_image_url"`
-	CompanyName                string     `json:"company_name" db:"company_name"`
-	JobTitle                   string     `json:"job_title" db:"job_title"`
-	Role                       string     `json:"role" db:"role"`
-	Country                    string     `json:"country" db:"country"`
-	IdentificationType         string     `json:"identification_type" db:"identification_type"`
-	IdentificationNumber       string     `json:"identification_number" db:"identification_number"`
-	CustomerStatus             string     `json:"customer_status" db:"customer_status"`
-	Generation                 string     `json:"generation" db:"generation"`
-	IsPublicProfile            bool       `json:"is_public_profile" db:"is_public_profile"`
-	AllowMessagesFromStrangers bool       `json:"allow_messages_from_strangers" db:"allow_messages_from_strangers"`
-	ShowActivity               bool       `json:"show_activity" db:"show_activity"`
-	TermsAccepted              bool       `json:"terms_accepted" db:"terms_accepted"`
-	DataSharingAccepted        bool       `json:"data_sharing_accepted" db:"data_sharing_accepted"`
+	PasswordHash    string     `json:"-" db:"password_hash"`
+	FirstName       string     `json:"first_name" db:"first_name"`
+	LastName        string     `json:"last_name" db:"last_name"`
+	BirthDate       *time.Time `json:"birth_date" db:"birth_date"`
+	Phone           string     `json:"phone" db:"phone"`
+	Location        string     `json:"location" db:"location"`
+	Bio             string     `json:"bio" db:"bio"`
+	Industry        string     `json:"industry" db:"industry"`
+	ProfileImageUrl string     `json:"profile_image_url" db:"profile_image_url"`
+	CompanyName     string     `json:"company_name" db:"company_name"`
+	JobTitle        string     `json:"job_title" db:"job_title"`
+	Role            string     `json:"role" db:"role"`
+	Country         string     `json:"country" db:"country"`
+
+	// Sexo, departamento y dirección llegaron con la carga masiva del Summit
+	// (reports/20260826_plan_carga_masiva.md §3.1). Van en la cuenta porque son
+	// de la persona, no del evento, y en la app solo aparecen dentro de editar
+	// perfil. `sexo` y `direccion` se guardan cifrados, como Location;
+	// `departamento` en claro, como Country.
+	Sexo         string `json:"sexo" db:"sexo"`
+	Departamento string `json:"departamento" db:"departamento"`
+	Direccion    string `json:"direccion" db:"direccion"`
+
+	// DebeCambiarContrasena obliga a cambiarla en el primer ingreso. La pone la
+	// carga masiva, que asigna como contraseña el número de documento.
+	//
+	// **Solo ChangePassword la baja.** No se escribe en el UPDATE general de
+	// usuarios a propósito: performUpdate vuelca el JSON entero sobre el struct
+	// y, sin esa exclusión, cualquiera se la quitaría mandando
+	// {"debe_cambiar_contrasena": false} al editar su perfil.
+	DebeCambiarContrasena bool `json:"debe_cambiar_contrasena" db:"debe_cambiar_contrasena"`
+
+	IdentificationType         string `json:"identification_type" db:"identification_type"`
+	IdentificationNumber       string `json:"identification_number" db:"identification_number"`
+	CustomerStatus             string `json:"customer_status" db:"customer_status"`
+	Generation                 string `json:"generation" db:"generation"`
+	IsPublicProfile            bool   `json:"is_public_profile" db:"is_public_profile"`
+	AllowMessagesFromStrangers bool   `json:"allow_messages_from_strangers" db:"allow_messages_from_strangers"`
+	ShowActivity               bool   `json:"show_activity" db:"show_activity"`
+	TermsAccepted              bool   `json:"terms_accepted" db:"terms_accepted"`
+	DataSharingAccepted        bool   `json:"data_sharing_accepted" db:"data_sharing_accepted"`
 	// Qué texto se aceptó y cuándo. Punteros porque las cuentas anteriores a
 	// 2026-08-10 tienen el consentimiento sin versión: consta que aceptaron,
 	// no qué leyeron. Ver domain/legal.go.

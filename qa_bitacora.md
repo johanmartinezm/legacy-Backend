@@ -4,6 +4,124 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-02]: Carga masiva · fase 1, el motor del importador
+
+Primera de las cuatro fases del plan (`reports/20260826_plan_carga_masiva.md` §5). Es el trabajo
+compartido por las dos entradas —Usuarios e Inscritos de un evento—, todavía sin pantalla.
+
+**Ruta:** `POST /api/admin/importaciones/usuarios`, dentro de `AdminOnly`, con `?simular=true`.
+**El archivo no llega aquí:** lo lee el panel con SheetJS y manda las filas en JSON, así que el
+backend no necesita lector de Excel y la ruta se prueba sin un `.xls` de por medio.
+
+- **Simular y aplicar son dos pasos.** Simular no escribe nada: dice cuántas cuentas se crearían,
+  cuántas ya existen y **en qué fila y columna** está cada problema. Aplicar solo entra si el informe
+  sale limpio: un archivo con una fila mala no se aplica a medias.
+- **Reejecutable.** La identidad es el correo, normalizado antes de comparar; una fila cuya cuenta ya
+  existe se cuenta y se deja. Probado: aplicar dos veces el mismo archivo da `creadas: 2` la primera
+  vez y `ya_existian: 2, creadas: 0` la segunda.
+- **Nada de SQL directo**, que era el único bloqueo que el plan dejó en pie. Todo pasa por el
+  servicio de cuentas, que cifra los once campos sensibles y calcula el índice ciego.
+- 🔴 **`Register` no servía tal cual**, y esto no estaba previsto en el plan: fuerza
+  `email_verified = false` y **manda un correo por cada cuenta** —verificación o bienvenida—. Una
+  carga de trescientas filas habría disparado trescientos correos y ninguna de esas cuentas podría
+  entrar. Se añadió `RegistrarImportado`, hermana suya: mismo cifrado y mismo sellado de
+  consentimientos, pero correo verificado, sin avisos y con la obligación de cambiar la contraseña.
+- **El cifrado se unificó en un solo sitio** (`cifrarDatosSensibles`). Estaba copiado en tres, y con
+  una copia por sitio basta olvidarse de una para dejar un dato en claro sin que nada falle.
+- **El importador depende de un puerto estrecho** (`ports.CuentasImportadas`, dos métodos) y no de
+  `AuthService` entera: así una prueba no tiene que implementar veinte métodos para nada.
+- **El parser de fechas se movió al dominio**, porque ahora lo comparten el handler de usuarios y el
+  importador. Sigue aceptando los tres formatos de siempre.
+
+**Las reglas del plan que quedaron dentro:** solo filas con correo · contraseña = número de documento
+(con la trampa comprobada: una cédula pasa el mínimo de seis, un pasaporte corto no) · correo dado
+por verificado · rol `profesional` fijado explícitamente, no heredado del `DEFAULT` de la tabla ·
+`terms_accepted` del archivo y `data_sharing_accepted` por defecto, los dos con versión y fecha
+selladas · tipo de documento traducido al catálogo («CC/TI/CE» no existe en él) · correo repetido
+dentro del propio archivo avisado antes de aplicar.
+
+- **Alcance:** `internal/core/domain/importacion.go` (nuevo),
+  `internal/core/services/importacion_service.go` (nuevo),
+  `internal/handler/http/importacion_handler.go` (nuevo),
+  `internal/core/services/auth_service.go` (`RegistrarImportado`, `ExisteCuentaConCorreo`,
+  `cifrarDatosSensibles`, `usuarioNoEncontrado`), `internal/core/domain/user.go` y `errors.go`
+  (parser de fechas), `internal/core/ports/interfaces.go`, `cmd/server/main.go`,
+  `internal/core/services/importacion_service_test.go` (nuevo, 15 casos).
+- **Verificado:** `go build`, `go vet` y `go test` limpios salvo el `test_update_test.go` de siempre.
+  Y contra el servidor local, con un archivo de cuatro filas —dos buenas y dos malas—:
+
+  | Petición | Respuesta |
+  |---|---|
+  | Simular | `total 4, nuevas 2`, y tres problemas con su fila y su columna |
+  | Aplicar ese mismo archivo | `creadas: 0`, `simulacion: true`: no escribió nada |
+  | Aplicar solo las dos buenas | `creadas: 2` |
+  | Aplicar otra vez | `ya_existian: 2, creadas: 0` |
+  | Las dos cuentas en la base | `profesional`, `email_verified`, `debe_cambiar_contrasena`, consentimientos sellados, nombre y dirección cifrados, departamento en claro |
+  | `POST /login` con el correo y **el número de documento** | 200 con token |
+
+- **Criterios de QA:**
+  1. **Simular un archivo con errores**: el informe señala fila y columna, y no se crea ninguna cuenta.
+  2. **Aplicar ese archivo sin corregirlo**: sigue sin crear nada.
+  3. **Corregir el archivo y aplicar**: se crean las cuentas que faltaban.
+  4. **Aplicarlo otra vez**: no duplica; las cuenta como ya existentes.
+  5. **Entrar en la app** con el correo y el número de documento: entra y **pide cambiar la contraseña**.
+  6. **Comprobar que no llegó ningún correo** a las personas importadas.
+
+### [2026-09-02]: Dos cortes previos a la carga masiva: tres campos de perfil y la bandera de contraseña
+
+Son los dos cortes verticales pequeños que el plan (`reports/20260826_plan_carga_masiva.md`, §3.1 y
+§2.5) pone **antes** del importador, porque este tiene que poder escribir esas cuatro columnas.
+
+**Corte 1 · sexo, departamento y dirección.** Van en la cuenta, no en la inscripción: son datos de la
+persona, no de un evento.
+
+- **Se cifran dos de los tres.** `sexo` y `direccion` pasan por `CryptoService` como `location`;
+  `departamento` va en claro como `country`. La consecuencia de siempre: no se puede filtrar ni
+  ordenar por los dos primeros en SQL, y hoy nadie lo necesita.
+- **El handler no se tocó**, tal como anticipaba el plan: `performUpdate` vuelca el JSON entero sobre
+  el struct, así que los tres campos entran solos.
+- **Anonimizar una cuenta los borra también**, que es lo coherente con el resto de datos personales.
+
+**Corte 2 · `debe_cambiar_contrasena`.** La pone el importador porque a esas cuentas se les asigna
+como contraseña su número de documento, que no es un secreto: viene en el archivo.
+
+- **`DEFAULT false`:** ninguna cuenta existente queda obligada a nada.
+- 🔴 **Dos cierres para la misma puerta.** El `UPDATE` general de usuarios **no escribe esa columna**,
+  y además el handler la restaura tras el decode. Sin eso, cualquiera se quitaba la obligación
+  mandando `{"debe_cambiar_contrasena": false}` al editar su perfil —el mismo agujero que ya se tapó
+  con `userID` y `paymentStatus` en el registro a eventos—.
+- **Solo se baja al cambiar la contraseña**, y también con el «olvidé mi contraseña»: quien llega por
+  ahí ya eligió una propia, y dejarla puesta lo mandaría a cambiarla otra vez nada más entrar.
+- **No viaja en la respuesta del login**, que es un `map[string]string` con solo el token: sale por
+  `GET /api/me`.
+
+- **Alcance:** `scripts/20260902_usuarios_sexo_departamento_direccion.sql` y
+  `scripts/20260902_usuarios_debe_cambiar_contrasena.sql` (nuevas, idempotentes),
+  `internal/core/domain/user.go`, `internal/adapter/storage/postgres/user_repository.go`,
+  `internal/core/services/auth_service.go`,
+  `internal/handler/http/user_handler.go`,
+  `internal/handler/http/user_carga_masiva_test.go` (nuevo, 3 casos).
+- **Verificado:** `go build`, `go vet` y `go test` limpios —salvo `test_update_test.go`, el de
+  siempre—. Y contra el servidor local con las dos migraciones aplicadas:
+
+  | Prueba | Resultado |
+  |---|---|
+  | `PUT /api/me` con los tres campos | 200, y se releen iguales en `GET /api/me` |
+  | Los mismos datos, mirados en la base | `sexo` y `direccion` cifrados; `departamento` en claro |
+  | `PUT /api/me` con `debe_cambiar_contrasena: true` | la bandera **no cambia** |
+  | Bandera puesta a mano en la base | `GET /api/me` la devuelve en `true` |
+  | `POST /api/me/change-password` | 200, y la bandera queda en `false` |
+
+- **Criterios de QA:**
+  1. **Aplicar las dos migraciones** y comprobar que `core.users` tiene las cuatro columnas, con
+     `debe_cambiar_contrasena` en `false` para todas las cuentas que ya existían.
+  2. **Editar el perfil desde la app** rellenando departamento y dirección: se guardan y se ven al
+     volver a entrar.
+  3. **Mirar esos campos en la base**: sexo y dirección ilegibles, departamento legible.
+  4. **Intentar quitarse la obligación** con un `PUT /api/me` que mande la bandera en `false`: sigue
+     puesta.
+  5. **Cambiar la contraseña**: la bandera baja sola.
+
 ### [2026-09-02]: Legacy Board sale del código: páginas de información que edita el panel
 
 El texto de Legacy Board vivía dentro de la app —los dos nombres en `assets/data/board_contacts.json`

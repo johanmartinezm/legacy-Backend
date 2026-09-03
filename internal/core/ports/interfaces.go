@@ -78,6 +78,9 @@ type AdminUserRepository interface {
 
 type AuthService interface {
 	Register(ctx context.Context, user *domain.User, password string) error
+	// RegistrarImportado y ExisteCuentaConCorreo los usa la carga masiva.
+	RegistrarImportado(ctx context.Context, user *domain.User, password string) error
+	ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error)
 	Login(ctx context.Context, email, password string) (string, error) // Returns JWT
 	SocialLogin(ctx context.Context, provider, idToken string) (string, *domain.User, error)
 	RegisterAdmin(ctx context.Context, admin *domain.AdminUser, password string) error
@@ -177,6 +180,25 @@ type BannerService interface {
 	DeleteBanner(ctx context.Context, id string) error
 	GetActiveBanners(ctx context.Context, category string) ([]*domain.Banner, error)
 	ListAllBanners(ctx context.Context) ([]*domain.Banner, error)
+}
+
+// CuentasImportadas es lo poquito que la carga masiva necesita del servicio de
+// cuentas. Se declara aparte y no se usa ports.AuthService entera porque el
+// importador solo hace dos cosas —preguntar si un correo ya tiene cuenta y
+// crear una—, y depender de la interfaz grande obligaría a cualquier prueba a
+// implementar sus veinte métodos.
+//
+// AuthService la cumple sin declararlo: en Go basta con tener los métodos.
+type CuentasImportadas interface {
+	ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error)
+	RegistrarImportado(ctx context.Context, user *domain.User, password string) error
+}
+
+// ImportacionService es el motor de la carga masiva de asistentes. Simular no
+// escribe nada; Aplicar solo entra si el informe sale limpio.
+type ImportacionService interface {
+	Simular(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, error)
+	Aplicar(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, error)
 }
 
 type PaginaRepository interface {

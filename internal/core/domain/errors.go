@@ -63,6 +63,10 @@ var (
 	// cambiar contraseña devuelven err.Error() tal cual al cliente.
 	ErrContrasenaCorta = errors.New("la contraseña debe tener al menos 6 caracteres")
 
+	// ErrFechaNoReconocida la devuelve ParsearFechaDeNacimiento cuando el valor
+	// no encaja en ninguno de los tres formatos aceptados.
+	ErrFechaNoReconocida = errors.New("formato de fecha no reconocido")
+
 	// ErrEstadoDeEventoInvalido es un `status` distinto de "active"/"inactive".
 	//
 	// En español y por la misma razón: el controlador lo devuelve tal cual.
