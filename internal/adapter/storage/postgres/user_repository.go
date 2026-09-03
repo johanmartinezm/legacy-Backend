@@ -355,10 +355,25 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 			COALESCE(sexo, ''),
 			COALESCE(departamento, ''),
 			COALESCE(direccion, ''),
-			COALESCE(debe_cambiar_contrasena, false)
+			COALESCE(debe_cambiar_contrasena, false),
+			COALESCE(terms_accepted, false),
+			COALESCE(data_sharing_accepted, false),
+			terms_version,
+			terms_accepted_at,
+			data_sharing_version,
+			data_sharing_accepted_at
 		FROM core.users
 		WHERE id = $1
 	`
+	// Los seis campos del consentimiento **no se leían**, y por eso /api/me
+	// respondía `terms_accepted: false` a todo el mundo aunque la base dijera
+	// que sí: el struct salía con su valor cero. Se descubrió en el ensayo de la
+	// carga masiva (2026-09-03), comparando lo que devolvía la API con lo que
+	// tenía la fila.
+	//
+	// Las versiones y las fechas son punteros a propósito: las cuentas
+	// anteriores al 2026-08-10 tienen el consentimiento sin versión —consta que
+	// aceptaron, no qué leyeron—, y un valor vacío diría otra cosa.
 
 	var user domain.User
 	err := r.db.QueryRow(ctx, sql, id).Scan(
@@ -393,6 +408,12 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 		&user.Departamento,
 		&user.Direccion,
 		&user.DebeCambiarContrasena,
+		&user.TermsAccepted,
+		&user.DataSharingAccepted,
+		&user.TermsVersion,
+		&user.TermsAcceptedAt,
+		&user.DataSharingVersion,
+		&user.DataSharingAcceptedAt,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {

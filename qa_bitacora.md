@@ -4,6 +4,89 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-03]: Carga masiva · fase 4, el ensayo, y `/api/me` decía que nadie aceptó nada
+
+Cuarta y última fase del plan (`reports/20260826_plan_carga_masiva.md` §5): simular con el archivo
+real, cargar un lote de diez y **comprobar que entran a la app con su correo y su documento**, que es
+lo único que ningún test automático puede decir.
+
+**El motor no necesitó ni un cambio.** Los dos fallos que sacó el archivo real estaban en el lector
+del panel —ver su bitácora del mismo día—, y el backend recibió las filas correctas y las trató como
+debía.
+
+🔴 **Lo que sí salió aquí: `/api/me` respondía `terms_accepted: false` y `data_sharing_accepted:
+false` a todo el mundo.**
+
+No es de la carga masiva: `FindByID` **no leía esas seis columnas** —los dos consentimientos, sus dos
+versiones y sus dos fechas—, así que el struct salía con su valor cero y la API decía que nadie había
+aceptado nada. En la base estaban bien; se vio comparando lo que devolvía `/api/me` con la fila.
+
+Es una lectura que faltaba, no una escritura: `Update` no toca esas columnas —hay un comentario que
+lo explica para `debe_cambiar_contrasena` y vale igual para estas—, así que **nunca se borró ningún
+consentimiento**, solo se informaba mal. Aun así importa: este proyecto sella la versión y la fecha
+de cada consentimiento a propósito, para poder responder qué texto se aceptó y cuándo, y esa
+respuesta no llegaba a salir de la base.
+
+Las versiones y las fechas se leen a puntero, no con `COALESCE`: las cuentas anteriores al 2026-08-10
+tienen el consentimiento sin versión —consta que aceptaron, no qué leyeron— y una cadena vacía diría
+otra cosa.
+
+- **Alcance:** `internal/adapter/storage/postgres/user_repository.go` (`FindByID` lee
+  `terms_accepted`, `data_sharing_accepted`, `terms_version`, `terms_accepted_at`,
+  `data_sharing_version`, `data_sharing_accepted_at`). Nada más. **Ninguna migración.**
+- **Verificado:** `go build`, `go vet` y `go test` limpios salvo el `test_update_test.go` de siempre.
+  Y el ensayo completo contra el servidor local, con un lote de diez leído del archivo real:
+
+  | Paso | Resultado |
+  |---|---|
+  | Simular con evento | `nuevas 10, por_inscribir 10`; el evento sigue con 0 inscritos |
+  | Aplicar | `creadas 10, inscritas 10`; el evento pasa a 10 |
+  | `POST /login` con **el correo y el número de documento** | 200 con token |
+  | `GET /api/me` | nombre, empresa, cargo, documento, dirección y ciudad **descifrados y con sus tildes** (`Medellín`, `Cédula`), `role: profesional`, `email_verified: true`, `debe_cambiar_contrasena: true` y **los dos consentimientos en true, con su versión y su fecha** |
+  | `GET /api/me/registrations` | inscripción `confirmed`, pago `free`, `qrData` vacío |
+  | Generar credenciales en bloque | `{"generadas": 10}`; su `qrData` pasa a `REG-…` |
+  | Ese QR en el control de acceso | encuentra a la persona y registra la entrada |
+  | El mismo QR otra vez | `alreadyCheckedIn: true`, sin sumar una segunda asistencia |
+  | Volver a pasar el mismo lote | `creadas 0, ya_existian 10, ya_inscritas 10`; el evento sigue en 10 |
+  | Cambiar la contraseña obligatoria | 200, la bandera baja a `false`, se entra con la nueva y **ya no** con el documento |
+
+  Y la simulación de un archivo con las trampas del plan, una por fila, con los números de fila **de
+  la hoja de cálculo** (cabeceras en la 4):
+
+  | Fila | Columna | Qué dijo |
+  |---|---|---|
+  | 7 | E-mail | repetido: ya aparece en la fila 6 |
+  | 8 | E-mail | la fila no trae correo |
+  | 9 | CC/TI/CE | tiene 4 caracteres y la contraseña necesita al menos 6 |
+  | 10 | Tipo | «Licencia de conducción» no está en el catálogo |
+  | 11 | Fecha De Nacimiento | «el año pasado» no es una fecha reconocible |
+  | 12 | Nombres | está vacío |
+  | 13 | E-mail | no parece un correo válido |
+  | 14 | CC/TI/CE | está vacío, y de ahí sale la contraseña |
+
+  Trece filas con datos, ocho problemas, cinco importables y **nada escrito**. Las tres filas
+  completamente vacías de la cola no se contaron ni como fila ni como error.
+
+- **Criterios de QA:**
+  1. Entrar a la app con cualquier cuenta y mirar su perfil: los consentimientos ya no salen en
+     `false` cuando la persona sí aceptó.
+  2. Importar un lote de diez a un evento presencial, sin credencial y sin avisar.
+  3. Entrar a la app con el correo y el número de documento de una de ellas: pide cambiar la
+     contraseña.
+  4. Ver su perfil: nombre, empresa, cargo y ciudad legibles y con tildes; el tipo de documento dice
+     «Cédula», no «CC/TI/CE».
+  5. Generar las credenciales del lote y comprobar que a esa persona ya le aparece el QR en **Mi
+     credencial**.
+  6. Escanear ese QR en el control de acceso: entra. Escanearlo otra vez: dice que ya había entrado y
+     no suma asistencia.
+  7. Volver a pasar el mismo archivo: no se duplica ni una cuenta ni una inscripción.
+
+> **Para la carga de verdad, lo que el plan pide y aquí no aplica:** respaldo de la base antes de
+> aplicar, y hacerlo primero con diez personas y luego con el resto. Este ensayo corrió contra la
+> base local, que se dejó como estaba —todo lo creado se borró al terminar—.
+
+---
+
 ### [2026-09-03]: Carga masiva · fase 3, la entrada del evento y las credenciales
 
 Tercera de las cuatro fases del plan (`reports/20260826_plan_carga_masiva.md` §5). La fase 1 dejó el
