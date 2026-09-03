@@ -173,9 +173,14 @@ func (r *EventRepository) CreateRegistration(ctx context.Context, reg *domain.Re
 			user_id, event_id, payment_status, registration_status, qr_data, total_paid,
 			participant_name, participant_email, participant_phone
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''))
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''))
 		RETURNING id, registration_date
 	`
+	// NULLIF sobre qr_data, y no es cosmético: `registrations_qr_data_key` es
+	// UNIQUE (20260805_qr_data_impredecible.sql) y la cadena vacía SÍ colisiona
+	// consigo misma, mientras que NULL no. Desde que la carga masiva puede
+	// crear inscripciones sin credencial, la segunda de ellas violaría la
+	// restricción. Es exactamente el mismo caso que el alias en core.users.
 	return r.db.QueryRow(ctx, query,
 		reg.UserID, reg.EventID, reg.PaymentStatus, reg.RegistrationStatus, reg.QRData, reg.TotalPaid,
 		reg.ParticipantName, reg.ParticipantEmail, reg.ParticipantPhone,
@@ -229,7 +234,8 @@ func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID s
 		       COALESCE(u.first_name, ''), COALESCE(u.last_name, ''),
 		       COALESCE(u.email_encrypted, ''), COALESCE(u.phone, ''),
 		       COALESCE(r.payment_status, ''), COALESCE(r.registration_status, ''),
-		       r.registration_date, r.total_paid, r.attendance_confirmed
+		       r.registration_date, r.total_paid, r.attendance_confirmed,
+		       COALESCE(r.qr_data, '') <> ''
 		FROM events.registrations r
 		JOIN core.users u ON r.user_id = u.id
 		WHERE r.event_id = $1
@@ -252,7 +258,7 @@ func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID s
 			&reg.FirstName, &reg.LastName,
 			&reg.Email, &reg.Phone,
 			&reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
-			&reg.TotalPaid, &reg.AttendanceConfirmed,
+			&reg.TotalPaid, &reg.AttendanceConfirmed, &reg.TieneCredencial,
 		); err != nil {
 			return nil, err
 		}
@@ -273,6 +279,89 @@ func (r *EventRepository) CountRegistrationsByEvent(ctx context.Context, eventID
 	err := r.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM events.registrations WHERE event_id = $1`, eventID).Scan(&total)
 	return total, err
+}
+
+// GetRegistrationsSinCredencial trae las inscripciones a las que les falta el
+// código de acceso, que es lo que deja una carga masiva con el interruptor de
+// credencial apagado.
+//
+// El estado se lee de la propia fila —`qr_data IS NULL`— y no de una columna
+// «credencial_entregada» que se valoró y se descartó: dos sitios que puedan
+// decir cosas distintas acaban diciéndolas.
+//
+// `ids` vacío significa «todas las del evento». Es la misma consulta para la
+// acción en bloque y para la de una sola persona, así que no hay dos caminos
+// que puedan divergir.
+func (r *EventRepository) GetRegistrationsSinCredencial(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error) {
+	query := `
+		SELECT id, user_id, event_id,
+		       COALESCE(payment_status, ''), COALESCE(registration_status, ''),
+		       registration_date, total_paid, attendance_confirmed,
+		       COALESCE(participant_name, ''), COALESCE(participant_email, ''),
+		       COALESCE(participant_phone, '')
+		FROM events.registrations
+		WHERE event_id = $1
+		  AND COALESCE(qr_data, '') = ''
+		  AND (cardinality($2::text[]) = 0 OR id::text = ANY($2::text[]))
+		ORDER BY registration_date, id
+	`
+	// El array vacío se manda como tal y la condición lo neutraliza, en vez de
+	// componer dos SQL distintos según haya ids o no.
+	if ids == nil {
+		ids = []string{}
+	}
+
+	// La comparación va sobre `id::text` y no con un `::uuid[]`, por dos motivos
+	// que se comprobaron contra la base:
+	//
+	//   - `[]string` de Go se codifica de forma natural como `text[]`; pedirle a
+	//     pgx un `uuid[]` es depender de una conversión que aquí no hace falta.
+	//   - un id mal formado en la lista hunde la consulta entera con un error de
+	//     casteo si se pide `::uuid[]`, mientras que como texto simplemente no
+	//     casa con nada. Los ids vienen del panel, que los sacó de esta misma
+	//     API, pero el modo de fallar barato es el que se elige.
+
+	rows, err := r.db.Query(ctx, query, eventID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	registrations := []domain.Registration{}
+	for rows.Next() {
+		var reg domain.Registration
+		if err := rows.Scan(
+			&reg.ID, &reg.UserID, &reg.EventID,
+			&reg.PaymentStatus, &reg.RegistrationStatus,
+			&reg.RegistrationDate, &reg.TotalPaid, &reg.AttendanceConfirmed,
+			&reg.ParticipantName, &reg.ParticipantEmail, &reg.ParticipantPhone,
+		); err != nil {
+			return nil, err
+		}
+		registrations = append(registrations, reg)
+	}
+	return registrations, rows.Err()
+}
+
+// SetRegistrationQR escribe el código que faltaba.
+//
+// La condición sobre qr_data no es decorativa: si dos personas pulsan «Generar
+// credenciales» a la vez, la segunda no le cambia el código a nadie —el QR ya
+// enviado por correo seguiría siendo el bueno—. Devuelve domain.ErrNotFound si
+// no había nada que rellenar.
+func (r *EventRepository) SetRegistrationQR(ctx context.Context, registrationID, qrData string) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE events.registrations
+		   SET qr_data = $1
+		 WHERE id = $2 AND COALESCE(qr_data, '') = ''
+	`, qrData, registrationID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // GetRegistrationsByUser devuelve las inscripciones del usuario con los datos
@@ -338,8 +427,14 @@ func (r *EventRepository) AddRegistrationWorkshops(ctx context.Context, registra
 }
 
 func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error) {
+	// COALESCE sobre qr_data porque desde la carga masiva hay inscripciones sin
+	// credencial, y ahí la columna es NULL de verdad. Sin esto el Scan sobre un
+	// string revienta con "cannot scan NULL", y este método lo llama lo primero
+	// RegisterUser: quien se importó sin credencial no habría podido ni abrir
+	// la pantalla del evento en la app.
 	query := `
-		SELECT id, user_id, event_id, payment_status, registration_status, registration_date, qr_data, total_paid, attendance_confirmed
+		SELECT id, user_id, event_id, payment_status, registration_status, registration_date,
+		       COALESCE(qr_data, ''), total_paid, attendance_confirmed
 		FROM events.registrations
 		WHERE user_id = $1 AND event_id = $2
 	`

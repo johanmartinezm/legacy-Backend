@@ -38,6 +38,9 @@ func (c *correoDePrueba) SendEventRegistrationEmail(datos domain.CorreoInscripci
 	return nil
 }
 func (c *correoDePrueba) SendEventPaymentEmail(datos domain.CorreoPago) error { return nil }
+func (c *correoDePrueba) SendEventCredentialEmail(datos domain.CorreoCredencial) error {
+	return nil
+}
 
 func (c *correoDePrueba) SendContactoEmail(to, asunto, senderName, senderEmail, messageText string) error {
 	c.llamado = true

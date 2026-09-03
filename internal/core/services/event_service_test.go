@@ -22,6 +22,22 @@ type MockEventRepository struct {
 	RecordAttendanceFunc              func(ctx context.Context, regID, staffID string) (time.Time, bool, error)
 	GetRegistrationsByEventFunc       func(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, error)
 	CountRegistrationsByEventFunc     func(ctx context.Context, eventID string) (int, error)
+	GetRegistrationsSinCredencialFunc func(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error)
+	SetRegistrationQRFunc             func(ctx context.Context, regID, qrData string) error
+}
+
+func (m *MockEventRepository) GetRegistrationsSinCredencial(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error) {
+	if m.GetRegistrationsSinCredencialFunc == nil {
+		return nil, nil
+	}
+	return m.GetRegistrationsSinCredencialFunc(ctx, eventID, ids)
+}
+
+func (m *MockEventRepository) SetRegistrationQR(ctx context.Context, regID, qrData string) error {
+	if m.SetRegistrationQRFunc == nil {
+		return nil
+	}
+	return m.SetRegistrationQRFunc(ctx, regID, qrData)
 }
 
 func (m *MockEventRepository) GetRegistrationsByEvent(ctx context.Context, eID string, limit, offset int) ([]domain.EventRegistrant, error) {
@@ -58,7 +74,7 @@ func (m *MockEventRepository) UpdateEvent(ctx context.Context, event *domain.Eve
 func (m *MockEventRepository) UpdateEventStatus(ctx context.Context, id, status string) error {
 	return nil
 }
-func (m *MockEventRepository) DeleteEvent(ctx context.Context, id string) error           { return nil }
+func (m *MockEventRepository) DeleteEvent(ctx context.Context, id string) error { return nil }
 func (m *MockEventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop) error {
 	return nil
 }
@@ -71,6 +87,7 @@ func (m *MockEventRepository) CreateRegistration(ctx context.Context, r *domain.
 func (m *MockEventRepository) AddRegistrationWorkshops(ctx context.Context, id string, wIDs []string) error {
 	return m.AddRegistrationWorkshopsFunc(ctx, id, wIDs)
 }
+
 // Sin gancho fijado devuelve "no hay inscripcion" en vez de reventar.
 //
 // Antes llamaba al campo a secas y cualquier test que no lo fijara moria con un

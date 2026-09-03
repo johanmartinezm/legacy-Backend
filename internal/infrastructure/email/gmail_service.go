@@ -312,6 +312,92 @@ func formatearImporte(v float64) string {
 	return string(out)
 }
 
+// SendEventCredentialEmail entrega la credencial a quien ya está inscrito.
+//
+// Lo nuevo frente al correo de pago no es el QR —ese ya se dibujaba— sino el
+// bloque de acceso: en una carga masiva la contraseña es el número de documento
+// y **este correo es el único sitio donde la persona se entera**. Si no viene
+// relleno, no se pinta: una cuenta que ya existía tiene su propia contraseña.
+func (s *GmailService) SendEventCredentialEmail(datos domain.CorreoCredencial) error {
+	saludo := "Hola"
+	if datos.Nombre != "" {
+		saludo = fmt.Sprintf("Hola, %s", datos.Nombre)
+	}
+
+	asunto := fmt.Sprintf("Tu acceso a %s", datos.Evento)
+
+	// Evento virtual: no hay puerta, así que lo que se entrega es el enlace. La
+	// rama existe por si alguien llega aquí con un evento virtual; el servicio
+	// ya lo rechaza antes, y el panel enseña el interruptor deshabilitado.
+	if datos.EsVirtual || datos.QRData == "" {
+		acceso := `<p>Tu inscripción está confirmada. El acceso está en la app, en <strong>Mi credencial</strong>.</p>`
+		if datos.EsVirtual && datos.EnlaceLugar != "" {
+			acceso = fmt.Sprintf(`
+				<p>Es una <strong>masterclass virtual en vivo</strong>. Entra desde aquí el día de la sesión:</p>
+				<a href="%s" style="display: inline-block; padding: 12px 24px; background-color: #162540; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold;">Entrar a la sesión</a>
+				<br><br>
+				<p style="word-break: break-all; color: #555;">%s</p>
+			`, datos.EnlaceLugar, datos.EnlaceLugar)
+		}
+		return s.sendMessage(datos.Para, asunto,
+			cuerpoCredencial(saludo, datos, acceso))
+	}
+
+	png, err := qrcode.Encode(datos.QRData, qrcode.Medium, 320)
+	if err != nil {
+		// Salida airosa, la misma del correo de pago: sin QR el correo sigue
+		// valiendo —lleva las credenciales de acceso, que es lo que no está en
+		// ningún otro sitio— y remite a la app para el código.
+		acceso := `<p>Tu código de acceso está en la app, en <strong>Mi credencial</strong>. Preséntalo en la entrada.</p>`
+		return s.sendMessage(datos.Para, asunto,
+			cuerpoCredencial(saludo, datos, acceso))
+	}
+
+	const cid = "acceso-qr"
+	acceso := fmt.Sprintf(`
+		<p><strong>Este es tu código de acceso.</strong> Preséntalo en la entrada del evento:</p>
+		<img src="cid:%s" alt="Código de acceso" width="320" height="320" style="display: block; margin: 12px 0;">
+		<p style="color: #777; font-size: 12px;">Si no ves la imagen, el mismo código está en la app, en <strong>Mi credencial</strong>.</p>
+	`, cid)
+
+	return s.sendMessageConImagen(datos.Para, asunto,
+		cuerpoCredencial(saludo, datos, acceso), cid, png)
+}
+
+// cuerpoCredencial arma el correo de la credencial. El bloque de acceso a la app
+// va **antes** del QR a propósito: sin poder entrar, el QR no le sirve de nada a
+// quien acaba de ser importado.
+func cuerpoCredencial(saludo string, datos domain.CorreoCredencial, acceso string) string {
+	var credenciales string
+	if datos.Usuario != "" && datos.Contrasena != "" {
+		credenciales = fmt.Sprintf(`
+			<div style="background-color: #f5f7fa; border-left: 4px solid #162540; padding: 12px 16px; margin: 18px 0;">
+				<p style="margin: 0 0 8px;"><strong>Tu cuenta en la app Legacy Network</strong></p>
+				<table style="border-collapse: collapse;">
+					<tr><td style="padding: 4px 16px 4px 0; color: #555;">Usuario</td><td style="padding: 4px 0;"><strong>%s</strong></td></tr>
+					<tr><td style="padding: 4px 16px 4px 0; color: #555;">Contraseña</td><td style="padding: 4px 0;"><strong>%s</strong></td></tr>
+				</table>
+				<p style="margin: 8px 0 0; color: #777; font-size: 12px;">
+					Es tu número de documento. La app te pedirá cambiarla la primera vez que entres.
+				</p>
+			</div>
+		`, datos.Usuario, datos.Contrasena)
+	}
+
+	return fmt.Sprintf(`
+		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+			<h2 style="color: #162540;">Tu acceso a %s</h2>
+			<p>%s,</p>
+			<p>Tu inscripción a <strong>%s</strong> está confirmada.</p>
+			<p><strong>Fecha:</strong> %s</p>
+			%s
+			%s
+			<hr style="border: none; border-top: 1px solid #eee;">
+			<p style="font-size: 12px; color: #777;">Legacy Network - Conectando líderes.</p>
+		</div>
+	`, datos.Evento, saludo, datos.Evento, datos.Fecha, credenciales, acceso)
+}
+
 // SendEventRegistrationEmail confirma la inscripción a un evento.
 //
 // El bloque de acceso cambia con la modalidad: el virtual lleva el botón con el

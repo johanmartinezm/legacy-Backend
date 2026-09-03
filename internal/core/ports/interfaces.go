@@ -78,9 +78,9 @@ type AdminUserRepository interface {
 
 type AuthService interface {
 	Register(ctx context.Context, user *domain.User, password string) error
-	// RegistrarImportado y ExisteCuentaConCorreo los usa la carga masiva.
+	// RegistrarImportado e IDDeCuentaConCorreo los usa la carga masiva.
 	RegistrarImportado(ctx context.Context, user *domain.User, password string) error
-	ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error)
+	IDDeCuentaConCorreo(ctx context.Context, email string) (string, error)
 	Login(ctx context.Context, email, password string) (string, error) // Returns JWT
 	SocialLogin(ctx context.Context, provider, idToken string) (string, *domain.User, error)
 	RegisterAdmin(ctx context.Context, admin *domain.AdminUser, password string) error
@@ -127,6 +127,11 @@ type EmailService interface {
 	// SendEventPaymentEmail confirma un cobro aprobado y entrega el acceso: el
 	// QR dibujado en el propio correo, o el enlace si el evento es virtual.
 	SendEventPaymentEmail(datos domain.CorreoPago) error
+	// SendEventCredentialEmail entrega la credencial de quien ya está inscrito:
+	// el QR dibujado y, si la cuenta acaba de crearse en una carga masiva, con
+	// qué usuario y qué contraseña entrar. Sale al generar el código, venga de
+	// una importación o de la acción «Generar credenciales».
+	SendEventCredentialEmail(datos domain.CorreoCredencial) error
 }
 
 // EmailVerificationRepository identifica a la persona por su id, que es lo que
@@ -190,15 +195,31 @@ type BannerService interface {
 //
 // AuthService la cumple sin declararlo: en Go basta con tener los métodos.
 type CuentasImportadas interface {
-	ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error)
+	// IDDeCuentaConCorreo devuelve el id de la cuenta con ese correo, o cadena
+	// vacía si no hay ninguna. Devuelve el id y no un booleano porque la
+	// entrada del evento necesita a quién inscribir, y preguntarlo dos veces
+	// —«¿existe?» y «¿cuál es?»— sería una consulta de más por fila.
+	IDDeCuentaConCorreo(ctx context.Context, email string) (string, error)
 	RegistrarImportado(ctx context.Context, user *domain.User, password string) error
+}
+
+// InscripcionesImportadas es lo único que la carga masiva necesita del servicio
+// de eventos. Se declara aparte por lo mismo que CuentasImportadas: depender de
+// ports.EventService entera obligaría a cada prueba a implementar sus veinte
+// métodos.
+type InscripcionesImportadas interface {
+	RegisterUser(ctx context.Context, reg *domain.Registration) error
 }
 
 // ImportacionService es el motor de la carga masiva de asistentes. Simular no
 // escribe nada; Aplicar solo entra si el informe sale limpio.
+//
+// Es **un solo motor con dos entradas**: sin evento en las opciones crea
+// cuentas y nada más; con evento, además inscribe a todo el archivo a ese
+// evento (reports/20260826_plan_carga_masiva.md §4).
 type ImportacionService interface {
-	Simular(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, error)
-	Aplicar(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, error)
+	Simular(ctx context.Context, filas []domain.FilaImportacion, opciones domain.OpcionesImportacion) (*domain.ResultadoImportacion, error)
+	Aplicar(ctx context.Context, filas []domain.FilaImportacion, opciones domain.OpcionesImportacion) (*domain.ResultadoImportacion, error)
 }
 
 type PaginaRepository interface {

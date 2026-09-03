@@ -185,6 +185,11 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		reg.QRData = existing.QRData
 		reg.TotalPaid = existing.TotalPaid
 		reg.AttendanceConfirmed = existing.AttendanceConfirmed
+		// Se avisa al llamador de que no se creó nada. La carga masiva lo usa
+		// para contar «ya inscritas» aparte de «inscritas»: volver a pasar el
+		// mismo archivo no duplica a nadie, y el informe tiene que decirlo en
+		// vez de dejar creer que no hizo nada.
+		reg.YaEstabaInscrito = true
 		return nil
 	}
 
@@ -228,7 +233,21 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		reg.TotalPaid = event.Price
 	}
 
-	if reg.QRData == "" {
+	// El código de acceso. La carga masiva puede pedir que **no** se genere
+	// (§4.1 del plan): un interruptor que dice «no crear» tiene que no crear, y
+	// entonces qr_data queda en NULL, que es todo el estado que hace falta.
+	//
+	// La app nunca pone esa opción —llega en su valor cero—, así que para una
+	// inscripción normal esto sigue haciendo exactamente lo de siempre.
+	// Una carga a un evento virtual nunca genera el código, aunque lo pidan: el
+	// acceso allí es el enlace de la sesión y la credencial no se muestra nunca.
+	// Es la misma respuesta que da GenerarCredenciales, y tiene que ser la misma
+	// desde los dos caminos —el panel ya deshabilita el interruptor, pero esto
+	// no puede depender de que ningún cliente se acuerde—.
+	sinCredencial := reg.Importacion.SinCredencial ||
+		(reg.Importacion.EsCarga && event.IsVirtual)
+
+	if reg.QRData == "" && !sinCredencial {
 		// Aleatorio, no derivado del usuario y el evento. Antes era
 		// "REG-{user_id}-{event_id}": dos uuid que el propio interesado conoce,
 		// asi que cualquiera podia fabricar el codigo de otro y CheckIn lo daba
@@ -256,11 +275,82 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 	// 6. Confirmación por correo. Solo si la inscripción ya da derecho a entrar:
 	// una pendiente de pago todavía no se confirma, y su correo llegaría cuando
 	// la pasarela apruebe el cobro. Nunca devuelve error ni bloquea.
+	//
+	// Cuál sale lo decide reg.Importacion.Aviso, y **nunca salen dos**: una
+	// carga que manda dos correos por persona es ruido. La app deja ese campo
+	// vacío, que es AvisoPorDefecto.
 	if reg.RegistrationStatus == domain.RegistrationConfirmed {
-		s.enviarCorreoInscripcion(reg, event)
+		switch reg.Importacion.Aviso {
+		case domain.AvisoNinguno:
+			// Importar trescientas personas no dispara trescientos correos.
+		case domain.AvisoCredencial:
+			s.enviarCorreoCredencial(reg, event, reg.Importacion.Usuario, reg.Importacion.Contrasena)
+		default:
+			s.enviarCorreoInscripcion(reg, event)
+		}
 	}
 
 	return nil
+}
+
+// GenerarCredenciales rellena el código de acceso que falta y, si se pide, manda
+// el correo con el QR.
+//
+// Es la vuelta del interruptor de la carga masiva: quien se importó sin
+// credencial no pasa el check-in hasta pasar por aquí. Con registrationIDs
+// vacío alcanza a todos los inscritos del evento a los que les falta; con ids,
+// solo a esos. Devuelve cuántas generó.
+//
+// **En un evento virtual no hace nada y lo dice.** Allí no hay QR que mostrar
+// —GetMyRegistrations lo vacía y entrega el enlace—, así que generarlo sería
+// escribir un valor que nadie va a mirar nunca. El panel ya enseña el
+// interruptor deshabilitado, pero la regla se comprueba también aquí: el
+// servicio es el único punto por el que pasan todos los caminos.
+func (s *EventService) GenerarCredenciales(ctx context.Context, eventID string, registrationIDs []string, avisarPorCorreo bool) (int, error) {
+	event, err := s.repo.GetEventByID(ctx, eventID)
+	if err != nil {
+		return 0, err
+	}
+	if event.IsVirtual {
+		return 0, ErrCredencialEnEventoVirtual
+	}
+
+	pendientes, err := s.repo.GetRegistrationsSinCredencial(ctx, eventID, registrationIDs)
+	if err != nil {
+		return 0, err
+	}
+
+	generadas := 0
+	for i := range pendientes {
+		reg := &pendientes[i]
+
+		// Una inscripción pendiente de pago no recibe credencial: sería
+		// entregar el acceso a un evento que nadie ha pagado. CheckIn ya lo
+		// rechazaría en la puerta, pero el correo habría salido igual.
+		if reg.IsPendingPayment() {
+			continue
+		}
+
+		codigo := "REG-" + uuid.NewString()
+		if err := s.repo.SetRegistrationQR(ctx, reg.ID, codigo); err != nil {
+			// ErrNotFound aquí significa que alguien la generó entre la consulta
+			// y este UPDATE. No es un fallo: esa persona ya tiene su código.
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return generadas, err
+		}
+		reg.QRData = codigo
+		generadas++
+
+		if avisarPorCorreo {
+			// Sin usuario ni contraseña: esta persona ya tiene la suya. Solo la
+			// carga masiva, que acaba de crear la cuenta, sabe cuál es.
+			s.enviarCorreoCredencial(reg, event, "", "")
+		}
+	}
+
+	return generadas, nil
 }
 
 // GetMyRegistrations alimenta la pantalla "Mi credencial".
@@ -368,6 +458,12 @@ var (
 	ErrCheckInNotFound       = errors.New("invalid QR data or registration not found")
 	ErrCheckInPendingPayment = errors.New("registration is pending payment")
 )
+
+// ErrCredencialEnEventoVirtual lo devuelve GenerarCredenciales cuando el evento
+// es virtual: allí no hay puerta que cruzar y el QR nunca se muestra, así que
+// generarlo sería escribir un valor que nadie va a mirar. Es centinela para que
+// el handler lo traduzca a un 409 con explicación y no a un 500 mudo.
+var ErrCredencialEnEventoVirtual = errors.New("un evento virtual no usa credencial: el acceso es el enlace de la sesión")
 
 // Errores de la encuesta general. Son centinelas para que el handler distinga
 // 400, 403 y 409 con errors.Is; el resto del repositorio compara errores por

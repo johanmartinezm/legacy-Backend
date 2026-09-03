@@ -52,13 +52,17 @@ func (s *stubEventService) UpdateEvent(ctx context.Context, e *domain.Event) err
 func (s *stubEventService) UpdateEventStatus(ctx context.Context, id, status string) error {
 	return nil
 }
-func (s *stubEventService) DeleteEvent(ctx context.Context, id string) error       { return nil }
+func (s *stubEventService) DeleteEvent(ctx context.Context, id string) error { return nil }
 func (s *stubEventService) SubmitWorkshopRating(ctx context.Context, r *domain.WorkshopRating) error {
 	return nil
 }
 func (s *stubEventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
 	return nil, nil
 }
+func (s *stubEventService) GenerarCredenciales(ctx context.Context, eventID string, registrationIDs []string, avisarPorCorreo bool) (int, error) {
+	return 0, nil
+}
+
 func (s *stubEventService) GetEventRegistrants(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, int, error) {
 	return nil, 0, nil
 }

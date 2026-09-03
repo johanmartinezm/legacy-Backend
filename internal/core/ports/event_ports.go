@@ -35,6 +35,17 @@ type EventRepository interface {
 	GetRegistrationsByEvent(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, error)
 	// CountRegistrationsByEvent es el total, para saber cuántas páginas hay.
 	CountRegistrationsByEvent(ctx context.Context, eventID string) (int, error)
+	// GetRegistrationsSinCredencial devuelve las inscripciones de un evento a
+	// las que les falta el código de acceso. Con `ids` vacío son todas las del
+	// evento; con ids, solo esas —es la misma consulta para la acción en bloque
+	// y para la de una sola persona—.
+	//
+	// El estado es `qr_data IS NULL`, no una columna aparte: no hay dos sitios
+	// que puedan decir cosas distintas.
+	GetRegistrationsSinCredencial(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error)
+	// SetRegistrationQR escribe el código que faltaba. No pisa uno existente:
+	// cambiarle el QR a quien ya lo tiene invalidaría el que lleva encima.
+	SetRegistrationQR(ctx context.Context, registrationID, qrData string) error
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 
@@ -76,6 +87,13 @@ type EventService interface {
 	// Devuelve también el total de inscritos, que no es el largo de la página:
 	// el panel lo necesita para pintar el paginador.
 	GetEventRegistrants(ctx context.Context, eventID string, limit, offset int) ([]domain.EventRegistrant, int, error)
+	// GenerarCredenciales rellena el código que falta y, si se pide, manda el
+	// correo con el QR. Es la vuelta del interruptor de la carga masiva: quien
+	// se importó sin credencial no pasa el check-in hasta pasar por aquí.
+	//
+	// Con `registrationIDs` vacío alcanza a todos los inscritos del evento a
+	// los que les falta; con ids, solo a esos. Devuelve cuántas generó.
+	GenerarCredenciales(ctx context.Context, eventID string, registrationIDs []string, avisarPorCorreo bool) (int, error)
 	SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
 

@@ -64,6 +64,60 @@ func (s *EventService) enviarCorreoInscripcion(reg *domain.Registration, event *
 	}()
 }
 
+// enviarCorreoCredencial entrega el código de acceso, con el QR dibujado dentro
+// del propio correo.
+//
+// Sale de un solo sitio: generar la credencial. Se dispare desde la carga masiva
+// (§4.1) o desde la acción «Generar credenciales» de la pantalla de inscritos
+// (§4.3), crear el código y avisar de él son la misma cosa, así que hay un solo
+// camino y no dos que puedan divergir.
+//
+// `usuario` y `contrasena` solo llegan rellenos cuando la cuenta acaba de
+// crearse en una carga: entonces este correo es **el único sitio** donde la
+// persona se entera de cómo entrar. Para una cuenta que ya existía van vacíos, y
+// la plantilla omite ese bloque en vez de decirle una contraseña que no es la
+// suya.
+//
+// No puede salir antes de tiempo: sin código no hay QR que dibujar, y quien
+// llama aquí acaba de escribirlo.
+func (s *EventService) enviarCorreoCredencial(reg *domain.Registration, event *domain.Event, usuario, contrasena string) {
+	if s.email == nil || s.users == nil {
+		return
+	}
+
+	destino := s.correoDelInscrito(reg)
+	if destino == "" {
+		log.Printf("[correo credencial] sin correo para la inscripción %s, no se envía", reg.ID)
+		return
+	}
+
+	datos := domain.CorreoCredencial{
+		Para:        destino,
+		Nombre:      s.nombreDelInscrito(reg),
+		Evento:      event.Title,
+		Fecha:       event.StartDate.Format("02/01/2006"),
+		EsVirtual:   event.IsVirtual,
+		EnlaceLugar: lugarOEnlace(event),
+		QRData:      reg.QRData,
+		Usuario:     usuario,
+		Contrasena:  contrasena,
+	}
+
+	// Contexto propio y goroutine, por lo mismo que el correo de inscripción: el
+	// de la petición HTTP se cancela al responder y cortaría el envío a medias,
+	// y un fallo del correo no puede deshacer una inscripción que ya está en la
+	// base.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), tiempoMaximoCorreo)
+		defer cancel()
+		_ = ctx // el puerto de correo no recibe contexto; el timeout acota la goroutine
+
+		if err := s.email.SendEventCredentialEmail(datos); err != nil {
+			log.Printf("[correo credencial] %s: %v", reg.ID, err)
+		}
+	}()
+}
+
 // lugarOEnlace devuelve lo que la persona necesita para llegar al evento: el
 // enlace si es virtual, el lugar si es presencial. Puede ir vacío —un evento sin
 // ubicación escrita todavía—, y entonces la plantilla lo omite.

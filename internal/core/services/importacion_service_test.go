@@ -4,6 +4,7 @@ import (
 	"applegacy/backend/internal/core/domain"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -13,21 +14,24 @@ import (
 // a llamar otro método, esto deja de compilar y hay que decidirlo, en vez de
 // reventar en producción con un nil.
 type authFalso struct {
-	existentes map[string]bool
-	creados    []domain.User
-	contrasena map[string]string
-	errCrear   error
+	// existentes va de correo a id de cuenta. Guarda el id y no un booleano
+	// porque es lo que la entrada del evento necesita: a quien inscribir.
+	existentes  map[string]string
+	creados     []domain.User
+	contrasena  map[string]string
+	errCrear    error
+	siguienteID int
 }
 
 func nuevoAuthFalso(existentes ...string) *authFalso {
-	m := map[string]bool{}
-	for _, c := range existentes {
-		m[c] = true
+	m := map[string]string{}
+	for i, c := range existentes {
+		m[c] = fmt.Sprintf("usuario-existente-%d", i+1)
 	}
 	return &authFalso{existentes: m, contrasena: map[string]string{}}
 }
 
-func (a *authFalso) ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error) {
+func (a *authFalso) IDDeCuentaConCorreo(ctx context.Context, email string) (string, error) {
 	return a.existentes[email], nil
 }
 
@@ -35,9 +39,44 @@ func (a *authFalso) RegistrarImportado(ctx context.Context, user *domain.User, p
 	if a.errCrear != nil {
 		return a.errCrear
 	}
+	// Se rellena el id como hace el repositorio de verdad, que lo devuelve del
+	// INSERT: sin el, la carga no sabria a quien inscribir.
+	a.siguienteID++
+	user.ID = fmt.Sprintf("usuario-nuevo-%d", a.siguienteID)
+
 	a.creados = append(a.creados, *user)
 	a.contrasena[user.Email] = password
-	a.existentes[user.Email] = true
+	a.existentes[user.Email] = user.ID
+	return nil
+}
+
+// eventosFalsos anota las inscripciones que le piden, sin base de datos.
+//
+// Imita lo que importa de EventService.RegisterUser: que una segunda llamada
+// para el mismo par usuario/evento no crea otra inscripcion y avisa con
+// YaEstabaInscrito. Sin eso no se podria comprobar que volver a pasar el mismo
+// archivo no duplica a nadie.
+type eventosFalsos struct {
+	inscripciones []domain.Registration
+	hechas        map[string]bool
+	err           error
+}
+
+func nuevosEventosFalsos() *eventosFalsos {
+	return &eventosFalsos{hechas: map[string]bool{}}
+}
+
+func (e *eventosFalsos) RegisterUser(ctx context.Context, reg *domain.Registration) error {
+	if e.err != nil {
+		return e.err
+	}
+	clave := reg.UserID + "|" + reg.EventID
+	if e.hechas[clave] {
+		reg.YaEstabaInscrito = true
+		return nil
+	}
+	e.hechas[clave] = true
+	e.inscripciones = append(e.inscripciones, *reg)
 	return nil
 }
 
@@ -63,15 +102,19 @@ func filaBuena(n int, correo string) domain.FilaImportacion {
 	}
 }
 
+// sinEvento son las opciones de la entrada generica: solo cuentas, sin evento
+// de por medio. Es lo que prueba la mayor parte de este archivo.
+var sinEvento = domain.OpcionesImportacion{}
+
 func importadorCon(auth *authFalso) *ImportacionService {
-	return NewImportacionService(auth)
+	return NewImportacionService(auth, nil)
 }
 
 func TestSimular_NoEscribeNada(t *testing.T) {
 	auth := nuevoAuthFalso()
 	s := importadorCon(auth)
 
-	res, err := s.Simular(context.Background(), []domain.FilaImportacion{filaBuena(2, "ana@empresa.com")})
+	res, err := s.Simular(context.Background(), []domain.FilaImportacion{filaBuena(2, "ana@empresa.com")}, sinEvento)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}
@@ -88,7 +131,7 @@ func TestAplicar_CreaLaCuentaConLoQueDiceElPlan(t *testing.T) {
 	auth := nuevoAuthFalso()
 	s := importadorCon(auth)
 
-	res, err := s.Aplicar(context.Background(), []domain.FilaImportacion{filaBuena(2, "  Ana@Empresa.COM ")})
+	res, err := s.Aplicar(context.Background(), []domain.FilaImportacion{filaBuena(2, "  Ana@Empresa.COM ")}, sinEvento)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}
@@ -133,7 +176,7 @@ func TestAplicar_UnaCuentaQueYaExisteNoSeDuplica(t *testing.T) {
 	res, err := s.Aplicar(context.Background(), []domain.FilaImportacion{
 		filaBuena(2, "ana@empresa.com"),
 		filaBuena(3, "otra@empresa.com"),
-	})
+	}, sinEvento)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}
@@ -205,7 +248,7 @@ func TestValidacion_ProblemasPorFilaYColumna(t *testing.T) {
 			c.ajuste(&fila)
 
 			auth := nuevoAuthFalso()
-			res, err := importadorCon(auth).Aplicar(context.Background(), []domain.FilaImportacion{fila})
+			res, err := importadorCon(auth).Aplicar(context.Background(), []domain.FilaImportacion{fila}, sinEvento)
 			if err != nil {
 				t.Fatalf("error inesperado: %v", err)
 			}
@@ -239,7 +282,7 @@ func TestValidacion_CorreoRepetidoDentroDelArchivo(t *testing.T) {
 	res, err := importadorCon(auth).Simular(context.Background(), []domain.FilaImportacion{
 		filaBuena(2, "ana@empresa.com"),
 		filaBuena(7, "ANA@empresa.com"),
-	})
+	}, sinEvento)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}
@@ -261,7 +304,7 @@ func TestAplicar_UnaFilaMalaNoAplicaNingunaOtra(t *testing.T) {
 		filaBuena(2, "ana@empresa.com"),
 		filaMala,
 		filaBuena(4, "otra@empresa.com"),
-	})
+	}, sinEvento)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}
@@ -278,7 +321,7 @@ func TestAplicar_SiLaBaseFallaLoDiceConSuFila(t *testing.T) {
 	auth := nuevoAuthFalso()
 	auth.errCrear = errors.New("connection refused")
 
-	res, err := importadorCon(auth).Aplicar(context.Background(), []domain.FilaImportacion{filaBuena(9, "ana@empresa.com")})
+	res, err := importadorCon(auth).Aplicar(context.Background(), []domain.FilaImportacion{filaBuena(9, "ana@empresa.com")}, sinEvento)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}

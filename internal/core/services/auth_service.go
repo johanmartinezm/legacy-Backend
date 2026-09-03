@@ -273,19 +273,25 @@ func usuarioNoEncontrado(err error) bool {
 	return errors.Is(err, domain.ErrNotFound) || err.Error() == "user not found"
 }
 
-// ExisteCuentaConCorreo dice si ya hay una cuenta con ese correo, sin traerla.
+// IDDeCuentaConCorreo devuelve el id de la cuenta con ese correo, o cadena vacía
+// si no hay ninguna.
 //
-// Lo usa la simulación de la carga masiva para contar cuántas filas crearían
-// cuenta y cuántas ya la tienen, que es la mitad del informe que se le enseña a
-// quien preparó el archivo.
-func (s *AuthService) ExisteCuentaConCorreo(ctx context.Context, email string) (bool, error) {
+// Lo usa la carga masiva para dos cosas a la vez: contar cuántas filas crearían
+// cuenta y cuántas ya la tienen —la mitad del informe que se le enseña a quien
+// preparó el archivo— y, en la entrada del evento, saber **a quién inscribir**
+// cuando la cuenta ya existía. Devuelve el id y no un booleano justamente por
+// eso: preguntarlo dos veces sería una consulta de más por fila.
+func (s *AuthService) IDDeCuentaConCorreo(ctx context.Context, email string) (string, error) {
 	existente, err := s.repo.FindByEmailBlindIndex(ctx, s.crypto.BlindIndex(email))
 	if err != nil && !usuarioNoEncontrado(err) {
 		// Un fallo de la base no puede confundirse con "no existe": diría que
 		// hay que crear la cuenta y el INSERT chocaría contra el índice único.
-		return false, err
+		return "", err
 	}
-	return existente != nil, nil
+	if existente == nil {
+		return "", nil
+	}
+	return existente.ID, nil
 }
 
 // RegistrarImportado crea una cuenta venida de una carga masiva.

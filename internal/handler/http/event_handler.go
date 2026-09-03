@@ -279,6 +279,56 @@ func (h *EventHandler) GetEventRegistrants(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(registrants)
 }
 
+// peticionCredenciales es el cuerpo de GenerarCredenciales.
+//
+// `registrationIds` vacío significa «todos los que les falte». Es la misma
+// llamada para la acción en bloque y para la de una sola persona, así que no hay
+// dos caminos que puedan divergir.
+type peticionCredenciales struct {
+	RegistrationIDs []string `json:"registrationIds"`
+	// AvisarPorCorreo manda el correo con el QR dibujado. Por defecto no: quien
+	// genera las credenciales puede querer solo rellenar los códigos y avisar
+	// más tarde.
+	AvisarPorCorreo bool `json:"avisarPorCorreo"`
+}
+
+// GenerarCredenciales atiende POST /api/events/{id}/registrations/credenciales,
+// dentro de AdminOnly.
+//
+// Es la vuelta del interruptor de la carga masiva: quien se importó sin
+// credencial tiene `qr_data` en NULL y **no pasa el check-in** hasta pasar por
+// aquí (reports/20260826_plan_carga_masiva.md §4.1). Sin esta acción, el que se
+// entera es quien está en la puerta el día del evento.
+//
+// Nunca le cambia el código a quien ya lo tiene: el QR que esa persona lleva
+// encima seguiría siendo el bueno, y regenerarlo lo invalidaría.
+func (h *EventHandler) GenerarCredenciales(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+
+	// El cuerpo es opcional: sin él se generan todas las que falten y no se
+	// avisa, que es el caso más común desde el botón de la tabla.
+	var peticion peticionCredenciales
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&peticion)
+	}
+
+	generadas, err := h.service.GenerarCredenciales(
+		r.Context(), eventID, peticion.RegistrationIDs, peticion.AvisarPorCorreo)
+	if err != nil {
+		// Un evento virtual no usa credencial: es una petición que no tiene
+		// sentido, no un fallo del servidor. El panel enseña el mensaje tal cual.
+		if errors.Is(err, services.ErrCredencialEnEventoVirtual) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Error(w, "no se pudieron generar las credenciales", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"generadas": generadas})
+}
+
 func (h *EventHandler) SubmitWorkshopRating(w http.ResponseWriter, r *http.Request) {
 	workshopID := chi.URLParam(r, "id")
 	userID, _ := r.Context().Value(UserIDKey).(string)

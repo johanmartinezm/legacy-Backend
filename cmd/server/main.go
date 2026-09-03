@@ -135,7 +135,12 @@ func main() {
 
 	// Carga masiva de asistentes. El archivo lo lee el panel: aquí llegan filas
 	// en JSON. Ver reports/20260826_plan_carga_masiva.md.
-	importacionService := services.NewImportacionService(authService)
+	//
+	// Recibe el servicio de eventos porque tiene **dos entradas sobre un solo
+	// motor**: sin evento crea cuentas y nada más; con evento, además inscribe.
+	// Sin este segundo argumento una carga con evento crearía las cuentas y se
+	// olvidaría de inscribirlas, en silencio.
+	importacionService := services.NewImportacionService(authService, eventService)
 	importacionHandler := handler.NewImportacionHandler(importacionService)
 
 	// Páginas informativas: contenido que el panel edita y la app pinta tal cual
@@ -454,6 +459,10 @@ func main() {
 		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
 		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
+		// Rellenar el codigo de acceso que falta, en bloque o por persona. Es la
+		// vuelta del interruptor de la carga masiva: quien se importo sin
+		// credencial no pasa el check-in hasta pasar por aqui.
+		r.Post("/api/events/{id}/registrations/credenciales", eventHandler.GenerarCredenciales)
 		r.Get("/api/events/{id}/survey/summary", eventHandler.GetEventSurveySummary)
 		r.Post("/api/events/check-in", eventHandler.CheckIn)
 

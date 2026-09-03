@@ -4,6 +4,139 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-03]: Carga masiva · fase 3, la entrada del evento y las credenciales
+
+Tercera de las cuatro fases del plan (`reports/20260826_plan_carga_masiva.md` §5). La fase 1 dejó el
+motor y la 2 la entrada genérica; esta añade la mitad que tiene evento de por medio, que es la más
+cargada: inscribir, los dos interruptores, el correo con el QR y la vuelta para lo que quede sin
+credencial.
+
+**Es una ruta, no dos.** `POST /api/admin/importaciones/usuarios` acepta ahora `evento_id` en el
+cuerpo: con él, además de crear las cuentas que falten, deja **todo el archivo inscrito a ese
+evento** —también a quien ya tenía cuenta, que es la mitad que importa—. Sin `evento_id` se comporta
+igual que antes. Dos rutas sobre dos motores distintos se separan al tercer arreglo.
+
+**Ruta nueva:** `POST /api/events/{id}/registrations/credenciales`, dentro de `AdminOnly`. Rellena el
+código que falta —en bloque con la lista vacía, o el de una persona con su id— y, si se pide, manda
+el correo. Devuelve `{"generadas": n}`.
+
+**Los dos interruptores** (§4.1), los dos apagados por defecto y válidos para toda la carga:
+
+| Credencial | Avisar | Qué pasa |
+|---|---|---|
+| Generar | Sí | `qr_data` con código y **el correo de credencial**, con el QR dibujado |
+| Generar | No | código sí, correo no: la credencial ya se ve en la app |
+| No generar | Sí | `qr_data` en NULL y el correo de inscripción de siempre, sin QR |
+| No generar | No | nada de lo anterior |
+
+Nunca salen los dos correos: una carga que manda dos por persona es ruido.
+
+- **Sin columna nueva y sin migración.** El estado es la propia fila: `qr_data IS NULL`. Se descartó
+  una `credencial_entregada` porque duplicaba el estado y podía desincronizarse.
+- 🔴 **`qr_data` es UNIQUE**, y eso no estaba en el plan. `registrations_qr_data_key` viene de
+  `20260805_qr_data_impredecible.sql`, y la cadena vacía **sí colisiona consigo misma** mientras que
+  NULL no: la segunda inscripción sin credencial habría violado la restricción. `CreateRegistration`
+  pasó a `NULLIF($5, '')`, el mismo caso que el alias en `core.users`. Comprobado contra la base:
+  dos inscripciones sin credencial en el mismo evento entran sin problema.
+- 🔴 **Y eso rompía una lectura.** `GetRegistrationByUserAndEvent` escaneaba `qr_data` directamente
+  sobre un `string`, así que con NULL moría con «cannot scan NULL». Lo llama **lo primero**
+  `RegisterUser`: quien se importara sin credencial no habría podido ni inscribirse otra vez desde la
+  app. Se arregló con `COALESCE(qr_data, '')`. Se revisaron las otras cuatro lecturas de esa columna:
+  `GetRegistrationsByUser` ya usaba puntero, `GetRegistrationByQR` nunca casa con NULL, y las dos
+  nuevas la comparan con `COALESCE`.
+- **La marca de credencial en la lista de inscritos** (`tieneCredencial`) es `COALESCE(qr_data,'') <> ''`.
+  **Sigue sin salir el `qr_data`**, por lo mismo de siempre: quien organiza necesita saber a quién le
+  falta, no repartir credenciales.
+- **Un evento virtual no genera credencial nunca**, ni al importar ni desde la acción, aunque se
+  pida por API. Allí el acceso es el enlace de la sesión y el QR no se muestra jamás. La acción
+  responde `409` con la explicación; el panel además enseña el interruptor apagado y deshabilitado.
+  De paso deja de escribirse el `qr_data` inútil que hasta ahora guardaba toda inscripción a un
+  evento virtual —solo para las importadas: **la app no se toca**—.
+- **No le cambia el código a quien ya lo tiene.** El `UPDATE` lleva `AND COALESCE(qr_data,'') = ''`,
+  así que si dos personas pulsan el botón a la vez la segunda no invalida el QR que la primera ya
+  mandó por correo. Comprobado contra la base: el segundo intento afecta 0 filas.
+- **No le da credencial a quien no ha pagado.** `CheckIn` ya lo rechazaría en la puerta, pero el
+  correo habría salido igual y esa persona creería tener su entrada.
+- **El array de ids se compara como texto** (`id::text = ANY($2::text[])`) y no con `::uuid[]`: es la
+  codificación natural de un `[]string` en pgx, y un id mal formado no hunde la consulta entera con
+  un error de casteo, simplemente no casa con nada. Comprobado las dos cosas contra la base.
+- **El correo de credencial es nuevo** y **contradice a propósito** el comentario de
+  `SendEventRegistrationEmail` —«nunca se manda el QR por correo»—. El de pago ya lo contradecía con
+  el mismo criterio: quien ya tiene su entrada recibe su acceso. Lo amortigua que el código es
+  aleatorio —tener uno no permite fabricar el de otro— y que `CheckIn` es idempotente. Reutiliza lo
+  que ya existía para el correo de pago: `qrcode.Encode` a 320 px, la imagen incrustada por `cid` y
+  la salida airosa si el dibujo falla.
+- **Y lleva las credenciales de acceso**, que es lo más importante: para una cuenta **recién creada**
+  por la carga, este correo es el único sitio donde la persona se entera de con qué usuario y qué
+  contraseña entrar —su correo y su número de documento—. Para una cuenta que ya existía van vacías
+  y la plantilla omite ese bloque: decirle otra contraseña sería mentirle.
+- **`ExisteCuentaConCorreo` pasó a `IDDeCuentaConCorreo`**: la entrada del evento necesita saber *a
+  quién* inscribir, y preguntarlo dos veces —«¿existe?» y «¿cuál es?»— sería una consulta de más por
+  fila.
+- **Sin el servicio de eventos cableado, una carga con evento se rechaza** en vez de crear las
+  cuentas y olvidarse de inscribirlas. Es el fallo silencioso que ya costó meses con
+  `ImageHandler.UploadImage`.
+- **Nada de esto cambia lo que hace la app.** `domain.Registration` gana un campo `Importacion` con
+  `json:"-"` y `db:"-"`: la app lo deja en su valor cero y entonces `RegisterUser` genera el código y
+  manda el correo de siempre, exactamente como antes. Hay dos tests dedicados solo a eso.
+
+- **Alcance:** `internal/core/domain/event.go` (`AltaImportada`, `AvisoDeAlta`, `CorreoCredencial`,
+  `TieneCredencial`, `YaEstabaInscrito`), `internal/core/domain/importacion.go`
+  (`OpcionesImportacion`, contadores del informe), `internal/core/ports/{interfaces,event_ports}.go`,
+  `internal/adapter/storage/postgres/event_repository.go` (`GetRegistrationsSinCredencial`,
+  `SetRegistrationQR`, `NULLIF` y `COALESCE` sobre `qr_data`, marca de credencial),
+  `internal/core/services/event_service.go` (`GenerarCredenciales`, los interruptores en
+  `RegisterUser`), `internal/core/services/event_correo.go` (`enviarCorreoCredencial`),
+  `internal/core/services/importacion_service.go` (la entrada del evento),
+  `internal/core/services/auth_service.go` (`IDDeCuentaConCorreo`),
+  `internal/infrastructure/email/gmail_service.go` (`SendEventCredentialEmail` y su plantilla),
+  `internal/handler/http/{event_handler,importacion_handler}.go`, `cmd/server/main.go` (la ruta nueva
+  y el cableado del importador con el servicio de eventos),
+  `internal/core/services/importacion_evento_test.go` (nuevo, 11 casos) y
+  `credenciales_test.go` (nuevo, 12 casos). **Ninguna migración.**
+
+- **Verificado:** `go build`, `go vet` y `go test` limpios salvo el `test_update_test.go` de siempre.
+  Contra la base local, en una transacción revertida, las ocho comprobaciones que ningún doble puede
+  hacer (el UNIQUE de `qr_data`, la lectura con NULL, el array vacío y el filtrado, un id inventado,
+  el `UPDATE` que no pisa, la marca, y que un código vacío no abre la puerta de nadie). Y contra el
+  servidor local, de punta a punta:
+
+  | Paso | Resultado |
+  |---|---|
+  | Simular con evento | `nuevas 3, por_inscribir 3`, y el evento sigue con `X-Total-Count: 0` |
+  | Aplicar con los dos apagados | `creadas 3, inscritas 3`; los tres con `tieneCredencial: false` |
+  | Repasar el mismo archivo | `creadas 0, ya_existian 3, ya_inscritas 3`; el total sigue en 3 |
+  | Generar credenciales en bloque | `{"generadas": 3}`; los tres pasan a `tieneCredencial: true` |
+  | Volver a generarlas | `{"generadas": 0}`, sin pisar ningún código |
+  | Importar con credencial encendida | nacen con `tieneCredencial: true` |
+  | Generar credenciales en un evento **virtual** | `409` · «un evento virtual no usa credencial: el acceso es el enlace de la sesión» |
+  | Importar con credencial **a un evento virtual** | se inscribe, y el `qr_data` queda en NULL aunque se pidiera generar |
+  | Importar **sin** `evento_id` | crea la cuenta y no inscribe a nadie |
+  | Una fila mala | `simulacion: true`, nada escrito |
+  | La ruta nueva sin token | `401` |
+  | Las claves de la respuesta de inscritos | siguen sin incluir `qrData` |
+
+- **Criterios de QA:**
+  1. En el panel, entrar a un evento **presencial** → **Inscritos** → *Importar asistentes*. Con los
+     dos interruptores apagados, revisar y aplicar un archivo de tres filas nuevas.
+  2. La tabla se recarga sola y las tres personas aparecen con la marca **sin credencial**, y arriba
+     el aviso de cuántas no podrán pasar el check-in.
+  3. Pulsar *Generar credenciales*: las tres pasan a tener credencial y les llega el correo con el QR
+     dibujado.
+  4. Repetir la misma importación: no se duplica ninguna cuenta ni ninguna inscripción, y el informe
+     dice «ya inscritas».
+  5. Importar otro archivo con **generar credencial** y **avisar** encendidos: esas personas nacen
+     con credencial y reciben **un solo** correo, el del QR, con su usuario y su número de documento.
+  6. Entrar a la app con ese correo y ese documento: pide cambiar la contraseña, y en **Mi
+     credencial** aparece el QR del evento.
+  7. Escanear ese QR en el control de acceso del panel: encuentra a la persona y registra la entrada.
+  8. Repetir el punto 1 en un evento **virtual**: el interruptor de credencial se ve apagado y
+     deshabilitado con la razón al lado, y en la tabla la columna dice «No aplica».
+  9. Desde *Usuarios* → *Importar usuarios*, el diálogo sigue sin interruptores y no inscribe a nadie
+     a ningún evento.
+
+---
+
 ### [2026-09-02]: Carga masiva · fase 1, el motor del importador
 
 Primera de las cuatro fases del plan (`reports/20260826_plan_carga_masiva.md` §5). Es el trabajo

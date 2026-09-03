@@ -42,18 +42,73 @@ type ProblemaDeFila struct {
 	Motivo  string `json:"motivo"`
 }
 
+// OpcionesImportacion es lo que distingue las dos entradas de la carga
+// (reports/20260826_plan_carga_masiva.md §4).
+//
+// Por dentro hay **un solo importador**: lo único que cambia entre «Importar
+// usuarios» e «Importar asistentes» es si hay un evento de por medio. Dos
+// motores se separan al tercer arreglo; uno, no.
+type OpcionesImportacion struct {
+	// EventoID vacío significa que solo se crean cuentas. Con evento, además
+	// se inscribe a todo el archivo a **ese** evento: lo fija la pantalla, no
+	// el archivo, así que la columna «Ticket» no se lee.
+	EventoID string `json:"evento_id"`
+
+	// GenerarCredencial crea el código de acceso. Apagado —el valor por
+	// defecto— la inscripción queda con qr_data en NULL y esa persona no pasa
+	// el check-in hasta que se le genere desde la pantalla de inscritos.
+	//
+	// En un evento virtual da igual: no hay QR que mostrar, y el panel enseña
+	// el interruptor apagado y deshabilitado con la razón al lado.
+	GenerarCredencial bool `json:"generar_credencial"`
+
+	// AvisarPorCorreo manda un correo por persona. Apagado por defecto: una
+	// carga de trescientas filas que avisa sin que nadie lo pida es trescientos
+	// correos. Qué correo sale depende del otro interruptor, y **nunca salen
+	// los dos**.
+	AvisarPorCorreo bool `json:"avisar_por_correo"`
+}
+
+// ConEvento dice si esta carga además inscribe.
+func (o OpcionesImportacion) ConEvento() bool { return o.EventoID != "" }
+
+// AvisoDeLaCarga traduce los dos interruptores al correo que toca, que es la
+// tabla de §4.1: con credencial sale el de credencial —con el QR dibujado—; sin
+// ella, el de inscripción de siempre; y sin avisar, ninguno.
+func (o OpcionesImportacion) AvisoDeLaCarga() AvisoDeAlta {
+	if !o.AvisarPorCorreo {
+		return AvisoNinguno
+	}
+	if o.GenerarCredencial {
+		return AvisoCredencial
+	}
+	return AvisoPorDefecto
+}
+
 // ResultadoImportacion es lo que devuelve tanto la simulación como la carga.
 //
 // La simulación no escribe nada: dice cuántas cuentas se crearían, cuántas ya
 // existen y qué hay que arreglar. Es el paso que se le enseña a quien preparó
 // el archivo.
 type ResultadoImportacion struct {
-	Simulacion bool             `json:"simulacion"`
-	Total      int              `json:"total"`
-	Nuevas     int              `json:"nuevas"`
-	YaExistian int              `json:"ya_existian"`
-	Creadas    int              `json:"creadas"`
-	Problemas  []ProblemaDeFila `json:"problemas"`
+	Simulacion bool `json:"simulacion"`
+	Total      int  `json:"total"`
+	Nuevas     int  `json:"nuevas"`
+	YaExistian int  `json:"ya_existian"`
+	Creadas    int  `json:"creadas"`
+
+	// PorInscribir e Inscritas solo tienen sentido con evento. La primera la
+	// calcula la simulación —cuántas filas quedarían inscritas—; la segunda es
+	// lo que se inscribió de verdad.
+	//
+	// YaInscritas son las que ya estaban en ese evento: volver a pasar el mismo
+	// archivo no duplica a nadie, y conviene que el informe lo diga en vez de
+	// dejar creer que no se hizo nada.
+	PorInscribir int `json:"por_inscribir"`
+	Inscritas    int `json:"inscritas"`
+	YaInscritas  int `json:"ya_inscritas"`
+
+	Problemas []ProblemaDeFila `json:"problemas"`
 }
 
 // TieneProblemas indica si el archivo se puede aplicar.

@@ -4,6 +4,7 @@ import (
 	"applegacy/backend/internal/core/domain"
 	"applegacy/backend/internal/core/ports"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -29,23 +30,49 @@ import (
 // deja cuentas que la app no puede descifrar y que no pueden entrar.
 type ImportacionService struct {
 	auth ports.CuentasImportadas
+	// eventos solo hace falta en la entrada del evento. Puede ser nil: entonces
+	// una carga con evento se rechaza con ErrSinServicioDeEventos en vez de
+	// crear las cuentas y olvidarse de inscribirlas, que es el fallo silencioso
+	// que no queremos.
+	eventos ports.InscripcionesImportadas
 }
 
-func NewImportacionService(auth ports.CuentasImportadas) *ImportacionService {
-	return &ImportacionService{auth: auth}
+func NewImportacionService(auth ports.CuentasImportadas, eventos ports.InscripcionesImportadas) *ImportacionService {
+	return &ImportacionService{auth: auth, eventos: eventos}
 }
+
+// ErrSinServicioDeEventos salta si se pide inscribir a un evento y el servicio
+// se cableo sin el de eventos. Es un error de arranque, no de datos.
+var ErrSinServicioDeEventos = errors.New("la importacion no puede inscribir a un evento: falta el servicio de eventos")
 
 // RolDeCuentaImportada: las cuentas nacen `profesional`, fijado aquí y no
 // heredado del DEFAULT de la tabla, que es `familia` (§2.3).
 const RolDeCuentaImportada = "profesional"
 
 // Simular recorre el archivo sin escribir nada.
-func (s *ImportacionService) Simular(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, error) {
+func (s *ImportacionService) Simular(ctx context.Context, filas []domain.FilaImportacion, opciones domain.OpcionesImportacion) (*domain.ResultadoImportacion, error) {
+	if opciones.ConEvento() && s.eventos == nil {
+		return nil, ErrSinServicioDeEventos
+	}
+
 	resultado, _, err := s.analizar(ctx, filas)
 	if err != nil {
 		return nil, err
 	}
 	resultado.Simulacion = true
+
+	// Con evento, **todas** las filas buenas quedan inscritas: las que crean
+	// cuenta y las que ya la tenian. Es lo que hace util a esta entrada, y lo
+	// que hay que decir en el informe para que no parezca que solo se crean
+	// cuentas.
+	//
+	// Cuantas ya estaban inscritas no se sabe sin consultar el evento fila por
+	// fila; RegisterUser lo resuelve solo -vuelve sobre la existente y no
+	// duplica-, asi que la simulacion da el techo y la carga da el reparto.
+	if opciones.ConEvento() {
+		resultado.PorInscribir = resultado.Nuevas + resultado.YaExistian
+	}
+
 	return resultado, nil
 }
 
@@ -57,7 +84,11 @@ func (s *ImportacionService) Simular(ctx context.Context, filas []domain.FilaImp
 // de la base y no una fila mal escrita. Si aun así falla una, se devuelve el
 // problema con su número de fila y las anteriores quedan creadas; volver a
 // pasar el mismo archivo las salta por existir.
-func (s *ImportacionService) Aplicar(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, error) {
+func (s *ImportacionService) Aplicar(ctx context.Context, filas []domain.FilaImportacion, opciones domain.OpcionesImportacion) (*domain.ResultadoImportacion, error) {
+	if opciones.ConEvento() && s.eventos == nil {
+		return nil, ErrSinServicioDeEventos
+	}
+
 	resultado, preparadas, err := s.analizar(ctx, filas)
 	if err != nil {
 		return nil, err
@@ -69,22 +100,89 @@ func (s *ImportacionService) Aplicar(ctx context.Context, filas []domain.FilaImp
 	}
 
 	for _, p := range preparadas {
-		if p.yaExiste {
+		usuarioID := p.usuarioID
+
+		if usuarioID == "" {
+			usuario := p.usuario
+			if err := s.auth.RegistrarImportado(ctx, &usuario, p.contrasena); err != nil {
+				resultado.Problemas = append(resultado.Problemas, domain.ProblemaDeFila{
+					Fila:    p.fila,
+					Columna: "E-mail",
+					Motivo:  fmt.Sprintf("no se pudo crear la cuenta: %v", err),
+				})
+				return resultado, nil
+			}
+			usuarioID = usuario.ID
+			resultado.Creadas++
+		}
+
+		if !opciones.ConEvento() {
 			continue
 		}
-		usuario := p.usuario
-		if err := s.auth.RegistrarImportado(ctx, &usuario, p.contrasena); err != nil {
-			resultado.Problemas = append(resultado.Problemas, domain.ProblemaDeFila{
-				Fila:    p.fila,
-				Columna: "E-mail",
-				Motivo:  fmt.Sprintf("no se pudo crear la cuenta: %v", err),
-			})
+
+		// La inscripción va después de la cuenta y con el id que acaba de salir
+		// de crearla. Si el alta falló, arriba ya se devolvió: nunca se intenta
+		// inscribir a alguien que no existe.
+		if err := s.inscribir(ctx, usuarioID, p, opciones, resultado); err != nil {
 			return resultado, nil
 		}
-		resultado.Creadas++
 	}
 
 	return resultado, nil
+}
+
+// inscribir deja la fila inscrita al evento de las opciones.
+//
+// Reutiliza EventService.RegisterUser, que es lo que ya sabe resolver el estado
+// de pago, el estado de la inscripción, el código de acceso y el correo. Se
+// llama al servicio directamente y no dando la vuelta por HTTP: la ruta pública
+// exige un token de admin y compone la mitad de esto a partir del contexto de
+// la petición.
+//
+// **No duplica.** RegisterUser vuelve sobre la inscripción existente y la
+// devuelve tal cual, así que volver a pasar el mismo archivo cuenta esa fila
+// como «ya inscrita» y no crea una segunda.
+func (s *ImportacionService) inscribir(
+	ctx context.Context,
+	usuarioID string,
+	p filaPreparada,
+	opciones domain.OpcionesImportacion,
+	resultado *domain.ResultadoImportacion,
+) error {
+	reg := &domain.Registration{
+		UserID:  usuarioID,
+		EventID: opciones.EventoID,
+		Importacion: domain.AltaImportada{
+			EsCarga:       true,
+			SinCredencial: !opciones.GenerarCredencial,
+			Aviso:         opciones.AvisoDeLaCarga(),
+		},
+	}
+
+	// Las credenciales de acceso solo se escriben en el correo de una cuenta
+	// **recién creada**: su contraseña es su número de documento y no hay otro
+	// sitio donde se entere. A quien ya tenía cuenta no se le puede decir eso,
+	// porque su contraseña es la suya.
+	if p.usuarioID == "" {
+		reg.Importacion.Usuario = p.usuario.Email
+		reg.Importacion.Contrasena = p.contrasena
+	}
+
+	if err := s.eventos.RegisterUser(ctx, reg); err != nil {
+		resultado.Problemas = append(resultado.Problemas, domain.ProblemaDeFila{
+			Fila:    p.fila,
+			Columna: "E-mail",
+			Motivo:  fmt.Sprintf("la cuenta quedó creada pero no se pudo inscribir al evento: %v", err),
+		})
+		return err
+	}
+
+	if reg.YaEstabaInscrito {
+		resultado.YaInscritas++
+	} else {
+		resultado.Inscritas++
+	}
+	return nil
 }
 
 // filaPreparada es una fila ya validada y convertida en usuario, lista para
@@ -93,7 +191,11 @@ type filaPreparada struct {
 	fila       int
 	usuario    domain.User
 	contrasena string
-	yaExiste   bool
+	// usuarioID es el id de la cuenta que ya existía, o cadena vacía si hay que
+	// crearla. Guarda el id y no un «ya existe» porque la entrada del evento
+	// necesita a quién inscribir, y volver a preguntarlo sería una consulta más
+	// por fila.
+	usuarioID string
 }
 
 func (s *ImportacionService) analizar(ctx context.Context, filas []domain.FilaImportacion) (*domain.ResultadoImportacion, []filaPreparada, error) {
@@ -129,11 +231,11 @@ func (s *ImportacionService) analizar(ctx context.Context, filas []domain.FilaIm
 			continue
 		}
 
-		existe, err := s.auth.ExisteCuentaConCorreo(ctx, usuario.Email)
+		usuarioID, err := s.auth.IDDeCuentaConCorreo(ctx, usuario.Email)
 		if err != nil {
 			return nil, nil, err
 		}
-		if existe {
+		if usuarioID != "" {
 			resultado.YaExistian++
 		} else {
 			resultado.Nuevas++
@@ -143,7 +245,7 @@ func (s *ImportacionService) analizar(ctx context.Context, filas []domain.FilaIm
 			fila:       fila.Fila,
 			usuario:    usuario,
 			contrasena: contrasena,
-			yaExiste:   existe,
+			usuarioID:  usuarioID,
 		})
 	}
 

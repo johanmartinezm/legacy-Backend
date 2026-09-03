@@ -32,6 +32,12 @@ func (c *correoDePagoEspia) SendEventPaymentEmail(datos domain.CorreoPago) error
 	return nil
 }
 
+// SendEventCredentialEmail no se usa aquí: este espía mira el correo de pago.
+// Está para cumplir ports.EmailService.
+func (c *correoDePagoEspia) SendEventCredentialEmail(datos domain.CorreoCredencial) error {
+	return nil
+}
+
 func (c *correoDePagoEspia) cuantos() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -81,11 +87,11 @@ func (u *usuariosDePrueba) LinkSocialID(ctx context.Context, uID, p, s string) e
 func (u *usuariosDePrueba) FindAll(ctx context.Context, limit, offset int) ([]*domain.User, error) {
 	return nil, nil
 }
-func (u *usuariosDePrueba) CountAll(ctx context.Context) (int, error) { return 0, nil }
-func (u *usuariosDePrueba) Update(ctx context.Context, user *domain.User) error      { return nil }
-func (u *usuariosDePrueba) Delete(ctx context.Context, id string) error              { return nil }
-func (u *usuariosDePrueba) AnonymizeUser(ctx context.Context, id string) error       { return nil }
-func (u *usuariosDePrueba) UpdatePassword(ctx context.Context, id, h string) error   { return nil }
+func (u *usuariosDePrueba) CountAll(ctx context.Context) (int, error)              { return 0, nil }
+func (u *usuariosDePrueba) Update(ctx context.Context, user *domain.User) error    { return nil }
+func (u *usuariosDePrueba) Delete(ctx context.Context, id string) error            { return nil }
+func (u *usuariosDePrueba) AnonymizeUser(ctx context.Context, id string) error     { return nil }
+func (u *usuariosDePrueba) UpdatePassword(ctx context.Context, id, h string) error { return nil }
 func (u *usuariosDePrueba) UpdatePasswordByEmail(ctx context.Context, e, h string) error {
 	return nil
 }
