@@ -4,6 +4,49 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-04]: Todos los eventos pasan a gratuitos mientras la pasarela siga bloqueada
+
+Migración de datos, sin cambio de código Go. Sale de preparar el envío a la App Store.
+
+**El problema no era el precio, era el botón.** En el detalle de un evento la app decide qué hacer
+según `is_free` (`event_action_button.dart:197`): con `false` abre `EventPaymentScreen`, que **crea la
+inscripción como pendiente y lanza la pasarela** en el navegador externo. El Legacy Summit estaba en
+producción con `is_free = false`, activo y visible, y CredibanCo devuelve `errorCode 5` desde el
+06-08. Cualquiera que lo tocara terminaba con una inscripción sin pagar y un error.
+
+El 2026-08-28 ya se había decidido que los eventos con pago quedaran inactivos mientras tanto, pero
+**esa decisión nunca se aplicó al Summit** —que se creó después, para la carga masiva—.
+
+Y contradecía lo declarado a Apple ese mismo día en las notas de revisión: *«the app does not sell
+digital content and does not process any payments in this version»*. Un revisor que tocara ese botón
+habría visto lo contrario, y de paso podía gatillar la regla de no volver a llamar a la pasarela.
+
+- **Alcance:** `scripts/20260904_eventos_gratuitos_mientras_pasarela.sql`, que hace tres cosas:
+  1. El Summit pasa a **499**, su precio real en dólares, confirmado por el cliente. Estaba en
+     `3150000`, que es el precio escrito en pesos.
+  2. Todo evento existente pasa a `is_free = true`.
+  3. El `DEFAULT` de la columna pasa a `true`, para quien cree un evento por API sin ese campo.
+
+**El precio no se borra.** Con `is_free = true` la app muestra «GRATIS» y ni lee el precio, así que
+el valor correcto queda guardado para cuando CredibanCo responda.
+
+**Cómo revertirlo** está escrito en la cabecera del archivo: devolver el `DEFAULT` a `false` y
+desmarcar la casilla evento por evento **en el panel, no en bloque** — los gratuitos de verdad deben
+seguir siéndolo, y un `UPDATE` masivo a la inversa los rompería.
+
+⚠️ **Depende del panel.** Hasta que se despliegue
+`Sitio-Administrativo` con la casilla «Evento gratuito», el formulario sigue guardando `isFree`
+derivado del precio y **deshace esta migración** en cualquier evento que alguien edite y guarde.
+
+- **Criterios de QA:**
+  1. `GET /api/events` devuelve los cuatro eventos con `isFree: true`.
+  2. El Summit devuelve `price: 499`.
+  3. En la app, el detalle del Summit muestra **«Reservar cupo gratis»** y al tocarlo inscribe en el
+     acto, **sin abrir el navegador**.
+  4. «Mi credencial» de esa inscripción muestra el QR de inmediato, sin pasar por «pendiente de pago».
+
+---
+
 ### [2026-09-03]: Desplegado a producción — carga masiva completa, fases 1 a 4
 
 `carga-masiva` fusionada a `main` en los tres repositorios y publicada. Las fusiones fueron de
