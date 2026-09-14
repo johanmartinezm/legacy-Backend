@@ -4,6 +4,64 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-14]: El registro guarda el `sub` de la identidad social, no el token
+
+App Review rechazó la 1.0 (21) bajo la directriz 2.1(a): «unable to use the core feature, Sign in
+with Apple, because an error message was displayed when we attempted to log in», en un iPad Air M3 y
+un iPhone 17 Pro Max. El fallo no era del binario ni de iPadOS 27.
+
+`core.users.apple_id` debía guardar el claim `sub` —así lo dice el `COMMENT` que puso
+`20260812_identidad_social.sql`— pero guardaba el **token de identidad entero**. La app lo manda así
+(`register_screen.dart:113` pasa el `identityToken` como `apple_id`) y `user_handler.go:92` lo
+copiaba sin mirarlo. Como `SocialLogin` busca por el `sub`, un JWT de ~900 caracteres no coincide
+nunca.
+
+Quedaba el respaldo de buscar por correo, y ahí está lo que lo vuelve fatal **solo** con Apple: su
+token trae el correo únicamente en la PRIMERA autorización de cada Apple ID con la app. Desde la
+segunda, `extractedEmail` queda vacío y no hay nada que buscar → `user not registered` → 404 → la app
+lleva al registro → el correo ya existe → error en pantalla. Con Google el mismo bug estaba tapado:
+su token siempre trae el correo, el respaldo encuentra la cuenta y `LinkSocialID` repara el
+`google_id` en el primer intento.
+
+De paso se cierra un agujero: `apple_id` y `google_id` llegaban al registro **sin comprobarse**, así
+que cualquiera podía registrarse declarando el `sub` de otra persona y quedarse con su acceso social.
+
+- **Alcance:**
+  - `internal/core/services/auth_service.go`: `normalizarIdentidadSocial` (nuevo), llamado al entrar
+    en `Register`. Valida el token contra el proveedor y guarda el `sub` que salga de esa validación.
+    Al validar en el servidor, **el arreglo no necesita una app nueva**: la build 21 ya publicada
+    manda el token, que es justo lo que ahora se verifica.
+  - `internal/core/domain/errors.go`: `ErrIdentidadSocialInvalida`.
+  - `internal/handler/http/user_handler.go`: ese error responde 400, no el 500 genérico.
+  - `scripts/20260914_reparar_identidad_social.sql` (nuevo): repara las filas ya escritas extrayendo
+    el `sub` de la carga útil del JWT. No hace falta la clave de firma, solo leer el contenido. No
+    toca ninguna fila cuyo valor ya sea un `sub`; es idempotente.
+  - `internal/core/services/registro_apple_test.go` (nuevo): tres pruebas. Comprobado que las dos
+    primeras **fallan sin el arreglo**, y la segunda lo hace con el mensaje exacto del revisor
+    (`volver a entrar con Apple falló: user not registered`).
+  - `internal/core/services/contrasena_minima_test.go`: `TestRegister_ElRegistroSocialSigueSinContrasena`
+    pasa a usar Apple con un validador falso. Iba por Google, y ahora ese camino llamaría a Google de
+    verdad: la prueba dependería de la red.
+
+- **Criterios de QA:**
+  1. `go build ./... && go vet ./... && go test ./...` en verde.
+  2. Aplicar `scripts/20260914_reparar_identidad_social.sql` en producción **antes** de desplegar el
+     binario. Comprobado en local dentro de una transacción: un JWT de 438 caracteres quedó reducido
+     a `000123.abcdef…0001` y una fila que ya tenía un `sub` no se tocó.
+  3. Contar antes y después: `SELECT count(*) FROM core.users WHERE apple_id LIKE '%.%.%' AND
+     length(apple_id) > 100;` debe quedar en 0. El script avisa por `WARNING` si queda alguna.
+  4. Con la build 21 **ya instalada** (sin app nueva), entrar con un Apple ID que ya haya usado la
+     app: tiene que entrar, no mandar al registro.
+  5. Registrar una cuenta nueva con Apple, cerrar sesión y volver a entrar: entra directo. En la base,
+     `apple_id` mide ~44 caracteres, no ~900.
+  6. Entrar con Google sigue funcionando, y un registro con Google crea la cuenta con un `google_id`
+     de 21 dígitos.
+  7. `POST /api/auth/register` con `"apple_id": "cualquier-cosa"` responde **400** con «no se pudo
+     verificar la identidad social», y no crea nada.
+  8. El registro normal por correo y contraseña no cambia.
+
+---
+
 ### [2026-09-04]: Todos los eventos pasan a gratuitos mientras la pasarela siga bloqueada
 
 Migración de datos, sin cambio de código Go. Sale de preparar el envío a la App Store.

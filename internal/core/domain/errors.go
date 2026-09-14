@@ -71,4 +71,11 @@ var (
 	//
 	// En español y por la misma razón: el controlador lo devuelve tal cual.
 	ErrEstadoDeEventoInvalido = errors.New("el estado del evento debe ser 'active' o 'inactive'")
+
+	// ErrIdentidadSocialInvalida la devuelve el registro cuando el `apple_id` o
+	// el `google_id` que manda el cliente no es un token de identidad que el
+	// proveedor reconozca.
+	//
+	// En español por la misma razón: el controlador lo devuelve tal cual.
+	ErrIdentidadSocialInvalida = errors.New("no se pudo verificar la identidad social")
 )

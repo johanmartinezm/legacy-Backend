@@ -125,6 +125,12 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 			h.respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		// Un token social que el proveedor no reconoce tampoco es culpa del
+		// servidor: el motivo concreto queda en el log del servicio.
+		if errors.Is(err, domain.ErrIdentidadSocialInvalida) {
+			h.respondWithError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		// El detalle va al log, no a la pantalla: devolver err.Error() es lo que
 		// le mostró al usuario "ERROR: invalid input value for enum
 		// core.user_role: junta (SQLSTATE 22P02)" el 2026-08-18.

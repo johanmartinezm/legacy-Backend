@@ -181,7 +181,57 @@ func sellarConsentimiento(user *domain.User, cuando time.Time) {
 	}
 }
 
+// normalizarIdentidadSocial cambia el token de identidad que manda el cliente
+// en `apple_id`/`google_id` por el claim `sub`, que es lo único que se puede
+// guardar y volver a reconocer.
+//
+// La app manda el `identityToken` entero en esos campos
+// (register_screen.dart:115) y hasta el 2026-09-14 se guardaba tal cual. Como
+// SocialLogin busca por el `sub` del token, un JWT de ~900 caracteres no
+// coincidía **nunca**, y quedaba solo el respaldo de buscar por correo.
+//
+// Con Google eso lo tapaba: su token siempre trae el correo, así que la cuenta
+// aparecía y LinkSocialID reparaba el `google_id` en el primer intento. Con
+// Apple no hay tal respaldo —solo manda el correo en la PRIMERA autorización de
+// cada Apple ID con la app—, así que a partir del segundo inicio de sesión no
+// había nada con qué buscar: 404 "user not registered", la app llevaba al
+// formulario de registro y el correo ya existente lo rechazaba. Es el rechazo
+// 2.1(a) de Apple del 2026-09-14.
+//
+// Validar aquí cierra además un agujero: estos campos llegaban sin comprobarse,
+// así que cualquiera podía registrarse declarando el `sub` de otra persona y
+// quedarse con su acceso social.
+func (s *AuthService) normalizarIdentidadSocial(ctx context.Context, user *domain.User) error {
+	if user.AppleID != nil && *user.AppleID != "" {
+		if s.appleValidator == nil {
+			return errors.New("sign in with apple no está configurado en el servidor")
+		}
+		identidad, err := s.appleValidator.Validar(ctx, *user.AppleID)
+		if err != nil {
+			log.Printf("[AUTH] registro con apple_id no verificable: %v", err)
+			return domain.ErrIdentidadSocialInvalida
+		}
+		user.AppleID = &identidad.Sujeto
+	}
+
+	if user.GoogleID != nil && *user.GoogleID != "" {
+		payload, err := idtoken.Validate(ctx, *user.GoogleID, s.googleClientID)
+		if err != nil {
+			log.Printf("[AUTH] registro con google_id no verificable: %v", err)
+			return domain.ErrIdentidadSocialInvalida
+		}
+		user.GoogleID = &payload.Subject
+	}
+
+	return nil
+}
+
 func (s *AuthService) Register(ctx context.Context, user *domain.User, password string) error {
+	// 0. Reducir la identidad social a su `sub` antes de guardar nada.
+	if err := s.normalizarIdentidadSocial(ctx, user); err != nil {
+		return err
+	}
+
 	// 1. Check if user exists (using Blind Index)
 	blindIndex := s.crypto.BlindIndex(user.Email)
 	existing, err := s.repo.FindByEmailBlindIndex(ctx, blindIndex)

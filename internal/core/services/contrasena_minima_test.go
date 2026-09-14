@@ -2,6 +2,7 @@ package services
 
 import (
 	"applegacy/backend/internal/core/domain"
+	"applegacy/backend/internal/core/ports"
 	"applegacy/backend/internal/security"
 	"context"
 	"errors"
@@ -126,13 +127,18 @@ func TestRegister_AceptaLaContrasenaDeSeis(t *testing.T) {
 
 // El registro social llega sin contraseña. Exigirle seis caracteres a una
 // cadena vacía dejaría fuera a quien entra con Google o Apple.
+//
+// Va por Apple y no por Google porque desde el 2026-09-14 Register verifica el
+// token social antes de guardarlo (normalizarIdentidadSocial), y el de Google
+// solo se puede verificar llamando a Google: la prueba dependería de la red.
 func TestRegister_ElRegistroSocialSigueSinContrasena(t *testing.T) {
 	repo := &repoContrasena{}
 	s := servicioContrasena(t, repo, &tokensDeReinicio{})
-	google := "google-123"
+	s.appleValidator = &validadorFalso{identidad: &ports.IdentidadApple{Sujeto: "000123.apple.0001"}}
+	token := "eyJhbGciOiJSUzI1NiJ9.cargaUtil.firma"
 
 	if err := s.Register(context.Background(),
-		&domain.User{Email: "social@prueba.test", Role: domain.RoleDefault, GoogleID: &google}, ""); err != nil {
+		&domain.User{Email: "social@prueba.test", Role: domain.RoleDefault, AppleID: &token}, ""); err != nil {
 		t.Fatalf("el registro social no debería pedir contraseña: %v", err)
 	}
 	if !repo.creado {
