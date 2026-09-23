@@ -4,6 +4,26 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-09-22]: Despliegue del binario con el fix de Sign in with Apple
+- **Alcance:** despliegue del binario `server_linux` compilado desde el commit 2bf1ca1 (fix
+  `normalizarIdentidadSocial`) al servidor de producción. El acceso SSH, bloqueado desde el ~03-09,
+  se restableció (puerto 22 reabierto por el proveedor). `config.docker.yaml` sin cambios (sha256
+  local = servidor). La migración `20260914_reparar_identidad_social.sql` **no se aplicó**: es
+  idempotente y sobre esta base repara 0 filas (0 usuarios Apple; 3 Google ya con el `sub`). El
+  arreglo efectivo es el binario, no la migración.
+- **Criterios de QA (Puntos a Validar):**
+  1. **Salud:** `GET https://legacy.intelyclick.com/health` → 200 (confirmado).
+  2. **Base:** en logs del contenedor aparece «Connected to Database» (confirmado).
+  3. **Cifrado intacto tras el reinicio:** login de administrador → 200; un `GET /api/users` con token
+     de admin devuelve correos legibles, no base64 (el login 200 ya lo confirma).
+  4. **Validación social viva:** `POST /api/auth/social-login` con un token inválido → 401 limpio
+     (no 500).
+  5. **Prueba real pendiente en dispositivo:** Sign in with Apple por segunda vez (sin correo en el
+     token) reconoce la cuenta y no manda a registro con error. Es la comprobación que debe hacerse
+     antes de reenviar a App Review.
+- **Rollback:** en el servidor quedan `server_linux.bak.20260922_presocial` y
+  `backup_20260922_predespliegue.sql.gz`.
+
 ### [2026-09-14]: El registro guarda el `sub` de la identidad social, no el token
 
 App Review rechazó la 1.0 (21) bajo la directriz 2.1(a): «unable to use the core feature, Sign in
