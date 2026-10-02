@@ -4,6 +4,19 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-02]: CORS acepta el dominio nuevo `app.legacynetworkco.com`
+- **Alcance:** `cmd/server/main.go` (`origenesDeConfianza`) y `cmd/server/cors_test.go`. Desplegado
+  solo el binario en el servidor nuevo de DigitalOcean, que sirve `https://app.legacynetworkco.com`
+  detrás de Cloudflare; `config.docker.yaml` no se tocó. El panel en ese dominio llamaba a la API
+  vieja y, al apuntarlo a la nueva, el navegador lo habría bloqueado por CORS.
+- **Criterios de QA:**
+  1. `GET https://app.legacynetworkco.com/health` → 200 (confirmado).
+  2. `OPTIONS /api/events` con `Origin: https://app.legacynetworkco.com` devuelve
+     `Access-Control-Allow-Origin` con ese mismo origen (confirmado).
+  3. El mismo `OPTIONS` con `Origin: https://sitio-malicioso.com` no devuelve la cabecera (confirmado).
+  4. Iniciar sesión en el panel desde `https://app.legacynetworkco.com` y abrir Usuarios: los datos cargan.
+- **Rollback:** `server_linux.bak.20261002_1804` en el servidor nuevo.
+
 ### [2026-09-22]: Despliegue del binario con el fix de Sign in with Apple
 - **Alcance:** despliegue del binario `server_linux` compilado desde el commit 2bf1ca1 (fix
   `normalizarIdentidadSocial`) al servidor de producción. El acceso SSH, bloqueado desde el ~03-09,

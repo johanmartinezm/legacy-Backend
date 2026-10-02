@@ -12,6 +12,8 @@ func TestOrigenPermitido(t *testing.T) {
 		porque  string
 	}{
 		{"https://legacy.intelyclick.com", true, "el panel en produccion"},
+		{"https://app.legacynetworkco.com", true, "el panel en el servidor nuevo"},
+		{"https://app.legacynetworkco.com.malicioso.com", false, "sufijo anadido al dominio nuevo"},
 		{"http://localhost:4200", true, "ng serve"},
 		{"http://localhost:51234", true, "flutter run -d chrome usa un puerto aleatorio"},
 		{"http://127.0.0.1:8080", true, "misma maquina por IP"},

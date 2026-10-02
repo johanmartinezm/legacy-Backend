@@ -558,6 +558,7 @@ func main() {
 // anadirlo aqui o dejaran de funcionar con un error de CORS en el navegador.
 var origenesDeConfianza = []string{
 	"https://legacy.intelyclick.com",
+	"https://app.legacynetworkco.com",
 }
 
 // origenPermitido decide si un navegador puede llamar a la API desde ese origen.
