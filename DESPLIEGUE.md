@@ -1,6 +1,10 @@
 # Despliegue del backend
 
-Guía para publicar la API Go en el servidor de producción (`https://legacy.intelyclick.com`).
+Guía para publicar la API Go en el servidor de producción (`https://app.legacynetworkco.com`).
+
+> **Desde el 2026-10-02 todos los despliegues van al servidor nuevo**, que sirve
+> `https://app.legacynetworkco.com` detrás de Cloudflare. El de `legacy.intelyclick.com` es el
+> anterior y ya no se despliega en él. El destino lo fija `SERVER_IP` en el `.env`.
 
 > Este repositorio es **público**. No escribas aquí ni en ningún archivo versionado la IP del
 > servidor, el usuario SSH, contraseñas ni claves. Todos esos valores viven en `.env` y
@@ -199,7 +203,7 @@ Que la base descifre no prueba que el backend la lea. Firma un token de administ
 `jwt_secret` **desde el servidor**, para que no salga de ahí, y pide el listado:
 
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN" https://legacy.intelyclick.com/api/users
+curl -s -H "Authorization: Bearer $TOKEN" https://app.legacynetworkco.com/api/users
 ```
 
 Los `first_name` y los `email` tienen que venir legibles. Si vinieran como cadenas base64 de 40
@@ -438,7 +442,7 @@ El `restart: always` hace que los contenedores vuelvan solos tras un reinicio de
 ```bash
 docker compose ps                       # legacy_db y legacy_backend en Up
 docker compose logs backend | tail -30  # debe aparecer "Connected to Database"
-curl -s -o /dev/null -w "%{http_code}\n" https://legacy.intelyclick.com/health   # 200
+curl -s -o /dev/null -w "%{http_code}\n" https://app.legacynetworkco.com/health   # 200
 ```
 
 Un 200 en `/health` a través del dominio confirma las tres capas a la vez: HAProxy enruta, el

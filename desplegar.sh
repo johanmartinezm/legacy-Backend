@@ -33,7 +33,7 @@ paso "0. Acceso al servidor"
 $SSH 'echo conectado' >/dev/null 2>&1 || morir "no hay SSH al servidor (puerto 22)"
 echo "SSH: ok"
 curl -s -o /dev/null -w "health antes: %{http_code}\n" --max-time 20 \
-    https://legacy.intelyclick.com/health
+    https://app.legacynetworkco.com/health
 
 # ------------------------------------------------------- 1. binario al día
 paso "1. Binario"
@@ -135,11 +135,11 @@ $SSH "cd $DEPLOY_DIR && docker compose ps --format '{{.Name}}\t{{.State}}'"
 echo "--- últimas líneas del backend ---"
 $SSH "cd $DEPLOY_DIR && docker compose logs backend --tail 25"
 curl -s -o /dev/null -w "health después: %{http_code}\n" --max-time 20 \
-    https://legacy.intelyclick.com/health
+    https://app.legacynetworkco.com/health
 
 # Un token social inventado tiene que dar 401, no 500 ni un 201.
 CODIGO=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
-    -X POST https://legacy.intelyclick.com/api/auth/social-login \
+    -X POST https://app.legacynetworkco.com/api/auth/social-login \
     -H 'Content-Type: application/json' \
     -d '{"provider":"apple","id_token":"no-es-un-token"}')
 echo "social-login con token inventado: $CODIGO (se espera 401)"
