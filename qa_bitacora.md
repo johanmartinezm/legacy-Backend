@@ -4,6 +4,20 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-12]: Videos de YouTube: el tope sube de 50 a 100 por canal
+- **Alcance:** solo configuración: `youtube.max_por_canal` pasa de 50 a 100 en `config.docker.yaml`
+  del servidor nuevo, en `config.yaml` local y en `legacy-secretos`. Ningún cambio de código; la
+  imagen se reconstruyó con `docker compose up -d --build backend` porque el config viaja dentro.
+  LSO tenía más de 50 videos y los más antiguos no aparecían en Contenido de Valor.
+- **Criterios de QA:**
+  1. `GET https://app.legacynetworkco.com/api/content/videos` devuelve 121 videos: 84 de Legacy
+     School Of Ownership y 37 de Legacy Network (confirmado; antes eran 87, con LSO en 50).
+  2. En los logs del contenedor aparece «[videos] 2 canal(es) de YouTube configurados» (confirmado).
+  3. En la app, Contenido de Valor muestra videos de LSO anteriores a los que se veían antes y cada
+     uno abre en YouTube.
+- **Rollback:** `config.docker.yaml.bak.20261012_1710` en el servidor nuevo, seguido de
+  `docker compose up -d --build backend`.
+
 ### [2026-10-02]: CORS acepta el dominio nuevo `app.legacynetworkco.com`
 - **Alcance:** `cmd/server/main.go` (`origenesDeConfianza`) y `cmd/server/cors_test.go`. Desplegado
   solo el binario en el servidor nuevo de DigitalOcean, que sirve `https://app.legacynetworkco.com`
