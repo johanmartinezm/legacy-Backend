@@ -4,6 +4,22 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-12]: Eventos: campo opcional `model` («Modelo» de la ficha)
+- **Alcance:** `internal/core/domain/event.go` (`Event.Model`, JSON `model`),
+  `internal/adapter/storage/postgres/event_repository.go` (GetEvents, GetEventByID, CreateEvent,
+  UpdateEvent) y la migración `scripts/20261012_add_event_model.sql`: columna `events.events.model`
+  y backfill de «7 dimensiones DINASTÍA» en los eventos de categoría summit. Antes ese texto era fijo
+  en la app. Desplegado en el servidor nuevo junto con el panel: `UpdateEvent` escribe la columna con
+  lo que mande el formulario, así que un panel viejo la habría vaciado en cada edición.
+- **Criterios de QA:**
+  1. `GET https://app.legacynetworkco.com/api/events`: el Summit trae `"model": "7 dimensiones
+     DINASTÍA"` y el resto `null` (confirmado).
+  2. `/health` → 200 y «Connected to Database» en los logs tras el despliegue (confirmado).
+  3. Editar el Summit en el panel y guardar sin tocar el modelo: sigue en la API.
+- **Rollback:** `server_linux.bak.20261012_1846` y `docker compose up -d --build backend`. La columna
+  puede quedarse: el binario anterior no la lee. Respaldo de la base previo a la migración:
+  `backup_20261012_1843_pre_event_model.sql.gz`.
+
 ### [2026-10-12]: Todos los correos de notificación llegan a paola.alfonso@
 - **Alcance:** solo configuración, en las tres copias (servidor nuevo, `config.yaml` local y
   `legacy-secretos`); imagen reconstruida con `--build`. Pasan a `paola.alfonso@legacynetworkco.com`
