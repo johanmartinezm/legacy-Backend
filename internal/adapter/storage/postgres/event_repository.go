@@ -71,7 +71,7 @@ func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) 
 		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
 		       e.location, e.is_virtual, e.access_url, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
-		       e.action_status, e.button_text, e.attendees_limit, e.includes,
+		       e.action_status, e.button_text, e.attendees_limit, e.includes, e.model,
 		       COALESCE(e.status, '') AS status,
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
@@ -91,7 +91,7 @@ func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) 
 		err := rows.Scan(
 			&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
 			&e.Location, &e.IsVirtual, &e.AccessURL, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
-			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Status, &e.CategoryOrder,
+			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Model, &e.Status, &e.CategoryOrder,
 		)
 		if err != nil {
 			return nil, err
@@ -111,7 +111,7 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
 		       e.location, e.is_virtual, e.access_url, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
-		       e.action_status, e.button_text, e.attendees_limit, e.includes,
+		       e.action_status, e.button_text, e.attendees_limit, e.includes, e.model,
 		       COALESCE(e.status, '') AS status,
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
@@ -122,7 +122,7 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
 		&e.Location, &e.IsVirtual, &e.AccessURL, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
-		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Status, &e.CategoryOrder,
+		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Model, &e.Status, &e.CategoryOrder,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -458,12 +458,12 @@ func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, use
 
 func (r *EventRepository) CreateEvent(ctx context.Context, e *domain.Event) error {
 	query := `
-		INSERT INTO events.events (category_id, title, description, image_url, location, is_virtual, access_url, speaker_main, start_date, end_date, price, is_free, action_status, button_text, attendees_limit, includes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		INSERT INTO events.events (category_id, title, description, image_url, location, is_virtual, access_url, speaker_main, start_date, end_date, price, is_free, action_status, button_text, attendees_limit, includes, model)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING id, created_at, updated_at
 	`
 	return r.db.QueryRow(ctx, query,
-		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes,
+		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes, e.Model,
 	).Scan(&e.ID, &e.CreatedAt, &e.UpdatedAt)
 }
 
@@ -482,11 +482,11 @@ func (r *EventRepository) UpdateEvent(ctx context.Context, e *domain.Event) erro
 		SET category_id = $1, title = $2, description = $3, image_url = $4, location = $5, is_virtual = $6,
 		    access_url = $7, speaker_main = $8,
 		    start_date = $9, end_date = $10, price = $11, is_free = $12, action_status = $13, button_text = $14,
-		    attendees_limit = $15, includes = $16, updated_at = NOW()
-		WHERE id = $17
+		    attendees_limit = $15, includes = $16, model = $17, updated_at = NOW()
+		WHERE id = $18
 	`
 	_, err := r.db.Exec(ctx, query,
-		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes,
+		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes, e.Model,
 		e.ID,
 	)
 	return err

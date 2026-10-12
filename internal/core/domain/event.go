@@ -45,6 +45,10 @@ type Event struct {
 	ButtonText     string     `json:"buttonText" db:"button_text"`
 	AttendeesLimit *int       `json:"attendees_limit" db:"attendees_limit"`
 	Includes       *string    `json:"includes" db:"includes"`
+	// Model es el modelo de trabajo del evento («7 dimensiones DINASTÍA»).
+	// Opcional: la app solo pinta la fila si viene con texto. Hasta el
+	// 2026-10-12 era un texto fijo en la app, igual para todos los eventos.
+	Model          *string    `json:"model" db:"model"`
 	CategoryOrder  int        `json:"categoryOrder" db:"-"`
 	Workshops      []Workshop `json:"workshops" db:"-"`
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
