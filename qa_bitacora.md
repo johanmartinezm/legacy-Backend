@@ -4,6 +4,22 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-12]: Todos los correos de notificación llegan a paola.alfonso@
+- **Alcance:** solo configuración, en las tres copias (servidor nuevo, `config.yaml` local y
+  `legacy-secretos`); imagen reconstruida con `--build`. Pasan a `paola.alfonso@legacynetworkco.com`
+  los cinco destinatarios: `contacto_email` (formulario Contáctenos, antes `soporte@`),
+  `asesoria_email` (antes `asesorias@`) y `board_contacts` `"1"` (antes Luis Bravo), `"2"` (antes
+  Gonzalo Gómez) y `"default"` (antes `soporte@`). El remitente `gmail_impersonate_user` no cambia.
+  La pantalla Contáctenos de la app sigue **mostrando** `soporte@`: eso es texto de la app, no el
+  buzón al que se envía.
+- **Criterios de QA:**
+  1. `GET https://app.legacynetworkco.com/health` → 200 tras el reinicio (confirmado).
+  2. Enviar un mensaje desde Contáctenos en la app: llega a paola.alfonso@, no a soporte@.
+  3. Pedir una asesoría desde la app: llega a paola.alfonso@.
+  4. Escribir a un miembro de la junta (Luis Bravo o Gonzalo Gómez): llega a paola.alfonso@.
+- **Rollback:** `config.docker.yaml.bak.20261012_1715` en el servidor nuevo, seguido de
+  `docker compose up -d --build backend`.
+
 ### [2026-10-12]: Videos de YouTube: el tope sube de 50 a 100 por canal
 - **Alcance:** solo configuración: `youtube.max_por_canal` pasa de 50 a 100 en `config.docker.yaml`
   del servidor nuevo, en `config.yaml` local y en `legacy-secretos`. Ningún cambio de código; la
