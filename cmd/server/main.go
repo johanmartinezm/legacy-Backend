@@ -177,6 +177,11 @@ func main() {
 	usuarioPlusHandler := handler.NewUsuarioPlusHandler(usuarioPlusService)
 	requierePlus := handler.RequierePlus(usuarioPlusService)
 
+	// Slider de la sección Beneficios (solo Legacy+). scripts/20261013_beneficios.sql.
+	beneficioRepo := postgres.NewBeneficioRepository(dbPool)
+	beneficioService := services.NewBeneficioService(beneficioRepo)
+	beneficioHandler := handler.NewBeneficioHandler(beneficioService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -460,7 +465,7 @@ func main() {
 			r.Post("/api/forums", forumHandler.CreateUserForum)
 			r.Post("/api/forums/{forumID}/posts", forumHandler.PublishPost)
 			r.Post("/api/forums/posts/{postID}/report", forumHandler.ReportPost)
-			r.Get("/api/legacy-plus/beneficios", legacyPlusItemHandler.ListBeneficios)
+			r.Get("/api/beneficios", beneficioHandler.ListActivos)
 		})
 
 		// Regular User Management (Admin Only)
@@ -537,6 +542,12 @@ func main() {
 		r.Post("/api/admin/legacy-plus/items", legacyPlusItemHandler.AdminCreate)
 		r.Put("/api/admin/legacy-plus/items/{id}", legacyPlusItemHandler.AdminUpdate)
 		r.Delete("/api/admin/legacy-plus/items/{id}", legacyPlusItemHandler.AdminDelete)
+
+		// Admin: slider de la sección Beneficios. CRUD; la app pinta los activos.
+		r.Get("/api/admin/beneficios", beneficioHandler.AdminList)
+		r.Post("/api/admin/beneficios", beneficioHandler.AdminCreate)
+		r.Put("/api/admin/beneficios/{id}", beneficioHandler.AdminUpdate)
+		r.Delete("/api/admin/beneficios/{id}", beneficioHandler.AdminDelete)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)

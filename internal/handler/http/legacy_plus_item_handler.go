@@ -43,25 +43,6 @@ func (h *LegacyPlusItemHandler) ListActivos(w http.ResponseWriter, r *http.Reque
 	responderLegacyPlusItems(w, items)
 }
 
-// ListBeneficios atiende GET /api/legacy-plus/beneficios, detrás de
-// RequierePlus: los beneficios activos con su texto, para la sección
-// Beneficios de la app.
-func (h *LegacyPlusItemHandler) ListBeneficios(w http.ResponseWriter, r *http.Request) {
-	items, err := h.service.ListActivos(r.Context())
-	if err != nil {
-		log.Printf("legacy+: error listando beneficios: %v", err)
-		http.Error(w, "no se pudieron leer los beneficios", http.StatusInternalServerError)
-		return
-	}
-	beneficios := []*domain.LegacyPlusItem{}
-	for _, i := range items {
-		if i.Grupo == "beneficios" {
-			beneficios = append(beneficios, i)
-		}
-	}
-	responderLegacyPlusItems(w, beneficios)
-}
-
 // AdminList atiende GET /api/admin/legacy-plus/items: también los ocultos.
 func (h *LegacyPlusItemHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 	items, err := h.service.ListTodos(r.Context())

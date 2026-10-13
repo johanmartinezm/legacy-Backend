@@ -4,6 +4,18 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Sección Beneficios con contenido propio: beneficios y alianzas
+- **Alcance:** migración `scripts/20261013_beneficios.sql` (tabla `core.beneficios`: tipo
+  «beneficio» o «alianza», título, descripción, imagen, enlace, orden, activo; nace vacía) y corte
+  vertical `beneficio` (domain, ports, repositorio, servicio + test, handler). Rutas:
+  `GET /api/beneficios` detrás de `RequierePlus` y CRUD en `/api/admin/beneficios` (`AdminOnly`).
+  Se retira `GET /api/legacy-plus/beneficios`: el cliente aclaró que la sección Beneficios no
+  reutiliza los puntos de la pantalla Legacy+. Validación: título obligatorio hasta 80, descripción
+  hasta 500, imagen y enlace URL http(s) o vacíos, tipo de la lista.
+- **Criterios de QA:**
+  1. `GET /api/beneficios`: 401 sin sesión, 403 sin plus, 200 con plus.
+  2. Un enlace `javascript:` o un tipo inventado: 400 con el motivo.
+
 ### [2026-10-13]: La pantalla Legacy+ vuelve a mostrar el texto de los beneficios
 - **Alcance:** `internal/handler/http/legacy_plus_item_handler.go`. `GET /api/legacy-plus/items`
   deja de vaciar el texto de los puntos «beneficios»: el cliente aclaró que es información pública,
