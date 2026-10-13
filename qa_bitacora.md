@@ -13,7 +13,7 @@ Entrada de trabajo para validación de API.
   viene se conserva (`COALESCE`), así que el panel anterior, que solo manda la imagen, no borra
   textos. Vacío = el de siempre de la app. Límites: título 60 caracteres, texto 200 (contados en
   caracteres, no en bytes); por encima, 400 con el motivo. `GET /api/inicio/secciones` devuelve
-  los dos campos nuevos; una app anterior los ignora.
+  los dos campos nuevos; una app anterior los ignora. Desplegado el 2026-10-13 (migración aplicada antes que el binario).
 - **Criterios de QA:**
   1. Aplicar la migración dos veces: la segunda solo avisa de que las columnas ya existen.
   2. PUT con `{"titulo":"Agenda 2026","texto":"Todo el calendario"}` a `eventos`: la respuesta y el
