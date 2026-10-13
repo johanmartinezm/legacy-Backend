@@ -4,6 +4,21 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-12]: Imágenes de las secciones del Inicio, editables desde el panel
+- **Alcance:** tabla `core.secciones_inicio` (`scripts/20261012_secciones_inicio.sql`, 11 filas
+  sembradas sin imagen; «Beneficios» es una sola para sus dos tarjetas), `domain/seccion_inicio.go`,
+  `postgres/seccion_inicio_repository.go`, `services/seccion_inicio_service.go` (+ test),
+  `handler/http/seccion_inicio_handler.go` y en `main.go` `GET /api/inicio/secciones` (pública),
+  `GET /api/admin/inicio/secciones` y `PUT /api/admin/inicio/secciones/{slug}` (AdminOnly). Solo se
+  cambia la imagen; las secciones no se crean ni se borran desde el panel. Una URL que no sea http(s)
+  se rechaza con 400.
+- **Criterios de QA:**
+  1. `GET https://app.legacynetworkco.com/api/inicio/secciones` devuelve 11 secciones (confirmado).
+  2. El `PUT` sin token responde 401 (confirmado).
+  3. Cambiar una imagen desde el panel: aparece en la lectura pública.
+- **Rollback:** `server_linux.bak.20261012_1927`. La tabla puede quedarse: el binario anterior no la
+  lee. Respaldo previo: `backup_20261012_1927_pre_secciones_inicio.sql.gz`.
+
 ### [2026-10-12]: Eventos: campo opcional `model` («Modelo» de la ficha)
 - **Alcance:** `internal/core/domain/event.go` (`Event.Model`, JSON `model`),
   `internal/adapter/storage/postgres/event_repository.go` (GetEvents, GetEventByID, CreateEvent,
