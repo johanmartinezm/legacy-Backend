@@ -17,6 +17,9 @@ Entrada de trabajo para validación de API.
   escribir) y `GET /api/legacy-plus/beneficios` van detrás de `RequierePlus`; las lecturas de foros
   salen del grupo público. Nuevo `PUT /api/admin/users/{id}/plus` (`AdminOnly`). **La migración va
   antes que el binario:** sin la columna, `FindByID` falla.
+  Desplegado el 2026-10-13 (16:14): migración antes que el binario, y los puntos 1 a 3 y 5
+  comprobados en producción (firmando el token en el servidor; Cloudflare corta el agente
+  `Python-urllib` con un «error code: 1010», que no es nuestro 403).
 - **Criterios de QA** (los 13 comprobados en local contra un usuario real):
   1. `GET /api/forums` sin sesión: 401. Con un usuario sin plus: 403 «Esta sección es para usuarios
      Legacy+.», también para publicar y para `/api/legacy-plus/beneficios`.
