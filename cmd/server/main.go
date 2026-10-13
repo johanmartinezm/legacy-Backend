@@ -158,6 +158,12 @@ func main() {
 	seccionInicioService := services.NewSeccionInicioService(seccionInicioRepo)
 	seccionInicioHandler := handler.NewSeccionInicioHandler(seccionInicioService)
 
+	// Unidades de la pantalla Asesoría (L&M, Aurum…), que el panel crea, edita
+	// y ordena. scripts/20261013_asesoria_unidades.sql.
+	asesoriaUnidadRepo := postgres.NewAsesoriaUnidadRepository(dbPool)
+	asesoriaUnidadService := services.NewAsesoriaUnidadService(asesoriaUnidadRepo)
+	asesoriaUnidadHandler := handler.NewAsesoriaUnidadHandler(asesoriaUnidadService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -342,6 +348,7 @@ func main() {
 
 		// Imágenes de las tarjetas del Inicio (Public read).
 		r.Get("/api/inicio/secciones", seccionInicioHandler.List)
+		r.Get("/api/asesoria/unidades", asesoriaUnidadHandler.ListActivas)
 
 		// Custom Content routes (Public)
 		r.Get("/api/content/categories", contentHandler.ListCategories)
@@ -496,6 +503,12 @@ func main() {
 		// texto; las secciones las define la app, no el panel.
 		r.Get("/api/admin/inicio/secciones", seccionInicioHandler.List)
 		r.Put("/api/admin/inicio/secciones/{slug}", seccionInicioHandler.AdminUpdate)
+
+		// Admin: unidades de Asesoría. CRUD completo; la app pinta solo las activas.
+		r.Get("/api/admin/asesoria/unidades", asesoriaUnidadHandler.AdminList)
+		r.Post("/api/admin/asesoria/unidades", asesoriaUnidadHandler.AdminCreate)
+		r.Put("/api/admin/asesoria/unidades/{id}", asesoriaUnidadHandler.AdminUpdate)
+		r.Delete("/api/admin/asesoria/unidades/{id}", asesoriaUnidadHandler.AdminDelete)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)

@@ -4,6 +4,34 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Unidades de Asesoría administrables
+- **Alcance:** migración `scripts/20261013_asesoria_unidades.sql` (tabla `core.asesoria_unidades`,
+  sembrada con las cinco unidades que la app tenía escritas; idempotente y sin resucitar borradas),
+  `domain/asesoria_unidad.go` (con las listas cerradas de necesidades e iconos),
+  `ports/asesoria_ports.go`, `postgres/asesoria_unidad_repository.go`,
+  `services/asesoria_unidad_service.go` (+ test) y `handler/http/asesoria_unidad_handler.go`.
+  Rutas en `main.go`: `GET /api/asesoria/unidades` (pública, solo activas, por orden) y
+  `GET/POST /api/admin/asesoria/unidades` + `PUT/DELETE /api/admin/asesoria/unidades/{id}` dentro de
+  `AdminOnly`. Validación: título obligatorio hasta 60, subtítulo hasta 120, necesidad e icono de la
+  lista (icono vacío = «negocio»). Errores de validación en 400 con su motivo; un id que no es uuid,
+  404. Probado en local: crear, ocultar, borrar, 400, 401 y 404.
+- **Criterios de QA:**
+  1. GET `/api/asesoria/unidades` devuelve las cinco de siempre tras la migración.
+  2. Crear una unidad desde el panel: aparece en la app al volver a entrar a Asesoría.
+  3. Ocultarla: desaparece de la app y sigue en el panel.
+  4. Una necesidad que no existe da 400 con el motivo.
+
+### [2026-10-13]: Correo de asesoría: el texto del usuario se escapa
+- **Alcance:** `internal/infrastructure/email/asesoria_cuerpo.go` (nuevo, + test), usado por
+  `gmail_service.go` y `smtp_service.go`, que tenían el mismo HTML duplicado. Nombre, correo,
+  categoría y mensaje se insertaban sin escapar; con el detalle libre de 500 palabras que añade la
+  app, un enlace escrito por el usuario habría llegado como enlace real al buzón del equipo. Ahora se
+  ven como texto. El correo de Contáctenos tiene el mismo defecto y queda pendiente.
+- **Criterios de QA:**
+  1. Enviar una asesoría con `<b>hola</b>` en el detalle: el correo muestra las etiquetas como texto,
+     no en negrita.
+  2. Una solicitud normal se ve igual que antes.
+
 ### [2026-10-13]: Texto de Asesoría editable desde el panel
 - **Alcance:** migración `scripts/20261013_texto_asesoria.sql` (fila `asesoria-banner` con
   `pantalla = 'asesoria'`, vacía) y el comentario de `domain/seccion_inicio.go`. Mismos endpoints que
