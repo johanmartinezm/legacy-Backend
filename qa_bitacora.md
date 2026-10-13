@@ -4,6 +4,12 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Orden de las tarjetas del Inicio: Contáctenos al final
+- **Alcance:** migración `scripts/20261013_orden_contactenos_ultimo.sql` (`legacy-board` 95 → 85,
+  delante de Contáctenos). Solo afecta al orden del listado del panel. Idempotente.
+- **Criterios de QA:**
+  1. Panel → Tarjetas del Inicio: … Asesorías, Legacy+, Legacy Board, Contáctenos, Miembros…
+
 ### [2026-10-13]: Unidades de Asesoría administrables
 - **Alcance:** migración `scripts/20261013_asesoria_unidades.sql` (tabla `core.asesoria_unidades`,
   sembrada con las cinco unidades que la app tenía escritas; idempotente y sin resucitar borradas),
