@@ -14,7 +14,8 @@ Entrada de trabajo para validación de API.
   `GET/POST /api/admin/asesoria/unidades` + `PUT/DELETE /api/admin/asesoria/unidades/{id}` dentro de
   `AdminOnly`. Validación: título obligatorio hasta 60, subtítulo hasta 120, necesidad e icono de la
   lista (icono vacío = «negocio»). Errores de validación en 400 con su motivo; un id que no es uuid,
-  404. Probado en local: crear, ocultar, borrar, 400, 401 y 404.
+  404. Probado en local: crear, ocultar, borrar, 400, 401 y 404. Desplegado el 2026-10-13 junto
+  con el escapado del correo de asesoría; en producción, 5 unidades y 401 sin sesión.
 - **Criterios de QA:**
   1. GET `/api/asesoria/unidades` devuelve las cinco de siempre tras la migración.
   2. Crear una unidad desde el panel: aparece en la app al volver a entrar a Asesoría.
