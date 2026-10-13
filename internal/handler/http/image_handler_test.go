@@ -156,3 +156,42 @@ func TestImageHandler_GetImage(t *testing.T) {
 		t.Errorf("Expected width 100, got %d", resized.Bounds().Dx())
 	}
 }
+
+// Una imagen subida como «foto (1).jpg» se pide como «foto%20(1).jpg»: espacio
+// codificado y paréntesis no, que es lo que hacen el navegador y la app. Go
+// guarda entonces la ruta cruda, chi la usa sin decodificar, y el handler
+// buscaba en disco un archivo con «%20» en el nombre: 404 (2026-10-12).
+func TestImageHandler_GetImage_NombreConEspaciosYParentesis(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.WriteFile(filepath.Join(tmpDir, "uuid_foto (1) (1).jpeg"), []byte("img"), 0644)
+	os.WriteFile(filepath.Join(filepath.Dir(tmpDir), "secreto.txt"), []byte("no"), 0644)
+
+	r := chi.NewRouter()
+	r.Get("/api/images/{fileName}", (&ImageHandler{uploadDir: tmpDir}).GetImage)
+
+	casos := map[string]int{
+		"/api/images/uuid_foto%20(1)%20(1).jpeg":         http.StatusOK,
+		"/api/images/uuid_foto%20%281%29%20%281%29.jpeg": http.StatusOK,
+		"/api/images/..%2Fsecreto.txt":                   http.StatusNotFound,
+	}
+	for ruta, esperado := range casos {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest("GET", ruta, nil))
+		if rec.Code != esperado {
+			t.Errorf("%s: código %d, se esperaba %d", ruta, rec.Code, esperado)
+		}
+	}
+}
+
+func TestNombreSeguro(t *testing.T) {
+	casos := map[string]string{
+		"Empresa familiar (1) (1).jpeg": "Empresa-familiar--1---1-.jpeg",
+		"foto_ok-2.png":                 "foto_ok-2.png",
+		"diseño.jpg":                    "dise-o.jpg",
+	}
+	for entrada, esperado := range casos {
+		if got := nombreSeguro(entrada); got != esperado {
+			t.Errorf("nombreSeguro(%q) = %q, se esperaba %q", entrada, got, esperado)
+		}
+	}
+}

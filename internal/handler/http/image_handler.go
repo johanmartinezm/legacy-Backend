@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,7 +101,7 @@ func (h *ImageHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	// filepath.Base descarta cualquier ruta que venga en el nombre original,
 	// que es la via clasica para escribir fuera del directorio de subidas, y el
 	// UUID delante evita que dos personas que suban "foto.jpg" se pisen.
-	nombre := filepath.Base(header.Filename)
+	nombre := nombreSeguro(filepath.Base(header.Filename))
 	if filepath.Ext(nombre) == "" {
 		// imaging.Save elige el formato por la extension: sin ella devuelve
 		// "unsupported image format" y la subida moria con un 500 opaco.
@@ -121,6 +122,23 @@ func (h *ImageHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"name": newFileName})
 }
 
+// nombreSeguro deja en el nombre del archivo solo letras, números, «.», «_» y
+// «-»; el resto (espacios, paréntesis, tildes) pasa a «-». El nombre acaba en
+// una URL, y cada carácter que haya que escapar es una ocasión de que un
+// cliente lo pida de otra forma y no lo encuentre.
+func nombreSeguro(nombre string) string {
+	var b strings.Builder
+	for _, c := range nombre {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+			b.WriteRune(c)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
 func (h *ImageHandler) GetImage(w http.ResponseWriter, r *http.Request) {
 	fileName := chi.URLParam(r, "fileName")
 	if fileName == "" {
@@ -128,7 +146,17 @@ func (h *ImageHandler) GetImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Security: Prevent path traversal
+	// chi entrega el parámetro sin decodificar cuando la ruta llega con un
+	// escapado distinto del de Go: «foto%20(1).jpg» —espacio codificado,
+	// paréntesis no, que es como lo piden el navegador y la app— llegaba aquí
+	// tal cual y se buscaba en disco un archivo con «%20» en el nombre. Las
+	// imágenes subidas con espacios y paréntesis daban 404 (2026-10-12).
+	if decodificado, err := url.PathUnescape(fileName); err == nil {
+		fileName = decodificado
+	}
+
+	// Security: Prevent path traversal. Va después de decodificar, para que un
+	// «..%2F» tampoco escape del directorio.
 	cleanName := filepath.Base(fileName)
 
 	// If the user requests ".." or similar, Base() strips it or returns just the last part.
