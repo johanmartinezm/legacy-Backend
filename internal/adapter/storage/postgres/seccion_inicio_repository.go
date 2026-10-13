@@ -17,12 +17,12 @@ func NewSeccionInicioRepository(db *pgxpool.Pool) *SeccionInicioRepository {
 	return &SeccionInicioRepository{db: db}
 }
 
-const camposSeccionInicio = `slug, nombre, orden, imagen_url, titulo, texto, actualizada_en`
+const camposSeccionInicio = `slug, nombre, orden, pantalla, imagen_url, titulo, texto, actualizada_en`
 
 // ListAll no pagina: las secciones las siembra una migración, una por tarjeta
 // del Inicio, así que son una docena.
 func (r *SeccionInicioRepository) ListAll(ctx context.Context) ([]*domain.SeccionInicio, error) {
-	sql := `SELECT ` + camposSeccionInicio + ` FROM core.secciones_inicio ORDER BY orden ASC, slug ASC`
+	sql := `SELECT ` + camposSeccionInicio + ` FROM core.secciones_inicio ORDER BY pantalla ASC, orden ASC, slug ASC`
 
 	rows, err := r.db.Query(ctx, sql)
 	if err != nil {
@@ -33,7 +33,7 @@ func (r *SeccionInicioRepository) ListAll(ctx context.Context) ([]*domain.Seccio
 	var secciones []*domain.SeccionInicio
 	for rows.Next() {
 		var s domain.SeccionInicio
-		if err := rows.Scan(&s.Slug, &s.Nombre, &s.Orden, &s.ImagenURL, &s.Titulo, &s.Texto, &s.ActualizadaEn); err != nil {
+		if err := rows.Scan(&s.Slug, &s.Nombre, &s.Orden, &s.Pantalla, &s.ImagenURL, &s.Titulo, &s.Texto, &s.ActualizadaEn); err != nil {
 			return nil, err
 		}
 		secciones = append(secciones, &s)
@@ -56,7 +56,7 @@ func (r *SeccionInicioRepository) Actualizar(ctx context.Context, slug string, c
 
 	var s domain.SeccionInicio
 	err := r.db.QueryRow(ctx, sql, c.ImagenURL, c.Titulo, c.Texto, slug).Scan(
-		&s.Slug, &s.Nombre, &s.Orden, &s.ImagenURL, &s.Titulo, &s.Texto, &s.ActualizadaEn,
+		&s.Slug, &s.Nombre, &s.Orden, &s.Pantalla, &s.ImagenURL, &s.Titulo, &s.Texto, &s.ActualizadaEn,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound

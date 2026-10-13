@@ -4,6 +4,32 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Texto de Asesoría editable desde el panel
+- **Alcance:** migración `scripts/20261013_texto_asesoria.sql` (fila `asesoria-banner` con
+  `pantalla = 'asesoria'`, vacía) y el comentario de `domain/seccion_inicio.go`. Mismos endpoints que
+  las tarjetas del Inicio. Requiere aplicar antes `20261013_textos_lso.sql`, que crea `pantalla`.
+- **Criterios de QA:**
+  1. GET `/api/inicio/secciones` trae `asesoria-banner` con `pantalla: "asesoria"`.
+
+### [2026-10-13]: Textos de LSO · Escuela editables desde el panel
+- **Alcance:** migración `scripts/20261013_textos_lso.sql` (columna `pantalla` en
+  `core.secciones_inicio`, «inicio» por defecto, y dos filas nuevas `lso-encabezado` y `lso-banner`,
+  vacías), `domain/seccion_inicio.go` (campo `Pantalla`), `postgres/seccion_inicio_repository.go`
+  (lo lee y ordena por pantalla) y `services/seccion_inicio_service.go` (texto hasta 300 caracteres:
+  el banner actual ya tiene 196). Se reutilizan los endpoints de las tarjetas del Inicio; el GET
+  público devuelve también las filas de LSO, que el Inicio de la app ignora.
+- **Criterios de QA:**
+  1. Aplicar la migración dos veces: la segunda no duplica filas.
+  2. GET `/api/inicio/secciones` trae `lso-encabezado` y `lso-banner` con `pantalla: "lso"`.
+  3. Un texto de 300 caracteres se guarda; uno de 301 da 400.
+
+### [2026-10-13]: Legacy Board, última en el orden de las tarjetas del Inicio
+- **Alcance:** migración `scripts/20261013_orden_legacy_board.sql` (`orden` 20 → 95 en
+  `core.secciones_inicio`). Solo afecta al orden del listado del panel, que replica el de la app.
+  Idempotente.
+- **Criterios de QA:**
+  1. Panel → Tarjetas del Inicio: Legacy Board aparece después de Contáctenos.
+
 ### [2026-10-13]: Tarjetas del Inicio: título y texto editables desde el panel
 - **Alcance:** migración `scripts/20261013_secciones_inicio_textos.sql` (columnas `titulo` y
   `texto` en `core.secciones_inicio`, vacías por defecto, idempotente), `domain/seccion_inicio.go`

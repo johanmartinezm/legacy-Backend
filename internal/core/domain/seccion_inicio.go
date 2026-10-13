@@ -14,6 +14,10 @@ type SeccionInicio struct {
 	Nombre string `json:"nombre" db:"nombre"`
 	// Orden replica el de la pantalla, para que el panel las liste igual.
 	Orden int `json:"orden" db:"orden"`
+	// Pantalla de la app donde se ve: «inicio» (tarjetas del Inicio), «lso»
+	// (encabezado y banner de LSO · Escuela, desde 20261013_textos_lso.sql) o
+	// «asesoria» (texto de bienvenida, desde 20261013_texto_asesoria.sql).
+	Pantalla string `json:"pantalla" db:"pantalla"`
 	// ImagenURL vacía significa «sin imagen»: la app pinta la tarjeta como
 	// siempre, con su icono.
 	ImagenURL string `json:"imagen_url" db:"imagen_url"`

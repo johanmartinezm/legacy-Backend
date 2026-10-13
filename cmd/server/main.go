@@ -150,8 +150,10 @@ func main() {
 	paginaService := services.NewPaginaService(paginaRepo)
 	paginaHandler := handler.NewPaginaHandler(paginaService)
 
-	// Imagen, título y texto de las tarjetas del Inicio de la app, que el panel
-	// cambia. scripts/20261012_secciones_inicio.sql y 20261013_secciones_inicio_textos.sql.
+	// Imagen, título y texto de las tarjetas del Inicio de la app, y título y
+	// texto del encabezado y el banner de LSO, que el panel cambia.
+	// scripts/20261012_secciones_inicio.sql, 20261013_secciones_inicio_textos.sql
+	// y 20261013_textos_lso.sql.
 	seccionInicioRepo := postgres.NewSeccionInicioRepository(dbPool)
 	seccionInicioService := services.NewSeccionInicioService(seccionInicioRepo)
 	seccionInicioHandler := handler.NewSeccionInicioHandler(seccionInicioService)

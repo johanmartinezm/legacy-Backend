@@ -15,10 +15,11 @@ import (
 var ErrImagenNoEsURL = errors.New("la imagen debe ser una URL http(s) o quedar vacía")
 
 // Las tarjetas del Inicio son de ancho fijo: un título o un texto más largo que
-// esto se corta con puntos suspensivos y deja de leerse.
+// esto se corta con puntos suspensivos y deja de leerse. El texto admite 300
+// por el banner de LSO, que ya trae 196 y no se corta.
 const (
 	maxTituloSeccion = 60
-	maxTextoSeccion  = 200
+	maxTextoSeccion  = 300
 )
 
 var (
