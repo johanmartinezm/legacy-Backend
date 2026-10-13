@@ -4,6 +4,12 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Fila «Chats de sinergia» en las tarjetas del Inicio
+- **Alcance:** migración `scripts/20261013_tarjeta_chats_sinergia.sql` (slug `chats-sinergia`, orden
+  105, pantalla `inicio`). Solo datos; idempotente.
+- **Criterios de QA:**
+  1. GET `/api/inicio/secciones` incluye `chats-sinergia` y no `foro`.
+
 ### [2026-10-13]: Orden de las tarjetas del Inicio: Contáctenos al final
 - **Alcance:** migración `scripts/20261013_orden_contactenos_ultimo.sql` (`legacy-board` 95 → 85,
   delante de Contáctenos). Solo afecta al orden del listado del panel. Idempotente.
