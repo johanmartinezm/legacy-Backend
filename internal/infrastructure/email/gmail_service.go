@@ -152,22 +152,7 @@ func (s *GmailService) SendBoardContactEmail(to, senderName, senderEmail, messag
 
 func (s *GmailService) SendAsesoriaEmail(to, senderName, senderEmail, category, messageText string) error {
 	subject := fmt.Sprintf("Nueva Solicitud de Asesoría (%s) - %s", category, senderName)
-	body := fmt.Sprintf(`
-		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
-			<h2 style="color: #c98a1a;">Nueva Solicitud de Asesoría</h2>
-			<p>Hola,</p>
-			<p>Has recibido una nueva solicitud de asesoría a través de la plataforma Legacy App:</p>
-			<div style="background-color: #fcf9f2; padding: 20px; border-left: 4px solid #c98a1a; margin: 20px 0;">
-				<p><strong>Categoría:</strong> %s</p>
-				<p><strong>Remitente:</strong> %s &lt;%s&gt;</p>
-				<p><strong>Mensaje Adicional:</strong></p>
-				<p style="white-space: pre-wrap;">%s</p>
-			</div>
-			<p>Este es un correo automático generado por el sistema.</p>
-			<hr style="border: none; border-top: 1px solid #eee;">
-			<p style="font-size: 12px; color: #777;">Legacy Network - Connectando líderes.</p>
-		</div>
-	`, category, senderName, senderEmail, messageText)
+	body := cuerpoCorreoAsesoria(senderName, senderEmail, category, messageText)
 
 	return s.sendMessage(to, subject, body)
 }
