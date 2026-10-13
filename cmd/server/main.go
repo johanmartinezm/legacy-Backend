@@ -164,6 +164,13 @@ func main() {
 	asesoriaUnidadService := services.NewAsesoriaUnidadService(asesoriaUnidadRepo)
 	asesoriaUnidadHandler := handler.NewAsesoriaUnidadHandler(asesoriaUnidadService)
 
+	// Puntos con check de la pantalla Legacy+, que el panel administra.
+	// scripts/20261013_legacy_plus_contenido.sql (sus textos fijos van en
+	// secciones_inicio, pantalla «legacy-plus»).
+	legacyPlusItemRepo := postgres.NewLegacyPlusItemRepository(dbPool)
+	legacyPlusItemService := services.NewLegacyPlusItemService(legacyPlusItemRepo)
+	legacyPlusItemHandler := handler.NewLegacyPlusItemHandler(legacyPlusItemService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -349,6 +356,7 @@ func main() {
 		// Imágenes de las tarjetas del Inicio (Public read).
 		r.Get("/api/inicio/secciones", seccionInicioHandler.List)
 		r.Get("/api/asesoria/unidades", asesoriaUnidadHandler.ListActivas)
+		r.Get("/api/legacy-plus/items", legacyPlusItemHandler.ListActivos)
 
 		// Custom Content routes (Public)
 		r.Get("/api/content/categories", contentHandler.ListCategories)
@@ -509,6 +517,12 @@ func main() {
 		r.Post("/api/admin/asesoria/unidades", asesoriaUnidadHandler.AdminCreate)
 		r.Put("/api/admin/asesoria/unidades/{id}", asesoriaUnidadHandler.AdminUpdate)
 		r.Delete("/api/admin/asesoria/unidades/{id}", asesoriaUnidadHandler.AdminDelete)
+
+		// Admin: puntos de la pantalla Legacy+. CRUD; la app pinta los activos.
+		r.Get("/api/admin/legacy-plus/items", legacyPlusItemHandler.AdminList)
+		r.Post("/api/admin/legacy-plus/items", legacyPlusItemHandler.AdminCreate)
+		r.Put("/api/admin/legacy-plus/items/{id}", legacyPlusItemHandler.AdminUpdate)
+		r.Delete("/api/admin/legacy-plus/items/{id}", legacyPlusItemHandler.AdminDelete)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)

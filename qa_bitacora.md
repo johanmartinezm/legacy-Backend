@@ -4,6 +4,18 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Tarjeta «Diagnósticos» y contenido de Legacy+ administrable
+- **Alcance:** migración `scripts/20261013_tarjeta_diagnosticos.sql` (fila `diagnosticos`, orden 85)
+  y migración `scripts/20261013_legacy_plus_contenido.sql` (tabla `core.legacy_plus_items` sembrada
+  con los 5 puntos actuales, y filas `lp-banner`, `lp-como-accedo` y `lp-beneficios` con pantalla
+  `legacy-plus` en `core.secciones_inicio`). Nuevo corte vertical `legacy_plus_item`
+  (domain, ports, repositorio, servicio + test, handler) con rutas `GET /api/legacy-plus/items`
+  (pública, activos) y CRUD en `/api/admin/legacy-plus/items` dentro de `AdminOnly`. Grupo
+  «incluye» o «beneficios», título obligatorio hasta 60, texto hasta 500; id no uuid → 404.
+- **Criterios de QA:**
+  1. GET `/api/legacy-plus/items` devuelve los 5 puntos tras la migración.
+  2. Un grupo inventado da 400 con el motivo; sin token, 401.
+
 ### [2026-10-13]: Fila «Chats de sinergia» en las tarjetas del Inicio
 - **Alcance:** migración `scripts/20261013_tarjeta_chats_sinergia.sql` (slug `chats-sinergia`, orden
   105, pantalla `inicio`). Solo datos; idempotente.

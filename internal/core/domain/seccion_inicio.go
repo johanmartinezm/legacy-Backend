@@ -16,7 +16,9 @@ type SeccionInicio struct {
 	Orden int `json:"orden" db:"orden"`
 	// Pantalla de la app donde se ve: «inicio» (tarjetas del Inicio), «lso»
 	// (encabezado y banner de LSO · Escuela, desde 20261013_textos_lso.sql) o
-	// «asesoria» (texto de bienvenida, desde 20261013_texto_asesoria.sql).
+	// «asesoria» (texto de bienvenida, desde 20261013_texto_asesoria.sql; ya no
+	// se pinta) o «legacy-plus» (textos fijos de la pantalla Legacy+, desde
+	// 20261013_legacy_plus_contenido.sql).
 	Pantalla string `json:"pantalla" db:"pantalla"`
 	// ImagenURL vacía significa «sin imagen»: la app pinta la tarjeta como
 	// siempre, con su icono.
