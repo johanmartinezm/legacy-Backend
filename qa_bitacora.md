@@ -7,7 +7,8 @@ Entrada de trabajo para validación de API.
 ### [2026-10-13]: Texto de Asesoría editable desde el panel
 - **Alcance:** migración `scripts/20261013_texto_asesoria.sql` (fila `asesoria-banner` con
   `pantalla = 'asesoria'`, vacía) y el comentario de `domain/seccion_inicio.go`. Mismos endpoints que
-  las tarjetas del Inicio. Requiere aplicar antes `20261013_textos_lso.sql`, que crea `pantalla`.
+  las tarjetas del Inicio. Requiere aplicar antes `20261013_textos_lso.sql`, que crea `pantalla`. Desplegado el 2026-10-13
+  junto con las otras dos migraciones del día, en orden y antes que el binario.
 - **Criterios de QA:**
   1. GET `/api/inicio/secciones` trae `asesoria-banner` con `pantalla: "asesoria"`.
 
