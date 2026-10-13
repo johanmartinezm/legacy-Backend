@@ -41,29 +41,30 @@ func (h *SeccionInicioHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // AdminUpdate atiende PUT /api/admin/inicio/secciones/{slug} con
-// {"imagen_url": "..."}. Solo cambia la imagen; el slug sale de la URL para que
-// una errata del formulario no pise otra sección.
+// {"imagen_url": "...", "titulo": "...", "texto": "..."}. El campo que no venga
+// se deja como está; el slug sale de la URL para que una errata del formulario
+// no pise otra sección.
 func (h *SeccionInicioHandler) AdminUpdate(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
-	var cuerpo struct {
-		ImagenURL string `json:"imagen_url"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&cuerpo); err != nil {
+	var cambios domain.CambiosSeccionInicio
+	if err := json.NewDecoder(r.Body).Decode(&cambios); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	seccion, err := h.service.CambiarImagen(r.Context(), slug, cuerpo.ImagenURL)
+	seccion, err := h.service.Actualizar(r.Context(), slug, cambios)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			http.Error(w, "la sección no existe", http.StatusNotFound)
-		case errors.Is(err, services.ErrImagenNoEsURL):
+		case errors.Is(err, services.ErrImagenNoEsURL),
+			errors.Is(err, services.ErrTituloSeccionLargo),
+			errors.Is(err, services.ErrTextoSeccionLargo):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
 			log.Printf("secciones de inicio: error actualizando %q: %v", slug, err)
-			http.Error(w, "no se pudo guardar la imagen", http.StatusInternalServerError)
+			http.Error(w, "no se pudo guardar la sección", http.StatusInternalServerError)
 		}
 		return
 	}

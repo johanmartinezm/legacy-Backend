@@ -4,6 +4,24 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Tarjetas del Inicio: título y texto editables desde el panel
+- **Alcance:** migración `scripts/20261013_secciones_inicio_textos.sql` (columnas `titulo` y
+  `texto` en `core.secciones_inicio`, vacías por defecto, idempotente), `domain/seccion_inicio.go`
+  (+ `CambiosSeccionInicio`), `ports/interfaces.go`, `postgres/seccion_inicio_repository.go`,
+  `services/seccion_inicio_service.go` (+ test) y `handler/http/seccion_inicio_handler.go`.
+  `PUT /api/admin/inicio/secciones/{slug}` acepta `imagen_url`, `titulo` y `texto`; el campo que no
+  viene se conserva (`COALESCE`), así que el panel anterior, que solo manda la imagen, no borra
+  textos. Vacío = el de siempre de la app. Límites: título 60 caracteres, texto 200 (contados en
+  caracteres, no en bytes); por encima, 400 con el motivo. `GET /api/inicio/secciones` devuelve
+  los dos campos nuevos; una app anterior los ignora.
+- **Criterios de QA:**
+  1. Aplicar la migración dos veces: la segunda solo avisa de que las columnas ya existen.
+  2. PUT con `{"titulo":"Agenda 2026","texto":"Todo el calendario"}` a `eventos`: la respuesta y el
+     GET público los traen.
+  3. PUT con solo `{"imagen_url":""}`: el título y el texto siguen.
+  4. Título de 61 caracteres: 400 «el título admite hasta 60 caracteres».
+  5. PUT sin token: 401.
+
 ### [2026-10-12]: Las imágenes con espacios o paréntesis en el nombre daban 404
 - **Alcance:** `internal/handler/http/image_handler.go` y su test. Una imagen subida como
   «foto (1).jpeg» se pide como `foto%20(1).jpeg` (espacio codificado, paréntesis no, como lo hacen
