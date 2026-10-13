@@ -171,6 +171,12 @@ func main() {
 	legacyPlusItemService := services.NewLegacyPlusItemService(legacyPlusItemRepo)
 	legacyPlusItemHandler := handler.NewLegacyPlusItemHandler(legacyPlusItemService)
 
+	// Usuario Legacy+ (core.users.es_plus, 20261013_usuario_plus.sql). requierePlus
+	// protege foros y beneficios; solo el panel cambia el plus.
+	usuarioPlusService := services.NewUsuarioPlusService(userRepo)
+	usuarioPlusHandler := handler.NewUsuarioPlusHandler(usuarioPlusService)
+	requierePlus := handler.RequierePlus(usuarioPlusService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -370,9 +376,8 @@ func main() {
 		r.Get("/api/synergies", synergyHandler.ListSynergies)
 		r.Get("/api/synergies/{id}", synergyHandler.GetSynergy)
 
-		// Forums (Public read)
-		r.Get("/api/forums", forumHandler.ListPublicForums)
-		r.Get("/api/forums/{forumID}/posts", forumHandler.ListPosts)
+		// Los foros se leían aquí sin sesión hasta el 2026-10-13. Ahora son solo
+		// para usuarios Legacy+: ver el grupo privado, junto a las escrituras.
 	})
 
 	// Private routes
@@ -446,16 +451,25 @@ func main() {
 		r.Delete("/api/blocks/{userID}", blockHandler.UnblockUser)
 		r.Post("/api/users/{userID}/report", blockHandler.ReportUser)
 
-		// Forum interaction routes
-		r.Post("/api/forums", forumHandler.CreateUserForum)
-		r.Post("/api/forums/{forumID}/posts", forumHandler.PublishPost)
-		r.Post("/api/forums/posts/{postID}/report", forumHandler.ReportPost)
+		// Foros y beneficios: solo usuarios Legacy+ (403 al resto). La app los
+		// abre desde «Chats de sinergia» y «Beneficios» del Inicio.
+		r.Group(func(r chi.Router) {
+			r.Use(requierePlus)
+			r.Get("/api/forums", forumHandler.ListPublicForums)
+			r.Get("/api/forums/{forumID}/posts", forumHandler.ListPosts)
+			r.Post("/api/forums", forumHandler.CreateUserForum)
+			r.Post("/api/forums/{forumID}/posts", forumHandler.PublishPost)
+			r.Post("/api/forums/posts/{postID}/report", forumHandler.ReportPost)
+			r.Get("/api/legacy-plus/beneficios", legacyPlusItemHandler.ListBeneficios)
+		})
 
 		// Regular User Management (Admin Only)
 		r.Group(func(r chi.Router) {
 			r.Use(handler.AdminOnly([]byte(cfg.Security.JWTSecret)))
 			r.Get("/api/users", userHandler.List)
 			r.Put("/api/users/{id}", userHandler.Update)
+			// La única forma de cambiar el plus de un usuario.
+			r.Put("/api/admin/users/{id}/plus", usuarioPlusHandler.AdminCambiar)
 			r.Delete("/api/users/{id}", userHandler.Delete)
 		})
 	})

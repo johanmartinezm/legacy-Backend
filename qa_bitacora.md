@@ -4,6 +4,29 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: Usuario Legacy+ (`es_plus`) y validación de acceso
+- **Alcance:** plan en `reports/20261013_plan_usuario_plus.md` (repositorio raíz), fase 1.
+  Migración `scripts/20261013_usuario_plus.sql` (`core.users.es_plus`, `false` para todos).
+  `domain/user.go` (`EsPlus`), `postgres/user_repository.go` (lo leen `FindAll` y `FindByID`;
+  `EsPlus` y `SetEsPlus` nuevos), `ports/legacy_plus_ports.go` (`UsuarioPlusRepository/Service`),
+  `services/usuario_plus_service.go`, `handler/http/usuario_plus.go` (`RequierePlus` y
+  `AdminCambiar`, + test) y `user_handler.go`: `performUpdate` conserva `es_plus` siempre, y
+  `customer_status` y `role` cuando edita el propio usuario (`PUT /api/me`); el panel
+  (`PUT /api/users/{id}`) sí cambia esos dos. `legacy_plus_item_handler.go`: la lista pública deja
+  vacío el texto de los beneficios y `ListBeneficios` lo da completo. En `main.go`: los foros (leer y
+  escribir) y `GET /api/legacy-plus/beneficios` van detrás de `RequierePlus`; las lecturas de foros
+  salen del grupo público. Nuevo `PUT /api/admin/users/{id}/plus` (`AdminOnly`). **La migración va
+  antes que el binario:** sin la columna, `FindByID` falla.
+- **Criterios de QA** (los 13 comprobados en local contra un usuario real):
+  1. `GET /api/forums` sin sesión: 401. Con un usuario sin plus: 403 «Esta sección es para usuarios
+     Legacy+.», también para publicar y para `/api/legacy-plus/beneficios`.
+  2. `PUT /api/me` con `es_plus`, `customer_status` o `role`: 200, pero no cambia ninguno.
+  3. `PUT /api/admin/users/{id}/plus` con token de usuario normal: 403; con el del panel, 200 y
+     `/api/me` devuelve `es_plus: true`.
+  4. Con plus: foros 200 y beneficios con su texto. Quitado el plus en el panel: 403 al momento.
+  5. `GET /api/legacy-plus/items` sin sesión: los beneficios llegan con el texto vacío.
+  6. `GET /api/users` (panel) incluye `es_plus`.
+
 ### [2026-10-13]: Tarjeta «Diagnósticos» y contenido de Legacy+ administrable
 - **Alcance:** migración `scripts/20261013_tarjeta_diagnosticos.sql` (fila `diagnosticos`, orden 85)
   y migración `scripts/20261013_legacy_plus_contenido.sql` (tabla `core.legacy_plus_items` sembrada

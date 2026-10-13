@@ -109,6 +109,12 @@ type User struct {
 	// {"debe_cambiar_contrasena": false} al editar su perfil.
 	DebeCambiarContrasena bool `json:"debe_cambiar_contrasena" db:"debe_cambiar_contrasena"`
 
+	// EsPlus: usuario Legacy+ (20261013_usuario_plus.sql). Abre los foros, la
+	// sección Beneficios y las filas Legacy+ del Inicio. **Solo el panel lo
+	// cambia**, con PUT /api/admin/users/{id}/plus: el UPDATE general no lo
+	// escribe y performUpdate lo conserva.
+	EsPlus bool `json:"es_plus" db:"es_plus"`
+
 	IdentificationType         string `json:"identification_type" db:"identification_type"`
 	IdentificationNumber       string `json:"identification_number" db:"identification_number"`
 	CustomerStatus             string `json:"customer_status" db:"customer_status"`

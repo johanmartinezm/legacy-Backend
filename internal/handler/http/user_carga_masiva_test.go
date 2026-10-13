@@ -31,7 +31,7 @@ func TestPerformUpdate_NoDejaQuitarseLaObligacionDeCambiarContrasena(t *testing.
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.performUpdate(rec, req, "u1")
+	h.performUpdate(rec, req, "u1", true)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("se esperaba 200, se obtuvo %d (%s)", rec.Code, rec.Body.String())
@@ -68,7 +68,7 @@ func TestPerformUpdate_NoInventaLaObligacionDeCambiarContrasena(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.performUpdate(rec, req, "u1")
+	h.performUpdate(rec, req, "u1", true)
 
 	if stub.recibido == nil || stub.recibido.DebeCambiarContrasena {
 		t.Error("el PUT puso debe_cambiar_contrasena en true")
@@ -92,7 +92,7 @@ func TestPerformUpdate_AceptaSexoDepartamentoYDireccion(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.performUpdate(rec, req, "u1")
+	h.performUpdate(rec, req, "u1", true)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("se esperaba 200, se obtuvo %d (%s)", rec.Code, rec.Body.String())

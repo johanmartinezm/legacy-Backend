@@ -94,7 +94,7 @@ func TestPerformUpdate_AceptaFechaSolaDelPanel(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.performUpdate(rec, req, "u1")
+	h.performUpdate(rec, req, "u1", false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("se esperaba 200, se obtuvo %d (%s)", rec.Code, rec.Body.String())
@@ -127,7 +127,7 @@ func TestPerformUpdate_AceptaRFC3339YFormatoDDMMYYYY(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 			rec := httptest.NewRecorder()
 
-			h.performUpdate(rec, req, "u1")
+			h.performUpdate(rec, req, "u1", true)
 
 			if rec.Code != http.StatusOK {
 				t.Fatalf("se esperaba 200, se obtuvo %d (%s)", rec.Code, rec.Body.String())
@@ -152,7 +152,7 @@ func TestPerformUpdate_SinBirthDateConservaElQueYaTenia(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.performUpdate(rec, req, "u1")
+	h.performUpdate(rec, req, "u1", true)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("se esperaba 200, se obtuvo %d (%s)", rec.Code, rec.Body.String())
@@ -170,7 +170,7 @@ func TestPerformUpdate_FechaDeNacimientoInvalidaDevuelve400(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/api/users/u1", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	h.performUpdate(rec, req, "u1")
+	h.performUpdate(rec, req, "u1", true)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("se esperaba 400, se obtuvo %d (%s)", rec.Code, rec.Body.String())

@@ -261,7 +261,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		h.respondWithError(w, http.StatusBadRequest, "Missing user ID")
 		return
 	}
-	h.performUpdate(w, r, id)
+	h.performUpdate(w, r, id, false)
 }
 
 func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
@@ -270,7 +270,7 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		h.respondWithError(w, http.StatusUnauthorized, "User ID not found in context")
 		return
 	}
-	h.performUpdate(w, r, userID)
+	h.performUpdate(w, r, userID, true)
 }
 
 func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +350,9 @@ func parseBirthDate(value string) (time.Time, error) {
 	return domain.ParsearFechaDeNacimiento(value)
 }
 
-func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id string) {
+// performUpdate sirve a PUT /api/me (propio = true, el usuario edita su perfil)
+// y a PUT /api/users/{id} (propio = false, el panel).
+func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id string, propio bool) {
 	user, err := h.authService.GetProfile(r.Context(), id)
 	if err != nil {
 		h.respondWithError(w, http.StatusNotFound, "User not found")
@@ -400,6 +402,14 @@ func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id s
 	// después; el UPDATE del repositorio tampoco escribe esa columna, así que
 	// son dos cierres para la misma puerta.
 	debeCambiarContrasena := user.DebeCambiarContrasena
+	// Lo mismo con lo que da acceso (decisión del 2026-10-13,
+	// reports/20261013_plan_usuario_plus.md): es_plus no lo cambia nadie por
+	// aquí —solo PUT /api/admin/users/{id}/plus—, y customer_status y role
+	// solo el panel. Antes cualquiera se ponía «Ya soy cliente» o cambiaba de
+	// rol mandándolo a /api/me.
+	esPlus := user.EsPlus
+	customerStatus := user.CustomerStatus
+	role := user.Role
 
 	if err := json.Unmarshal(body, user); err != nil {
 		h.respondWithError(w, http.StatusBadRequest, "Invalid request body")
@@ -407,6 +417,11 @@ func (h *UserHandler) performUpdate(w http.ResponseWriter, r *http.Request, id s
 	}
 	user.ID = id
 	user.DebeCambiarContrasena = debeCambiarContrasena
+	user.EsPlus = esPlus
+	if propio {
+		user.CustomerStatus = customerStatus
+		user.Role = role
+	}
 	// El decode de arriba vuelca el JSON sobre el usuario ya cargado, así que el
 	// cliente también puede cambiar el rol por aquí y llegar al mismo 22P02.
 	if !domain.IsValidRole(user.Role) {

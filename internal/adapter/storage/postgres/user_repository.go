@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
@@ -257,7 +258,8 @@ func (r *UserRepository) FindAll(ctx context.Context, limit, offset int) ([]*dom
 			COALESCE(email_verified, false),
 			COALESCE(created_at, CURRENT_TIMESTAMP),
 			COALESCE(updated_at, CURRENT_TIMESTAMP),
-			COALESCE(alias, '')
+			COALESCE(alias, ''),
+			COALESCE(es_plus, false)
 		FROM core.users
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC, id DESC
@@ -300,6 +302,7 @@ func (r *UserRepository) FindAll(ctx context.Context, limit, offset int) ([]*dom
 			&user.CreatedAt,
 			&user.UpdatedAt,
 			&user.Alias,
+			&user.EsPlus,
 		)
 		if err != nil {
 			return nil, err
@@ -361,7 +364,8 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 			terms_version,
 			terms_accepted_at,
 			data_sharing_version,
-			data_sharing_accepted_at
+			data_sharing_accepted_at,
+			COALESCE(es_plus, false)
 		FROM core.users
 		WHERE id = $1
 	`
@@ -414,6 +418,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 		&user.TermsAcceptedAt,
 		&user.DataSharingVersion,
 		&user.DataSharingAcceptedAt,
+		&user.EsPlus,
 	)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
@@ -423,6 +428,41 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*domain.User,
 	}
 
 	return &user, nil
+}
+
+// EsPlus dice si el usuario es Legacy+. Una cuenta borrada o inexistente no
+// lo es: devuelve false sin error, y RequierePlus responde 403.
+func (r *UserRepository) EsPlus(ctx context.Context, userID string) (bool, error) {
+	if !idValido(userID) {
+		return false, nil
+	}
+	var esPlus bool
+	err := r.db.QueryRow(ctx,
+		`SELECT COALESCE(es_plus, false) FROM core.users WHERE id = $1 AND deleted_at IS NULL`,
+		userID).Scan(&esPlus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return esPlus, err
+}
+
+// SetEsPlus es la única escritura de es_plus. Devuelve domain.ErrNotFound si
+// el usuario no existe o está borrado.
+func (r *UserRepository) SetEsPlus(ctx context.Context, userID string, esPlus bool) error {
+	if !idValido(userID) {
+		return domain.ErrNotFound
+	}
+	tag, err := r.db.Exec(ctx,
+		`UPDATE core.users SET es_plus = $1, updated_at = CURRENT_TIMESTAMP
+		  WHERE id = $2 AND deleted_at IS NULL`,
+		esPlus, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
