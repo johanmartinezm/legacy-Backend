@@ -150,6 +150,12 @@ func main() {
 	paginaService := services.NewPaginaService(paginaRepo)
 	paginaHandler := handler.NewPaginaHandler(paginaService)
 
+	// Imágenes de las tarjetas del Inicio de la app, que el panel cambia.
+	// scripts/20261012_secciones_inicio.sql.
+	seccionInicioRepo := postgres.NewSeccionInicioRepository(dbPool)
+	seccionInicioService := services.NewSeccionInicioService(seccionInicioRepo)
+	seccionInicioHandler := handler.NewSeccionInicioHandler(seccionInicioService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -332,6 +338,9 @@ func main() {
 		// Páginas informativas (Public read): la app las pide por slug.
 		r.Get("/api/paginas/{slug}", paginaHandler.Get)
 
+		// Imágenes de las tarjetas del Inicio (Public read).
+		r.Get("/api/inicio/secciones", seccionInicioHandler.List)
+
 		// Custom Content routes (Public)
 		r.Get("/api/content/categories", contentHandler.ListCategories)
 		r.Get("/api/content/items", contentHandler.ListContent)
@@ -480,6 +489,11 @@ func main() {
 		// borran desde el panel porque cada una tiene su pantalla en la app.
 		r.Get("/api/admin/paginas", paginaHandler.AdminList)
 		r.Put("/api/admin/paginas/{slug}", paginaHandler.AdminUpdate)
+
+		// Admin: imágenes del Inicio. Solo listar y cambiar la imagen; las
+		// secciones las define la app, no el panel.
+		r.Get("/api/admin/inicio/secciones", seccionInicioHandler.List)
+		r.Put("/api/admin/inicio/secciones/{slug}", seccionInicioHandler.AdminUpdate)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)

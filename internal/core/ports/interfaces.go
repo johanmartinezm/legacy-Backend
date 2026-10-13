@@ -237,6 +237,18 @@ type PaginaService interface {
 	ActualizarPagina(ctx context.Context, pagina *domain.PaginaInformativa) error
 }
 
+// SeccionInicioRepository y SeccionInicioService solo listan y cambian la
+// imagen: las secciones las siembra una migración, una por tarjeta del Inicio.
+type SeccionInicioRepository interface {
+	ListAll(ctx context.Context) ([]*domain.SeccionInicio, error)
+	ActualizarImagen(ctx context.Context, slug, imagenURL string) (*domain.SeccionInicio, error)
+}
+
+type SeccionInicioService interface {
+	ListSecciones(ctx context.Context) ([]*domain.SeccionInicio, error)
+	CambiarImagen(ctx context.Context, slug, imagenURL string) (*domain.SeccionInicio, error)
+}
+
 type ContentCategoryRepository interface {
 	Create(ctx context.Context, cat *domain.ContentCategory) error
 	ListAll(ctx context.Context) ([]*domain.ContentCategory, error)
