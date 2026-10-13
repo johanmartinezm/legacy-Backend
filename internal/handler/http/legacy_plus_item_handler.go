@@ -30,19 +30,15 @@ func responderLegacyPlusItems(w http.ResponseWriter, items []*domain.LegacyPlusI
 }
 
 // ListActivos atiende GET /api/legacy-plus/items: lo que pinta la pantalla
-// Legacy+, que es pública. De los beneficios solo da el título: el detalle
-// —descuentos, códigos— es para usuarios Legacy+ (ListBeneficios).
+// Legacy+, que es pública, con todos los textos. Unas horas del 2026-10-13 los
+// beneficios salieron aquí sin texto, reservado a usuarios Legacy+; el cliente
+// aclaró que es solo informativo y debe verlo todo el mundo.
 func (h *LegacyPlusItemHandler) ListActivos(w http.ResponseWriter, r *http.Request) {
 	items, err := h.service.ListActivos(r.Context())
 	if err != nil {
 		log.Printf("legacy+: error listando puntos activos: %v", err)
 		http.Error(w, "no se pudieron leer los puntos", http.StatusInternalServerError)
 		return
-	}
-	for _, i := range items {
-		if i.Grupo == "beneficios" {
-			i.Texto = ""
-		}
 	}
 	responderLegacyPlusItems(w, items)
 }

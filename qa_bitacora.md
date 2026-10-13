@@ -4,6 +4,15 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-13]: La pantalla Legacy+ vuelve a mostrar el texto de los beneficios
+- **Alcance:** `internal/handler/http/legacy_plus_item_handler.go`. `GET /api/legacy-plus/items`
+  deja de vaciar el texto de los puntos «beneficios»: el cliente aclaró que es información pública,
+  no un dato del usuario. `GET /api/legacy-plus/beneficios` (sección Beneficios) sigue detrás de
+  `RequierePlus`.
+- **Criterios de QA:**
+  1. `GET /api/legacy-plus/items` sin sesión: «Legacy Network» y «Beneficios de aliados» con texto.
+  2. La pantalla Legacy+ de la app los muestra con su descripción, sin reinstalar.
+
 ### [2026-10-13]: Usuario Legacy+ (`es_plus`) y validación de acceso
 - **Alcance:** plan en `reports/20261013_plan_usuario_plus.md` (repositorio raíz), fase 1.
   Migración `scripts/20261013_usuario_plus.sql` (`core.users.es_plus`, `false` para todos).
