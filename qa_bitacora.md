@@ -4,6 +4,21 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-12]: Las imágenes con espacios o paréntesis en el nombre daban 404
+- **Alcance:** `internal/handler/http/image_handler.go` y su test. Una imagen subida como
+  «foto (1).jpeg» se pide como `foto%20(1).jpeg` (espacio codificado, paréntesis no, como lo hacen
+  el navegador y la app). Go conserva esa ruta cruda, chi la entrega sin decodificar y `GetImage`
+  buscaba en disco un nombre con «%20»: 404. Pasó con la primera imagen del Inicio (Nuevo cada
+  semana), que no se veía ni en la app ni en el panel. Ahora `GetImage` decodifica el nombre antes
+  de `filepath.Base`, y `UploadImage` deja en los nombres nuevos solo letras, números, «.», «_» y
+  «-».
+- **Criterios de QA:**
+  1. La imagen de Nuevo cada semana se ve en la app (confirmado en el teléfono) y en el panel.
+  2. Subir una imagen llamada «prueba (1).jpg»: el nombre devuelto es `<uuid>_prueba--1-.jpg` y
+     se ve.
+  3. `/api/images/..%2F<archivo>` sigue respondiendo 404.
+- **Rollback:** `server_linux.bak.20261012_2050`.
+
 ### [2026-10-12]: Imágenes de las secciones del Inicio, editables desde el panel
 - **Alcance:** tabla `core.secciones_inicio` (`scripts/20261012_secciones_inicio.sql`, 11 filas
   sembradas sin imagen; «Beneficios» es una sola para sus dos tarjetas), `domain/seccion_inicio.go`,
