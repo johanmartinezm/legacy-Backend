@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGetMyRegistrations(t *testing.T) {
@@ -141,4 +142,39 @@ func TestQRDataEsImpredecible(t *testing.T) {
 			t.Errorf("esperaba conservar el código, llegó %q", reg.QRData)
 		}
 	})
+}
+
+// Decision del 2026-10-14: la credencial ensenaba el QR de eventos de prueba
+// internos ya desactivados. Se ocultan los desactivados que ya pasaron; los
+// desactivados futuros se conservan, porque desactivar solo quita el evento del
+// listado y quien ya esta inscrito tiene que poder entrar.
+func TestGetMyRegistrationsOcultaDesactivadosPasados(t *testing.T) {
+	dia := func(s string) time.Time { d, _ := time.Parse("2006-01-02", s); return d }
+	ayer := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
+	manana := time.Now().AddDate(0, 0, 2).Format("2006-01-02")
+	finFuturo := dia(manana)
+
+	mock := &MockEventRepository{
+		GetRegistrationsByUserFunc: func(ctx context.Context, uID string) ([]domain.UserRegistration, error) {
+			return []domain.UserRegistration{
+				{EventTitle: "inactivo pasado", EventStatus: domain.EventoInactivo, EventStartDate: dia(ayer)},
+				{EventTitle: "inactivo futuro", EventStatus: domain.EventoInactivo, EventStartDate: dia(manana)},
+				{EventTitle: "activo pasado", EventStatus: domain.EventoActivo, EventStartDate: dia(ayer)},
+				// Empezo antes pero sigue en curso: no ha terminado.
+				{EventTitle: "inactivo en curso", EventStatus: domain.EventoInactivo, EventStartDate: dia(ayer), EventEndDate: &finFuturo},
+			}, nil
+		},
+	}
+
+	regs, err := NewEventService(mock, nil).GetMyRegistrations(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("no esperaba error, llego %v", err)
+	}
+	var titulos []string
+	for _, r := range regs {
+		titulos = append(titulos, r.EventTitle)
+	}
+	if strings.Join(titulos, "|") != "inactivo futuro|activo pasado|inactivo en curso" {
+		t.Fatalf("inscripciones devueltas: %v", titulos)
+	}
 }

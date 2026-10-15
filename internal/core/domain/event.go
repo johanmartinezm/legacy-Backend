@@ -301,6 +301,9 @@ type UserRegistration struct {
 	AccessURL           string  `json:"accessUrl"`
 	TotalPaid           float64 `json:"totalPaid"`
 	AttendanceConfirmed bool    `json:"attendanceConfirmed"`
+	// EventStatus solo sirve para que GetMyRegistrations descarte los eventos
+	// desactivados que ya pasaron; no viaja a la app.
+	EventStatus string `json:"-"`
 }
 
 // EventRegistrant es una inscripción vista desde la organización del evento:

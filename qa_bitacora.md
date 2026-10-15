@@ -4,6 +4,21 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-14]: «Mi credencial» deja de mostrar eventos desactivados que ya pasaron
+- **Alcance:** `GetMyRegistrations` (`core/services/event_service.go`), la consulta
+  `GetRegistrationsByUser` (añade `e.status`) y `domain.UserRegistration.EventStatus` (no viaja en
+  el JSON). La credencial enseñaba el QR de tres eventos «Verificación interna» de agosto a octubre,
+  desactivados. Decisión del usuario: se ocultan solo los desactivados **que ya pasaron**; los
+  desactivados futuros se conservan, porque desactivar quita el evento del listado pero quien está
+  inscrito debe poder entrar (`domain/event.go`, `EventoInactivo`). «Pasado» se mide contra el
+  último día (`end_date` o `start_date`) y el día de hoy en Colombia, con zona fija UTC-5.
+- **Criterios de QA:**
+  1. Usuario inscrito en un evento desactivado y ya terminado: no aparece en
+     `GET /api/me/registrations`.
+  2. Evento desactivado que aún no ocurre: sigue apareciendo, con su QR.
+  3. Evento activo ya terminado: sigue apareciendo.
+  4. Prueba: `mis_inscripciones_test.go`; comprobado contra la base local con el backend real.
+
 ### [2026-10-14]: Cuatro foros fijos; la app ya no crea foros
 - **Alcance:** decisión del cliente: los foros son Empresa, Patrimonio, Familia y Otros, y solo el
   panel los crea. Se retira `POST /api/forums` (`cmd/server/main.go`) con `CreateUserForum` en

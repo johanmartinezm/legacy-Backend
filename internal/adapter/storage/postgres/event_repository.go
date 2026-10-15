@@ -375,7 +375,7 @@ func (r *EventRepository) GetRegistrationsByUser(ctx context.Context, userID str
 	query := `
 		SELECT r.id, r.event_id, e.title, e.location, e.is_virtual, e.start_date, e.end_date, e.image_url,
 		       r.payment_status, r.registration_status, r.registration_date,
-		       r.qr_data, e.access_url, r.total_paid, r.attendance_confirmed
+		       r.qr_data, e.access_url, r.total_paid, r.attendance_confirmed, e.status
 		FROM events.registrations r
 		JOIN events.events e ON r.event_id = e.id
 		WHERE r.user_id = $1
@@ -396,7 +396,7 @@ func (r *EventRepository) GetRegistrationsByUser(ctx context.Context, userID str
 			&reg.ID, &reg.EventID, &reg.EventTitle, &reg.EventLocation, &reg.EventIsVirtual,
 			&reg.EventStartDate, &reg.EventEndDate, &reg.EventImageUrl,
 			&reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
-			&qrData, &accessURL, &reg.TotalPaid, &reg.AttendanceConfirmed,
+			&qrData, &accessURL, &reg.TotalPaid, &reg.AttendanceConfirmed, &reg.EventStatus,
 		); err != nil {
 			return nil, err
 		}

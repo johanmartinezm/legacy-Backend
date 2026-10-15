@@ -8,9 +8,30 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+// colombia es UTC-5 todo el año (no hay horario de verano). Zona fija y no
+// LoadLocation: la imagen alpine de produccion no garantiza tener tzdata.
+var colombia = time.FixedZone("COT", -5*60*60)
+
+// hoyEnColombia devuelve el dia de hoy en Colombia como AAAA-MM-DD.
+func hoyEnColombia(ahora time.Time) string {
+	return ahora.In(colombia).Format("2006-01-02")
+}
+
+// eventoTerminado dice si el ultimo dia del evento ya quedo atras. start_date y
+// end_date son columnas `date`: llegan como medianoche UTC y se comparan como
+// dia, sin zona.
+func eventoTerminado(reg domain.UserRegistration, hoy string) bool {
+	fin := reg.EventStartDate
+	if reg.EventEndDate != nil {
+		fin = *reg.EventEndDate
+	}
+	return fin.UTC().Format("2006-01-02") < hoy
+}
 
 type EventService struct {
 	repo ports.EventRepository
@@ -369,10 +390,23 @@ func (s *EventService) GenerarCredenciales(ctx context.Context, eventID string, 
 // Cada modalidad recibe solo lo suyo: un QR en un evento virtual no sirve para
 // nada y un enlace en uno presencial tampoco. Se limpian aquí, en el servicio, y
 // no en la consulta, para que la regla esté escrita en un solo sitio.
+//
+// Los eventos desactivados que ya pasaron no se devuelven (decisión del
+// 2026-10-14: la credencial enseñaba el QR de tres eventos de prueba internos).
+// Los desactivados que aún no ocurren SÍ: desactivar quita el evento del
+// listado, pero quien ya está inscrito conserva su entrada.
 func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([]domain.UserRegistration, error) {
-	registrations, err := s.repo.GetRegistrationsByUser(ctx, userID)
+	todas, err := s.repo.GetRegistrationsByUser(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	hoy := hoyEnColombia(time.Now())
+	registrations := todas[:0]
+	for _, reg := range todas {
+		if reg.EventStatus == domain.EventoInactivo && eventoTerminado(reg, hoy) {
+			continue
+		}
+		registrations = append(registrations, reg)
 	}
 	for i := range registrations {
 		if registrations[i].RegistrationStatus == domain.RegistrationPendingPayment {
