@@ -69,7 +69,9 @@ func (r *forumRepository) ListForums(ctx context.Context, includeHidden bool) ([
 	if !includeHidden {
 		query += ` AND f.status IN ('active', 'locked')`
 	}
-	query += ` ORDER BY f.created_at DESC`
+	// orden lo fija la migración 20261014_foros_fijos.sql (Empresa, Patrimonio,
+	// Familia, Otros); un foro nuevo del panel entra con 100 y va al final.
+	query += ` ORDER BY f.orden, f.created_at, f.id`
 
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {

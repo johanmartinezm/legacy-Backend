@@ -42,36 +42,6 @@ func (h *ForumHandler) ListPublicForums(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(forums)
 }
 
-func (h *ForumHandler) CreateUserForum(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(UserIDKey).(string)
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	var forum domain.Forum
-	if err := json.NewDecoder(r.Body).Decode(&forum); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.forumService.CreateUserForum(r.Context(), userID, &forum); err != nil {
-		if err.Error() == "alias_required" {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-			return
-		}
-		// Added logging to track down 500 error
-		importLog := "log"
-		_ = importLog // Just a mental note to import log, wait I'll use standard print
-		println("Error in ProposeForum:", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(forum)
-}
-
 func (h *ForumHandler) ListPosts(w http.ResponseWriter, r *http.Request) {
 	forumID := chi.URLParam(r, "forumID")
 	limitStr := r.URL.Query().Get("limit")

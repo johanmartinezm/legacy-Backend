@@ -4,6 +4,26 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-14]: Cuatro foros fijos; la app ya no crea foros
+- **Alcance:** decisión del cliente: los foros son Empresa, Patrimonio, Familia y Otros, y solo el
+  panel los crea. Se retira `POST /api/forums` (`cmd/server/main.go`) con `CreateUserForum` en
+  handler, servicio y puerto; también se va el `println` de depuración que tenía. La migración
+  `scripts/20261014_foros_fijos.sql` añade `core.forums.orden`, deja activos los cuatro en ese orden
+  (reutiliza el más antiguo con el mismo título, sin distinguir mayúsculas, y si no lo hay lo crea) y
+  retira el resto con borrado lógico: sus publicaciones se conservan. `ListForums` ordena por
+  `orden, created_at, id`; un foro nuevo del panel entra con `orden` 100 y va al final.
+- 🔴 **Aplicar la migración ANTES de desplegar el binario:** sin la columna, `GET /api/forums` y
+  `GET /api/admin/forums` responden 500 (`column f.orden does not exist`).
+- La versión de la app que está en las tiendas sigue mostrando el botón «+»: al crear un foro
+  recibe 405 y muestra un error. Se acepta hasta publicar la versión nueva.
+- **Criterios de QA:**
+  1. `GET /api/forums` con un usuario Legacy+ devuelve exactamente Empresa, Patrimonio, Familia y
+     Otros, en ese orden.
+  2. `POST /api/forums` responde 405.
+  3. Publicar y reportar en cualquiera de los cuatro sigue funcionando (201 y 200).
+  4. En el panel, crear un foro nuevo funciona y aparece después de Otros.
+  5. Ejecutar la migración una segunda vez no cambia nada.
+
 ### [2026-10-13]: Sección Beneficios con contenido propio: beneficios y alianzas
 - **Alcance:** migración `scripts/20261013_beneficios.sql` (tabla `core.beneficios`: tipo
   «beneficio» o «alianza», título, descripción, imagen, enlace, orden, activo; nace vacía) y corte

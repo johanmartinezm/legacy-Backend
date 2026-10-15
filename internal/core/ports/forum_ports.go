@@ -42,7 +42,6 @@ type ForumService interface {
 
 	// App (Flutter)
 	ListPublicForums(ctx context.Context) ([]*domain.Forum, error)
-	CreateUserForum(ctx context.Context, userID string, forum *domain.Forum) error
 	GetForumThread(ctx context.Context, forumID string, limit, offset int) ([]*domain.ForumPost, error)
 	PublishPost(ctx context.Context, userID, forumID, content, imageURL string, parentID *string) (*domain.ForumPost, error)
 	ReportPost(ctx context.Context, reporterID, postID, reason string) error

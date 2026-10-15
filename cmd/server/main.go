@@ -462,7 +462,8 @@ func main() {
 			r.Use(requierePlus)
 			r.Get("/api/forums", forumHandler.ListPublicForums)
 			r.Get("/api/forums/{forumID}/posts", forumHandler.ListPosts)
-			r.Post("/api/forums", forumHandler.CreateUserForum)
+			// POST /api/forums se retiró el 2026-10-14: los foros son cuatro
+			// fijos y solo el panel los crea (POST /api/admin/forums).
 			r.Post("/api/forums/{forumID}/posts", forumHandler.PublishPost)
 			r.Post("/api/forums/posts/{postID}/report", forumHandler.ReportPost)
 			r.Get("/api/beneficios", beneficioHandler.ListActivos)

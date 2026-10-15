@@ -72,21 +72,6 @@ func (s *forumService) ListPublicForums(ctx context.Context) ([]*domain.Forum, e
 	return s.repo.ListForums(ctx, false) // exclude hidden
 }
 
-func (s *forumService) CreateUserForum(ctx context.Context, userID string, forum *domain.Forum) error {
-	user, err := s.userRepo.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if user.Alias == "" {
-		return errors.New("alias_required")
-	}
-
-	forum.Status = domain.ForumStatusActive
-	forum.CreatedByUserID = &userID
-	forum.CreatedByAdmin = false
-	return s.repo.CreateForum(ctx, forum)
-}
-
 func (s *forumService) GetForumThread(ctx context.Context, forumID string, limit, offset int) ([]*domain.ForumPost, error) {
 	return s.repo.ListPosts(ctx, forumID, limit, offset)
 }
