@@ -53,8 +53,8 @@ BEGIN
          LIMIT 1;
 
         IF foro_id IS NULL THEN
-            INSERT INTO core.forums (title, description, status, created_by_admin, orden)
-            VALUES (fijos[i], descripciones[i], 'active', true, i)
+            INSERT INTO core.forums (title, description, cover_url, status, created_by_admin, orden)
+            VALUES (fijos[i], descripciones[i], '', 'active', true, i)
             RETURNING id INTO foro_id;
         ELSE
             UPDATE core.forums

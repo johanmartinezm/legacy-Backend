@@ -59,7 +59,7 @@ func (r *forumRepository) UnlockForum(ctx context.Context, forumID string) error
 
 func (r *forumRepository) ListForums(ctx context.Context, includeHidden bool) ([]*domain.Forum, error) {
 	query := `
-		SELECT f.id, f.title, f.description, f.cover_url, f.status, f.created_by_admin, f.created_at, f.updated_at,
+		SELECT f.id, f.title, COALESCE(f.description, ''), COALESCE(f.cover_url, ''), f.status, f.created_by_admin, f.created_at, f.updated_at,
 		       COALESCE(u.alias, '') as author_alias,
 		       (SELECT COUNT(*) FROM core.forum_posts fp WHERE fp.forum_id = f.id AND fp.status = 'active') as post_count
 		FROM core.forums f
@@ -92,7 +92,7 @@ func (r *forumRepository) ListForums(ctx context.Context, includeHidden bool) ([
 
 func (r *forumRepository) GetForumByID(ctx context.Context, forumID string) (*domain.Forum, error) {
 	query := `
-		SELECT f.id, f.title, f.description, f.cover_url, f.status, f.created_by_admin, f.created_at, f.updated_at,
+		SELECT f.id, f.title, COALESCE(f.description, ''), COALESCE(f.cover_url, ''), f.status, f.created_by_admin, f.created_at, f.updated_at,
 		       COALESCE(u.alias, '') as author_alias,
 		       (SELECT COUNT(*) FROM core.forum_posts fp WHERE fp.forum_id = f.id AND fp.status = 'active') as post_count
 		FROM core.forums f
@@ -121,7 +121,7 @@ func (r *forumRepository) CreatePost(ctx context.Context, post *domain.ForumPost
 
 func (r *forumRepository) ListPosts(ctx context.Context, forumID string, limit, offset int) ([]*domain.ForumPost, error) {
 	query := `
-		SELECT p.id, p.forum_id, p.parent_id, p.content, p.image_url, p.status, p.created_at,
+		SELECT p.id, p.forum_id, p.parent_id, p.content, COALESCE(p.image_url, ''), p.status, p.created_at,
 		       COALESCE(u.alias, '') as author_alias,
 		       (SELECT COUNT(*) FROM core.forum_posts r WHERE r.parent_id = p.id AND r.status = 'active') as reply_count
 		FROM core.forum_posts p
@@ -151,7 +151,7 @@ func (r *forumRepository) ListPosts(ctx context.Context, forumID string, limit, 
 
 func (r *forumRepository) ListAllPostsForAdmin(ctx context.Context, forumID string) ([]*domain.ForumPost, error) {
 	query := `
-		SELECT p.id, p.forum_id, p.parent_id, p.content, p.image_url, p.status, p.created_at,
+		SELECT p.id, p.forum_id, p.parent_id, p.content, COALESCE(p.image_url, ''), p.status, p.created_at,
 		       COALESCE(u.alias, '') as author_alias,
 		       0 as reply_count
 		FROM core.forum_posts p
@@ -210,7 +210,7 @@ func (r *forumRepository) ReportPost(ctx context.Context, report *domain.ForumPo
 
 func (r *forumRepository) ListFlaggedPosts(ctx context.Context) ([]*domain.ForumPost, error) {
 	query := `
-		SELECT p.id, p.forum_id, p.parent_id, p.content, p.image_url, p.status, p.created_at,
+		SELECT p.id, p.forum_id, p.parent_id, p.content, COALESCE(p.image_url, ''), p.status, p.created_at,
 		       COALESCE(u.alias, '') as author_alias,
 			   p.report_count
 		FROM core.forum_posts p

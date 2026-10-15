@@ -18,6 +18,11 @@ Entrada de trabajo para validación de API.
 - **Desplegado el mismo día**, con respaldo previo `backup_20261014_1925_pre_foros_fijos.sql.gz` en
   el servidor. Se retiraron «Dolar» (3 comentarios) y «Panorama económico por cambio presidencial»
   (0); siguen en la base con `status = 'deleted'`.
+- 🔴 **Tras desplegar, `GET /api/forums` dio 500** («cannot scan null into *string»): la migración
+  creó los foros sin `cover_url` y el repositorio lo leía en un `string`. En local no se vio porque
+  la migración se comprobó con `psql`, no a través del repositorio. Arreglo: `COALESCE` en
+  `description`, `cover_url` e `image_url` de las consultas de foros, la migración ya inserta `''`, y
+  `forum_nulos_test.go` lo cubre contra la base local. Redesplegado el mismo día.
 - La versión de la app que está en las tiendas sigue mostrando el botón «+»: al crear un foro
   recibe 405 y muestra un error. Se acepta hasta publicar la versión nueva.
 - **Criterios de QA:**
