@@ -11,6 +11,9 @@ type AsesoriaUnidad struct {
 	Subtitulo string `json:"subtitulo" db:"subtitulo"`
 	// Icono es una clave de IconosAsesoria; la app la traduce a un icono.
 	Icono string `json:"icono" db:"icono"`
+	// ImagenURL es un icono o imagen subido desde el panel. Si está, la app lo
+	// pinta en lugar de Icono; vacío, sigue el icono de la lista.
+	ImagenURL string `json:"imagen_url" db:"imagen_url"`
 	// Necesidad es la opción de «¿Qué necesita?» que el formulario marca al
 	// entrar por esta unidad. Una de NecesidadesAsesoria.
 	Necesidad     string    `json:"necesidad" db:"necesidad"`

@@ -52,6 +52,21 @@ func TestValidarUnidadAsesoria(t *testing.T) {
 		}
 	})
 
+	t.Run("la imagen se guarda recortada y vacía vale", func(t *testing.T) {
+		repo := &repoUnidadesFake{}
+		u := valida()
+		u.ImagenURL = "  https://app.legacynetworkco.com/api/images/x.png "
+		if err := NewAsesoriaUnidadService(repo).Crear(context.Background(), u); err != nil {
+			t.Fatalf("error inesperado: %v", err)
+		}
+		if repo.creada.ImagenURL != "https://app.legacynetworkco.com/api/images/x.png" {
+			t.Fatalf("imagen = %q", repo.creada.ImagenURL)
+		}
+		if err := NewAsesoriaUnidadService(repo).Crear(context.Background(), valida()); err != nil {
+			t.Fatalf("sin imagen debía valer: %v", err)
+		}
+	})
+
 	casos := []struct {
 		nombre string
 		cambia func(*domain.AsesoriaUnidad)
@@ -62,6 +77,7 @@ func TestValidarUnidadAsesoria(t *testing.T) {
 		{"subtítulo largo", func(u *domain.AsesoriaUnidad) { u.Subtitulo = strings.Repeat("a", 121) }, ErrUnidadSubtituloLargo},
 		{"necesidad inventada", func(u *domain.AsesoriaUnidad) { u.Necesidad = "Cripto" }, ErrUnidadNecesidad},
 		{"icono inventado", func(u *domain.AsesoriaUnidad) { u.Icono = "cohete" }, ErrUnidadIcono},
+		{"imagen sin http", func(u *domain.AsesoriaUnidad) { u.ImagenURL = "logo.png" }, ErrUnidadImagen},
 	}
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {

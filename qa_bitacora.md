@@ -4,6 +4,19 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-15]: Icono o imagen propia por unidad de Asesoría
+- **Alcance:** migración `scripts/20261015_asesoria_unidades_imagen.sql` (añade
+  `core.asesoria_unidades.imagen_url`, **va antes que el binario**), `domain/asesoria_unidad.go`
+  (`ImagenURL`), `asesoria_unidad_repository.go` (alta, edición y listado) y
+  `asesoria_unidad_service.go` (recorta y exige `http://` o `https://`; vacía vale). Al editar, una
+  imagen vacía la quita. Pruebas: `asesoria_unidad_service_test.go` y la de integración
+  `asesoria_unidad_imagen_test.go`.
+- **Criterios de QA:**
+  1. `GET /api/asesoria/unidades` devuelve `imagen_url` en cada unidad (vacío en las de siempre).
+  2. Guardar una unidad con imagen desde el panel: la devuelve el listado.
+  3. Guardar con `imagen_url` «logo.png»: 400 con «la imagen debe ser una dirección http:// o https://».
+  4. Editar y vaciar la imagen: el listado la devuelve vacía.
+
 ### [2026-10-14]: «Mi credencial» deja de mostrar eventos desactivados que ya pasaron
 - **Alcance:** `GetMyRegistrations` (`core/services/event_service.go`), la consulta
   `GetRegistrationsByUser` (añade `e.status`) y `domain.UserRegistration.EventStatus` (no viaja en

@@ -24,12 +24,13 @@ var (
 	ErrUnidadSubtituloLargo = fmt.Errorf("el subtítulo admite hasta %d caracteres", maxSubtituloUnidad)
 	ErrUnidadNecesidad      = errors.New("la necesidad no es una de las opciones del formulario")
 	ErrUnidadIcono          = errors.New("el icono no es uno de los disponibles")
+	ErrUnidadImagen         = errors.New("la imagen debe ser una dirección http:// o https://")
 )
 
 // EsErrorDeValidacionUnidad dice si el error es del formulario (400) y no del
 // servidor (500).
 func EsErrorDeValidacionUnidad(err error) bool {
-	for _, e := range []error{ErrUnidadSinTitulo, ErrUnidadTituloLargo, ErrUnidadSubtituloLargo, ErrUnidadNecesidad, ErrUnidadIcono} {
+	for _, e := range []error{ErrUnidadSinTitulo, ErrUnidadTituloLargo, ErrUnidadSubtituloLargo, ErrUnidadNecesidad, ErrUnidadIcono, ErrUnidadImagen} {
 		if errors.Is(err, e) {
 			return true
 		}
@@ -78,6 +79,7 @@ func validarUnidad(u *domain.AsesoriaUnidad) error {
 	u.Subtitulo = strings.TrimSpace(u.Subtitulo)
 	u.Icono = strings.TrimSpace(u.Icono)
 	u.Necesidad = strings.TrimSpace(u.Necesidad)
+	u.ImagenURL = strings.TrimSpace(u.ImagenURL)
 
 	if u.Titulo == "" {
 		return ErrUnidadSinTitulo
@@ -96,6 +98,11 @@ func validarUnidad(u *domain.AsesoriaUnidad) error {
 	}
 	if !slices.Contains(domain.IconosAsesoria, u.Icono) {
 		return ErrUnidadIcono
+	}
+	// La app la pinta tal cual con una petición de red: cualquier otra cosa
+	// (una ruta suelta, un «javascript:») no se puede cargar.
+	if u.ImagenURL != "" && !strings.HasPrefix(u.ImagenURL, "https://") && !strings.HasPrefix(u.ImagenURL, "http://") {
+		return ErrUnidadImagen
 	}
 	return nil
 }
