@@ -4,6 +4,18 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-15]: Legacy Board: pregunta y botones editables
+- **Alcance:** migración `scripts/20261015_paginas_botones.sql` (añade `pregunta_acciones`,
+  `boton_principal` y `boton_secundario` a `core.paginas_informativas` y siembra los textos
+  actuales en Legacy Board; **va antes que el binario**), `domain/pagina_informativa.go`,
+  `pagina_repository.go`, `pagina_service.go` (recorta; pregunta hasta 80 letras y cada botón hasta
+  40, si no 400) y `pagina_handler.go`. Vacío es «el de siempre»: lo pone la app. Pruebas:
+  `pagina_service_test.go` y la de integración `pagina_botones_test.go`.
+- **Criterios de QA:**
+  1. `GET /api/paginas/legacy-board` devuelve los tres textos.
+  2. Editarlos desde el panel: la respuesta trae los nuevos.
+  3. Un botón de más de 40 caracteres: 400 con el límite en el mensaje.
+
 ### [2026-10-15]: Icono o imagen propia por unidad de Asesoría
 - **Alcance:** migración `scripts/20261015_asesoria_unidades_imagen.sql` (añade
   `core.asesoria_unidades.imagen_url`, **va antes que el binario**), `domain/asesoria_unidad.go`

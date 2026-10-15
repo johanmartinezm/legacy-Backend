@@ -5,7 +5,9 @@ import (
 	"applegacy/backend/internal/core/ports"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // ErrTituloVacio protege a la app: la pantalla pinta el título como encabezado,
@@ -16,6 +18,17 @@ var ErrTituloVacio = errors.New("el título de la página no puede estar vacío"
 // ErrCuerpoDemasiadoLargo es del formulario, no de la base: merece un 400 y no
 // el 500 genérico, para que el panel pueda decir qué pasó.
 var ErrCuerpoDemasiadoLargo = errors.New("el contenido de la página es demasiado largo")
+
+// Los botones del pie ocupan el ancho de la pantalla a una línea y la pregunta
+// va encima como encabezado: más largos se cortan en el teléfono.
+const (
+	maxPreguntaAcciones = 80
+	maxTextoBoton       = 40
+)
+
+// ErrTextoBotonLargo es del formulario (400), como ErrCuerpoDemasiadoLargo.
+var ErrTextoBotonLargo = fmt.Errorf(
+	"la pregunta admite hasta %d caracteres y cada botón hasta %d", maxPreguntaAcciones, maxTextoBoton)
 
 // Tope del cuerpo. No es una restricción de la base —la columna es text— sino
 // del lado de la app: la pantalla lo pinta entero, sin paginar.
@@ -52,12 +65,20 @@ func (s *PaginaService) ActualizarPagina(ctx context.Context, pagina *domain.Pag
 	pagina.Subtitulo = strings.TrimSpace(pagina.Subtitulo)
 	pagina.ImagenURL = strings.TrimSpace(pagina.ImagenURL)
 	pagina.Cuerpo = strings.TrimSpace(pagina.Cuerpo)
+	pagina.PreguntaAcciones = strings.TrimSpace(pagina.PreguntaAcciones)
+	pagina.BotonPrincipal = strings.TrimSpace(pagina.BotonPrincipal)
+	pagina.BotonSecundario = strings.TrimSpace(pagina.BotonSecundario)
 
 	if pagina.Titulo == "" {
 		return ErrTituloVacio
 	}
 	if len(pagina.Cuerpo) > maxCuerpoPagina {
 		return ErrCuerpoDemasiadoLargo
+	}
+	if utf8.RuneCountInString(pagina.PreguntaAcciones) > maxPreguntaAcciones ||
+		utf8.RuneCountInString(pagina.BotonPrincipal) > maxTextoBoton ||
+		utf8.RuneCountInString(pagina.BotonSecundario) > maxTextoBoton {
+		return ErrTextoBotonLargo
 	}
 
 	return s.repo.Update(ctx, pagina)

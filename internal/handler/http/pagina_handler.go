@@ -77,7 +77,8 @@ func (h *PaginaHandler) AdminUpdate(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			http.Error(w, "la página no existe", http.StatusNotFound)
-		case errors.Is(err, services.ErrTituloVacio), errors.Is(err, services.ErrCuerpoDemasiadoLargo):
+		case errors.Is(err, services.ErrTituloVacio), errors.Is(err, services.ErrCuerpoDemasiadoLargo),
+			errors.Is(err, services.ErrTextoBotonLargo):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
 			log.Printf("paginas: error actualizando %q: %v", slug, err)

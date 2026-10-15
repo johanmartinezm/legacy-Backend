@@ -17,15 +17,21 @@ func NewPaginaRepository(db *pgxpool.Pool) *PaginaRepository {
 	return &PaginaRepository{db: db}
 }
 
-const camposPagina = `slug, titulo, subtitulo, imagen_url, cuerpo, publicada, actualizada_en`
+const camposPagina = `slug, titulo, subtitulo, imagen_url, cuerpo, publicada, actualizada_en,
+	pregunta_acciones, boton_principal, boton_secundario`
+
+func escanearPagina(row pgx.Row, p *domain.PaginaInformativa) error {
+	return row.Scan(
+		&p.Slug, &p.Titulo, &p.Subtitulo, &p.ImagenURL, &p.Cuerpo, &p.Publicada, &p.ActualizadaEn,
+		&p.PreguntaAcciones, &p.BotonPrincipal, &p.BotonSecundario,
+	)
+}
 
 func (r *PaginaRepository) GetBySlug(ctx context.Context, slug string) (*domain.PaginaInformativa, error) {
 	sql := `SELECT ` + camposPagina + ` FROM core.paginas_informativas WHERE slug = $1`
 
 	var p domain.PaginaInformativa
-	err := r.db.QueryRow(ctx, sql, slug).Scan(
-		&p.Slug, &p.Titulo, &p.Subtitulo, &p.ImagenURL, &p.Cuerpo, &p.Publicada, &p.ActualizadaEn,
-	)
+	err := escanearPagina(r.db.QueryRow(ctx, sql, slug), &p)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -50,9 +56,7 @@ func (r *PaginaRepository) ListAll(ctx context.Context) ([]*domain.PaginaInforma
 	var paginas []*domain.PaginaInformativa
 	for rows.Next() {
 		var p domain.PaginaInformativa
-		if err := rows.Scan(
-			&p.Slug, &p.Titulo, &p.Subtitulo, &p.ImagenURL, &p.Cuerpo, &p.Publicada, &p.ActualizadaEn,
-		); err != nil {
+		if err := escanearPagina(rows, &p); err != nil {
 			return nil, err
 		}
 		paginas = append(paginas, &p)
@@ -67,16 +71,15 @@ func (r *PaginaRepository) Update(ctx context.Context, pagina *domain.PaginaInfo
 	sql := `
 		UPDATE core.paginas_informativas
 		SET titulo = $1, subtitulo = $2, imagen_url = $3, cuerpo = $4, publicada = $5,
+		    pregunta_acciones = $6, boton_principal = $7, boton_secundario = $8,
 		    actualizada_en = CURRENT_TIMESTAMP
-		WHERE slug = $6
+		WHERE slug = $9
 		RETURNING ` + camposPagina + `
 	`
-	err := r.db.QueryRow(ctx, sql,
-		pagina.Titulo, pagina.Subtitulo, pagina.ImagenURL, pagina.Cuerpo, pagina.Publicada, pagina.Slug,
-	).Scan(
-		&pagina.Slug, &pagina.Titulo, &pagina.Subtitulo, &pagina.ImagenURL,
-		&pagina.Cuerpo, &pagina.Publicada, &pagina.ActualizadaEn,
-	)
+	err := escanearPagina(r.db.QueryRow(ctx, sql,
+		pagina.Titulo, pagina.Subtitulo, pagina.ImagenURL, pagina.Cuerpo, pagina.Publicada,
+		pagina.PreguntaAcciones, pagina.BotonPrincipal, pagina.BotonSecundario, pagina.Slug,
+	), pagina)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ErrNotFound
 	}
