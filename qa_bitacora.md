@@ -14,6 +14,10 @@ Entrada de trabajo para validación de API.
   `orden, created_at, id`; un foro nuevo del panel entra con `orden` 100 y va al final.
 - 🔴 **Aplicar la migración ANTES de desplegar el binario:** sin la columna, `GET /api/forums` y
   `GET /api/admin/forums` responden 500 (`column f.orden does not exist`).
+- Los que se crean llevan una descripción genérica, editable en el panel.
+- **Desplegado el mismo día**, con respaldo previo `backup_20261014_1925_pre_foros_fijos.sql.gz` en
+  el servidor. Se retiraron «Dolar» (3 comentarios) y «Panorama económico por cambio presidencial»
+  (0); siguen en la base con `status = 'deleted'`.
 - La versión de la app que está en las tiendas sigue mostrando el botón «+»: al crear un foro
   recibe 405 y muestra un error. Se acepta hasta publicar la versión nueva.
 - **Criterios de QA:**

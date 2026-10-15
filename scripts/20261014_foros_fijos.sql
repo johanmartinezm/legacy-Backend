@@ -20,6 +20,7 @@
 --   2. Deja activos los cuatro foros, en ese orden. Si ya existe uno con el
 --      mismo título (sin distinguir mayúsculas), se reutiliza el más antiguo
 --      y conserva sus publicaciones; si no, se crea como foro de administración.
+--      Los que no tienen descripción reciben una genérica (editable en el panel).
 --   3. Retira el resto con borrado lógico (status = 'deleted', lo mismo que el
 --      botón «Eliminar» del panel). Sus publicaciones NO se borran: siguen en
 --      core.forum_posts y basta con volver el foro a 'active' para recuperarlo.
@@ -34,6 +35,12 @@ ALTER TABLE core.forums
 DO $$
 DECLARE
     fijos text[] := ARRAY['Empresa', 'Patrimonio', 'Familia', 'Otros'];
+    descripciones text[] := ARRAY[
+        'Negocios, emprendimiento y gestión: comparte retos, decisiones y aprendizajes de tu empresa.',
+        'Inversiones, finanzas y protección del patrimonio: conversa sobre cómo hacerlo crecer y cuidarlo.',
+        'Relaciones, crianza, sucesión y el equilibrio entre la vida familiar y los negocios.',
+        'Todo lo que no encaja en los demás foros: ideas, recomendaciones y temas libres.'
+    ];
     i int;
     foro_id uuid;
     conservados uuid[] := '{}';
@@ -47,11 +54,13 @@ BEGIN
 
         IF foro_id IS NULL THEN
             INSERT INTO core.forums (title, description, status, created_by_admin, orden)
-            VALUES (fijos[i], '', 'active', true, i)
+            VALUES (fijos[i], descripciones[i], 'active', true, i)
             RETURNING id INTO foro_id;
         ELSE
             UPDATE core.forums
-               SET title = fijos[i], status = 'active', orden = i, updated_at = NOW()
+               SET title = fijos[i], status = 'active', orden = i, updated_at = NOW(),
+                   description = CASE WHEN COALESCE(trim(description), '') = ''
+                                      THEN descripciones[i] ELSE description END
              WHERE id = foro_id;
         END IF;
 
