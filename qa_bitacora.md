@@ -11,6 +11,9 @@ Entrada de trabajo para validación de API.
   `asesoria_unidad_service.go` (recorta y exige `http://` o `https://`; vacía vale). Al editar, una
   imagen vacía la quita. Pruebas: `asesoria_unidad_service_test.go` y la de integración
   `asesoria_unidad_imagen_test.go`.
+- **Desplegado en producción el 2026-10-15** (09:29): respaldo
+  `backup_20261015_0929_pre_asesoria_imagen.sql.gz`, migración y después el binario (anterior en
+  `server_linux.bak.20261015_0929`). `GET /api/asesoria/unidades` ya devuelve `imagen_url`.
 - **Criterios de QA:**
   1. `GET /api/asesoria/unidades` devuelve `imagen_url` en cada unidad (vacío en las de siempre).
   2. Guardar una unidad con imagen desde el panel: la devuelve el listado.
