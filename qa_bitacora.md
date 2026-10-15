@@ -11,6 +11,9 @@ Entrada de trabajo para validación de API.
   `pagina_repository.go`, `pagina_service.go` (recorta; pregunta hasta 80 letras y cada botón hasta
   40, si no 400) y `pagina_handler.go`. Vacío es «el de siempre»: lo pone la app. Pruebas:
   `pagina_service_test.go` y la de integración `pagina_botones_test.go`.
+- **Desplegado en producción el 2026-10-15** (09:43): respaldo
+  `backup_20261015_0943_pre_paginas_botones.sql.gz`, migración y después el binario (anterior en
+  `server_linux.bak.20261015_0943`). Panel desplegado a las 09:44.
 - **Criterios de QA:**
   1. `GET /api/paginas/legacy-board` devuelve los tres textos.
   2. Editarlos desde el panel: la respuesta trae los nuevos.
