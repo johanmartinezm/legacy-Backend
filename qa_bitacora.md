@@ -4,6 +4,24 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-21]: Recordatorio push la mañana del evento
+- **Alcance:** migración `scripts/20261021_event_reminders.sql` (tabla `events.event_reminders`;
+  **va antes que el binario**), `domain/recordatorio_evento.go`, `ports/recordatorio_ports.go`,
+  `postgres/recordatorio_evento_repository.go`, `services/recordatorio_eventos.go` (+ test) y el
+  arranque en `cmd/server/main.go`. Hasta hoy nada avisaba de que un evento empezaba. Decisión del
+  cliente: **solo a inscritos confirmados**, **una vez**, **desde las 8:00 de Bogotá del día del
+  evento** (`start_date` es un `date`, no hay hora de inicio). Revisa cada 10 minutos; la tabla
+  impide el doble aviso tras un reinicio. Título «Hoy: <evento>»; cuerpo según sea virtual, con sede o
+  sin ella; al tocarlo abre el evento. No pasa por el historial del panel. Pruebas: 4 del servicio;
+  el repositorio, probado contra la base local.
+- **Criterios de QA:**
+  1. Crear un evento activo con fecha de hoy e inscribir a una persona con la app en el teléfono.
+  2. Pasadas las 8:00 (Bogotá), en máximo 10 minutos llega «Hoy: <evento>».
+  3. Tocar la notificación abre ese evento en la app.
+  4. Reiniciar el backend: no vuelve a llegar.
+  5. Alguien inscrito solo con pago pendiente, o no inscrito, no recibe nada.
+  6. El log del backend muestra `[RECORDATORIO] evento … avisados N de M inscritos`.
+
 ### [2026-10-15]: Legacy Board: pregunta y botones editables
 - **Alcance:** migración `scripts/20261015_paginas_botones.sql` (añade `pregunta_acciones`,
   `boton_principal` y `boton_secundario` a `core.paginas_informativas` y siembra los textos

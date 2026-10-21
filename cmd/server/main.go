@@ -114,6 +114,11 @@ func main() {
 	eventService := services.NewEventService(eventRepo, cryptoService).
 		ConCorreoDeInscripcion(userRepo, emailService)
 	eventHandler := handler.NewEventHandler(eventService, notificationService)
+	// Aviso de la mañana del evento a los inscritos confirmados. Vive en
+	// memoria como el hub del chat: con dos instancias, la tabla
+	// events.event_reminders impide el doble aviso, pero no repartiría el trabajo.
+	recordatorioEventos := services.NewRecordatorioEventos(postgres.NewRecordatorioEventoRepository(dbPool), notificationService)
+	go recordatorioEventos.Iniciar(context.Background())
 
 	// El repositorio de bloqueos lo usan dos servicios: el suyo propio y el de
 	// chat, que consulta el bloqueo antes de dejar invitar, escribir o leer.
