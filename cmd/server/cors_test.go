@@ -11,9 +11,7 @@ func TestOrigenPermitido(t *testing.T) {
 		permite bool
 		porque  string
 	}{
-		{"https://legacy.intelyclick.com", true, "el panel en produccion"},
-		{"https://app.legacynetworkco.com", true, "el panel en el servidor nuevo"},
-		{"https://app.legacynetworkco.com.malicioso.com", false, "sufijo anadido al dominio nuevo"},
+		{"https://app.legacynetworkco.com", true, "el panel en produccion"},
 		{"http://localhost:4200", true, "ng serve"},
 		{"http://localhost:51234", true, "flutter run -d chrome usa un puerto aleatorio"},
 		{"http://127.0.0.1:8080", true, "misma maquina por IP"},
@@ -21,10 +19,10 @@ func TestOrigenPermitido(t *testing.T) {
 		{"https://malicioso.com", false, "un dominio cualquiera"},
 		// El clasico: un atacante registra un dominio que EMPIEZA igual. Con una
 		// comparacion por prefijo esto pasaria.
-		{"https://legacy.intelyclick.com.malicioso.com", false, "sufijo anadido"},
-		{"https://malicioso-legacy.intelyclick.com", false, "prefijo anadido al host"},
+		{"https://app.legacynetworkco.com.malicioso.com", false, "sufijo anadido"},
+		{"https://malicioso-app.legacynetworkco.com", false, "prefijo anadido al host"},
 		// Mismo dominio por http: degradar a texto plano no puede valer.
-		{"http://legacy.intelyclick.com", false, "el mismo dominio sin TLS"},
+		{"http://app.legacynetworkco.com", false, "el mismo dominio sin TLS"},
 		{"https://localhost.malicioso.com", false, "localhost como subdominio ajeno"},
 		{"", false, "sin origen"},
 		{"no-es-una-url", false, "cadena sin esquema ni host"},

@@ -631,7 +631,6 @@ func main() {
 // Si algun dia el panel o la app web se publican en otro dominio, hay que
 // anadirlo aqui o dejaran de funcionar con un error de CORS en el navegador.
 var origenesDeConfianza = []string{
-	"https://legacy.intelyclick.com",
 	"https://app.legacynetworkco.com",
 }
 

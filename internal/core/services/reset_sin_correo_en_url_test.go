@@ -85,7 +85,7 @@ func servicioConEspias(t *testing.T, repo *repoConCuenta, tokens *tokensEspia, c
 		emailService: correos,
 		crypto:       crypto,
 		jwtSecret:    []byte("secreto-de-prueba"),
-		resetURL:     "https://legacy.intelyclick.com/reset-password",
+		resetURL:     "https://app.legacynetworkco.com/reset-password",
 	}
 }
 

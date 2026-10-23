@@ -49,7 +49,7 @@ func TestUATRegistroReal(t *testing.T) {
 		context.Background(),
 		1000,
 		"prueba-uat-payload-corregido",
-		"https://legacy.intelyclick.com/api/payments/credibanco/callback",
+		"https://app.legacynetworkco.com/api/payments/credibanco/callback",
 	)
 
 	if err != nil {

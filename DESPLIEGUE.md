@@ -3,8 +3,8 @@
 Guía para publicar la API Go en el servidor de producción (`https://app.legacynetworkco.com`).
 
 > **Desde el 2026-10-02 todos los despliegues van al servidor nuevo**, que sirve
-> `https://app.legacynetworkco.com` detrás de Cloudflare. El de `legacy.intelyclick.com` es el
-> anterior y ya no se despliega en él. El destino lo fija `SERVER_IP` en el `.env`.
+> `https://app.legacynetworkco.com` detrás de Cloudflare. El servidor
+> anterior ya no se usa y no se despliega en él. El destino lo fija `SERVER_IP` en el `.env`.
 
 > Este repositorio es **público**. No escribas aquí ni en ningún archivo versionado la IP del
 > servidor, el usuario SSH, contraseñas ni claves. Todos esos valores viven en `.env` y
