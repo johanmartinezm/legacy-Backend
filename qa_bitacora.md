@@ -4,6 +4,19 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-23]: El CORS deja de aceptar el dominio de Intelyclick
+- **Alcance:** `cmd/server/main.go` (`origenesDeConfianza` queda solo con `https://app.legacynetworkco.com`),
+  `cors_test.go` (los casos de ataque pasan al dominio nuevo) y dos tests con URL de ejemplo.
+  Desplegado el mismo día con `./desplegar.sh -aplicar`; respaldo previo
+  `backup_20261023_1742_pre_identidad_social.sql.gz`. Sin migraciones pendientes.
+- **Criterios de QA:**
+  1. `GET https://app.legacynetworkco.com/health` → 200.
+  2. Un `OPTIONS` a `/api/events` con `Origin: https://app.legacynetworkco.com` devuelve
+     `Access-Control-Allow-Origin` con ese origen (comprobado).
+  3. El mismo `OPTIONS` con `Origin: https://legacy.intelyclick.com` no devuelve esa cabecera
+     (comprobado).
+  4. El panel en `https://app.legacynetworkco.com` inicia sesión y lista eventos con normalidad.
+
 ### [2026-10-21]: Recordatorio push la mañana del evento
 - **Alcance:** migración `scripts/20261021_event_reminders.sql` (tabla `events.event_reminders`;
   **va antes que el binario**), `domain/recordatorio_evento.go`, `ports/recordatorio_ports.go`,
