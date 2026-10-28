@@ -533,6 +533,37 @@ func (r *EventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop
 	).Scan(&w.ID, &w.CreatedAt)
 }
 
+// UpdateWorkshop no cambia el event_id: un taller no se muda de evento.
+func (r *EventRepository) UpdateWorkshop(ctx context.Context, w *domain.Workshop) error {
+	query := `
+		UPDATE events.workshops
+		SET name = $1, description = $2, room = $3, speaker = $4, image_url = $5,
+		    start_date_time = $6, end_date_time = $7
+		WHERE id = $8
+		RETURNING event_id, created_at
+	`
+	err := r.db.QueryRow(ctx, query,
+		w.Name, w.Description, w.Room, w.Speaker, w.ImageUrl, w.StartDateTime, w.EndDateTime, w.ID,
+	).Scan(&w.EventID, &w.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
+// DeleteWorkshop borra un taller y, por ON DELETE CASCADE, la agenda de los
+// usuarios, las inscripciones a ese taller y sus calificaciones.
+func (r *EventRepository) DeleteWorkshop(ctx context.Context, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM events.workshops WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *EventRepository) DeleteWorkshopsByEventID(ctx context.Context, eventID string) error {
 	query := `DELETE FROM events.workshops WHERE event_id = $1`
 	_, err := r.db.Exec(ctx, query, eventID)

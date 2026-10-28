@@ -118,24 +118,52 @@ func (s *EventService) CreateEvent(ctx context.Context, e *domain.Event) error {
 	return nil
 }
 
+// UpdateEvent guarda solo los datos del evento: los talleres que traiga el
+// cuerpo se ignoran.
+//
+// Hasta el 2026-10-28 los sincronizaba borrándolos todos y creándolos de nuevo.
+// Cada taller salía con un id nuevo y, por ON DELETE CASCADE, cada guardado
+// del evento en el panel borraba la agenda de los usuarios, los talleres
+// elegidos en las inscripciones y las calificaciones. Ahora los talleres van
+// por CreateWorkshop, UpdateWorkshop y DeleteWorkshop.
 func (s *EventService) UpdateEvent(ctx context.Context, e *domain.Event) error {
-	err := s.repo.UpdateEvent(ctx, e)
-	if err != nil {
+	return s.repo.UpdateEvent(ctx, e)
+}
+
+// CreateWorkshop añade un taller a un evento que tiene que existir.
+func (s *EventService) CreateWorkshop(ctx context.Context, eventID string, w *domain.Workshop) error {
+	if err := validarTaller(w); err != nil {
 		return err
 	}
-
-	// Simple workshop sync: delete and recreate
-	err = s.repo.DeleteWorkshopsByEventID(ctx, e.ID)
-	if err != nil {
+	if _, err := s.repo.GetEventByID(ctx, eventID); err != nil {
 		return err
 	}
+	w.EventID = eventID
+	return s.repo.CreateWorkshop(ctx, w)
+}
 
-	for i := range e.Workshops {
-		e.Workshops[i].EventID = e.ID
-		err = s.repo.CreateWorkshop(ctx, &e.Workshops[i])
-		if err != nil {
-			return err
-		}
+// UpdateWorkshop edita un taller sin cambiarle el id.
+func (s *EventService) UpdateWorkshop(ctx context.Context, w *domain.Workshop) error {
+	if err := validarTaller(w); err != nil {
+		return err
+	}
+	return s.repo.UpdateWorkshop(ctx, w)
+}
+
+func (s *EventService) DeleteWorkshop(ctx context.Context, id string) error {
+	return s.repo.DeleteWorkshop(ctx, id)
+}
+
+// validarTaller exige lo que la tabla exige (nombre y las dos fechas, NOT NULL)
+// y que el fin no vaya antes del inicio, que la app pintaría como un taller de
+// duración negativa.
+func validarTaller(w *domain.Workshop) error {
+	w.Name = strings.TrimSpace(w.Name)
+	if w.Name == "" {
+		return domain.ErrTallerSinNombre
+	}
+	if w.StartDateTime.IsZero() || w.EndDateTime.IsZero() || w.EndDateTime.Before(w.StartDateTime) {
+		return domain.ErrTallerHorarioInvalido
 	}
 	return nil
 }

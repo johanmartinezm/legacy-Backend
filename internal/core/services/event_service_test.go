@@ -78,6 +78,10 @@ func (m *MockEventRepository) DeleteEvent(ctx context.Context, id string) error 
 func (m *MockEventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop) error {
 	return nil
 }
+func (m *MockEventRepository) UpdateWorkshop(ctx context.Context, w *domain.Workshop) error {
+	return nil
+}
+func (m *MockEventRepository) DeleteWorkshop(ctx context.Context, id string) error { return nil }
 func (m *MockEventRepository) DeleteWorkshopsByEventID(ctx context.Context, id string) error {
 	return nil
 }

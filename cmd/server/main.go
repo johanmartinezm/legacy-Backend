@@ -508,6 +508,12 @@ func main() {
 		// panel no lo envia— y meterlo alli lo borraria en cada guardado.
 		r.Put("/api/events/{id}/status", eventHandler.UpdateEventStatus)
 		r.Delete("/api/events/{id}", eventHandler.DeleteEvent)
+		// Talleres, uno por uno, desde su propia pantalla del panel. El PUT del
+		// evento ya no los toca: los borraba y recreaba en cada guardado, y con
+		// ellos la agenda, las inscripciones a cada taller y las calificaciones.
+		r.Post("/api/events/{id}/workshops", eventHandler.CreateWorkshop)
+		r.Put("/api/workshops/{id}", eventHandler.UpdateWorkshop)
+		r.Delete("/api/workshops/{id}", eventHandler.DeleteWorkshop)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
 		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
 		// Rellenar el codigo de acceso que falta, en bloque o por persona. Es la

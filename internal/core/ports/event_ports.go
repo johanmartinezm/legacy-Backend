@@ -20,6 +20,10 @@ type EventRepository interface {
 	UpdateEventStatus(ctx context.Context, id, status string) error
 	DeleteEvent(ctx context.Context, id string) error
 	CreateWorkshop(ctx context.Context, workshop *domain.Workshop) error
+	// UpdateWorkshop y DeleteWorkshop tocan un solo taller por id. Devuelven
+	// domain.ErrNotFound si no existe.
+	UpdateWorkshop(ctx context.Context, workshop *domain.Workshop) error
+	DeleteWorkshop(ctx context.Context, id string) error
 	DeleteWorkshopsByEventID(ctx context.Context, eventID string) error
 	CreateRegistration(ctx context.Context, registration *domain.Registration) error
 	AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error
@@ -77,6 +81,12 @@ type EventService interface {
 	// acepta domain.EventoActivo y domain.EventoInactivo.
 	UpdateEventStatus(ctx context.Context, id, status string) error
 	DeleteEvent(ctx context.Context, id string) error
+	// Talleres, uno por uno. UpdateEvent ya no los toca: los gestiona su propia
+	// pantalla del panel, y editar un taller conserva su id —y con él la agenda,
+	// las inscripciones a ese taller y sus calificaciones—.
+	CreateWorkshop(ctx context.Context, eventID string, workshop *domain.Workshop) error
+	UpdateWorkshop(ctx context.Context, workshop *domain.Workshop) error
+	DeleteWorkshop(ctx context.Context, id string) error
 	RegisterUser(ctx context.Context, reg *domain.Registration) error
 	// GetMyRegistrations alimenta la pantalla "Mi credencial": todos los eventos
 	// en los que el usuario está inscrito, cada uno con su QR.

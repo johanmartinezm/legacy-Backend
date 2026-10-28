@@ -153,6 +153,63 @@ func (h *EventHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(event)
 }
 
+// CreateWorkshop, UpdateWorkshop y DeleteWorkshop van bajo AdminOnly. Son la
+// única forma de tocar los talleres de un evento que ya existe: el PUT del
+// evento los ignora.
+func (h *EventHandler) CreateWorkshop(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+	var workshop domain.Workshop
+	if err := json.NewDecoder(r.Body).Decode(&workshop); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.CreateWorkshop(r.Context(), eventID, &workshop); err != nil {
+		escribirErrorDeTaller(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(workshop)
+}
+
+func (h *EventHandler) UpdateWorkshop(w http.ResponseWriter, r *http.Request) {
+	var workshop domain.Workshop
+	if err := json.NewDecoder(r.Body).Decode(&workshop); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	workshop.ID = chi.URLParam(r, "id")
+
+	if err := h.service.UpdateWorkshop(r.Context(), &workshop); err != nil {
+		escribirErrorDeTaller(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(workshop)
+}
+
+func (h *EventHandler) DeleteWorkshop(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.DeleteWorkshop(r.Context(), chi.URLParam(r, "id")); err != nil {
+		escribirErrorDeTaller(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func escribirErrorDeTaller(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrTallerSinNombre), errors.Is(err, domain.ErrTallerHorarioInvalido):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, domain.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func (h *EventHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.service.DeleteEvent(r.Context(), id); err != nil {

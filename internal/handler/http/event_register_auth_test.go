@@ -53,6 +53,11 @@ func (s *stubEventService) UpdateEventStatus(ctx context.Context, id, status str
 	return nil
 }
 func (s *stubEventService) DeleteEvent(ctx context.Context, id string) error { return nil }
+func (s *stubEventService) CreateWorkshop(ctx context.Context, eventID string, w *domain.Workshop) error {
+	return nil
+}
+func (s *stubEventService) UpdateWorkshop(ctx context.Context, w *domain.Workshop) error { return nil }
+func (s *stubEventService) DeleteWorkshop(ctx context.Context, id string) error        { return nil }
 func (s *stubEventService) SubmitWorkshopRating(ctx context.Context, r *domain.WorkshopRating) error {
 	return nil
 }
