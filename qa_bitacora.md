@@ -4,6 +4,24 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-28]: Talleres por rutas propias; editar un evento ya no los borra
+- **Alcance:** `event_service.go` (`UpdateEvent` deja de borrar y recrear los talleres; nuevos
+  `CreateWorkshop`, `UpdateWorkshop`, `DeleteWorkshop` con validación de nombre y horario),
+  `event_repository.go`, `event_ports.go`, `errors.go`, `event_handler.go` y tres rutas en `main.go`
+  bajo `AdminOnly`: `POST /api/events/{id}/workshops`, `PUT` y `DELETE /api/workshops/{id}`. Tests en
+  `talleres_test.go`. Sin migración. El `POST /api/events` sigue aceptando talleres. **Desplegar antes
+  que el panel**: el panel nuevo ya no manda talleres, y el PUT viejo los borraría todos.
+  Rama `feature/talleres-aparte`, sin desplegar.
+- **Criterios de QA:**
+  1. Editar un evento con talleres (`PUT /api/events/{id}`, con o sin `workshops`): los talleres
+     siguen ahí con el mismo id (comprobado en local).
+  2. Un usuario con un taller en su agenda la conserva tras editar el evento y tras editar el taller
+     (comprobado en local).
+  3. `POST /api/events/{id}/workshops` crea el taller → 201; `PUT /api/workshops/{id}` lo edita → 200.
+  4. Taller sin nombre o con fin antes del inicio → 400 con el motivo en español; evento o taller
+     inexistente → 404; sin token de admin → 401 (comprobado en local).
+  5. `DELETE /api/workshops/{id}` → 204, y se lleva la agenda de ese taller (cascada, esperado).
+
 ### [2026-10-23]: El CORS deja de aceptar el dominio de Intelyclick
 - **Alcance:** `cmd/server/main.go` (`origenesDeConfianza` queda solo con `https://app.legacynetworkco.com`),
   `cors_test.go` (los casos de ataque pasan al dominio nuevo) y dos tests con URL de ejemplo.
