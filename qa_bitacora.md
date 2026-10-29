@@ -4,6 +4,15 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-28]: El listado de categorías ya no falla por una descripción vacía
+- **Alcance:** `event_repository.go` (`ListCategories` con `COALESCE` en `description`,
+  `order_index` y `created_at`, las tres anulables). Sin migración. Rama `feature/talleres-aparte`,
+  sin desplegar.
+- **Criterios de QA:**
+  1. Con una categoría sin descripción, `GET /api/categories` → 200 con todas (comprobado en local:
+     antes 500 por «Masterclass» y «Coffee»).
+  2. En el panel, crear o editar un evento: el selector de categoría muestra las tres.
+
 ### [2026-10-28]: Calificar un taller solo cuando terminó, y una vez
 - **Alcance:** `event_service.go` (`SubmitWorkshopRating` valida 1 a 5 estrellas, que el taller exista
   y haya terminado, y traduce el UNIQUE a «ya calificaste este taller»), `GetWorkshopByID` en el

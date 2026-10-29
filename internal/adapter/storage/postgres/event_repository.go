@@ -21,7 +21,12 @@ func NewEventRepository(db *pgxpool.Pool) *EventRepository {
 }
 
 func (r *EventRepository) ListCategories(ctx context.Context) ([]domain.EventCategory, error) {
-	query := `SELECT id, name, description, order_index, created_at FROM events.categories ORDER BY order_index ASC, name ASC`
+	// COALESCE porque description, order_index y created_at son anulables: una
+	// sola categoría sin descripción hacía fallar el Scan y el listado entero
+	// respondía 500, con lo que el selector de categoría del panel salía vacío
+	// (visto en local el 2026-10-28 con «Masterclass» y «Coffee»). El 9999 es el
+	// mismo orden por defecto que usan GetEvents y GetEventByID.
+	query := `SELECT id, name, COALESCE(description, ''), COALESCE(order_index, 9999), COALESCE(created_at, now()) FROM events.categories ORDER BY order_index ASC, name ASC`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
