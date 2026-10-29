@@ -511,8 +511,43 @@ func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string, 
 	return registrants, total, nil
 }
 
+// Errores al calificar un taller. En español porque el controlador los
+// devuelve tal cual y la app los muestra al usuario.
+var (
+	ErrCalificacionFueraDeRango = errors.New("la calificación debe estar entre 1 y 5 estrellas")
+	ErrTallerNoEncontrado       = errors.New("el taller no existe")
+	ErrTallerSinTerminar        = errors.New("podrás calificar el taller cuando termine")
+	ErrTallerYaCalificado       = errors.New("ya calificaste este taller")
+)
+
+// SubmitWorkshopRating guarda la calificación de un taller ya terminado.
+//
+// Hasta el 2026-10-28 no comprobaba nada: se podía calificar un taller que aún
+// no había ocurrido, y la segunda calificación de la misma persona chocaba con
+// el UNIQUE de la tabla y salía como un 500 que la app mostraba como «Error».
 func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error {
-	return s.repo.CreateWorkshopRating(ctx, rating)
+	if rating.Rating < 1 || rating.Rating > 5 {
+		return ErrCalificacionFueraDeRango
+	}
+
+	taller, err := s.repo.GetWorkshopByID(ctx, rating.WorkshopID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return ErrTallerNoEncontrado
+	}
+	if err != nil {
+		return err
+	}
+	if time.Now().Before(taller.EndDateTime) {
+		return ErrTallerSinTerminar
+	}
+
+	if err := s.repo.CreateWorkshopRating(ctx, rating); err != nil {
+		if errors.Is(err, domain.ErrUniqueViolation) {
+			return ErrTallerYaCalificado
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *EventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {

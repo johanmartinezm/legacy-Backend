@@ -4,6 +4,19 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-10-28]: Calificar un taller solo cuando terminó, y una vez
+- **Alcance:** `event_service.go` (`SubmitWorkshopRating` valida 1 a 5 estrellas, que el taller exista
+  y haya terminado, y traduce el UNIQUE a «ya calificaste este taller»), `GetWorkshopByID` en el
+  repositorio y el puerto, `event_handler.go` (400, 404, 422 y 409 en vez de 500). Tests en
+  `calificar_taller_test.go`. Sin migración. Rama `feature/talleres-aparte`, sin desplegar.
+- **Criterios de QA:**
+  1. Calificar un taller que aún no termina → 422 «podrás calificar el taller cuando termine»
+     (comprobado en local).
+  2. Calificar un taller terminado → 201; repetir con el mismo usuario → 409 «ya calificaste este
+     taller» (comprobado en local).
+  3. 0 o 6 estrellas → 400; taller inexistente → 404 (comprobado en local).
+  4. En el panel, «Ver Feedback» del evento sigue mostrando las calificaciones guardadas.
+
 ### [2026-10-28]: Talleres por rutas propias; editar un evento ya no los borra
 - **Alcance:** `event_service.go` (`UpdateEvent` deja de borrar y recrear los talleres; nuevos
   `CreateWorkshop`, `UpdateWorkshop`, `DeleteWorkshop` con validación de nombre y horario),

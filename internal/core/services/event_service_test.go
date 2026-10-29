@@ -78,6 +78,9 @@ func (m *MockEventRepository) DeleteEvent(ctx context.Context, id string) error 
 func (m *MockEventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop) error {
 	return nil
 }
+func (m *MockEventRepository) GetWorkshopByID(ctx context.Context, id string) (*domain.Workshop, error) {
+	return nil, domain.ErrNotFound
+}
 func (m *MockEventRepository) UpdateWorkshop(ctx context.Context, w *domain.Workshop) error {
 	return nil
 }

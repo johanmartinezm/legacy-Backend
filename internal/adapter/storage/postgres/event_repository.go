@@ -533,6 +533,27 @@ func (r *EventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop
 	).Scan(&w.ID, &w.CreatedAt)
 }
 
+func (r *EventRepository) GetWorkshopByID(ctx context.Context, id string) (*domain.Workshop, error) {
+	query := `
+		SELECT id, event_id, name, COALESCE(description, ''), COALESCE(room, ''),
+		       COALESCE(speaker, ''), COALESCE(image_url, ''), start_date_time, end_date_time
+		FROM events.workshops
+		WHERE id = $1
+	`
+	var w domain.Workshop
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&w.ID, &w.EventID, &w.Name, &w.Description, &w.Room,
+		&w.Speaker, &w.ImageUrl, &w.StartDateTime, &w.EndDateTime,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
 // UpdateWorkshop no cambia el event_id: un taller no se muda de evento.
 func (r *EventRepository) UpdateWorkshop(ctx context.Context, w *domain.Workshop) error {
 	query := `
@@ -576,7 +597,14 @@ func (r *EventRepository) CreateWorkshopRating(ctx context.Context, wr *domain.W
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at
 	`
-	return r.db.QueryRow(ctx, query, wr.WorkshopID, wr.UserID, wr.Rating, wr.Comment).Scan(&wr.ID, &wr.CreatedAt)
+	err := r.db.QueryRow(ctx, query, wr.WorkshopID, wr.UserID, wr.Rating, wr.Comment).Scan(&wr.ID, &wr.CreatedAt)
+
+	// UNIQUE (workshop_id, user_id): una calificación por persona y taller.
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return fmt.Errorf("%w: %s", domain.ErrUniqueViolation, pgErr.ConstraintName)
+	}
+	return err
 }
 
 func (r *EventRepository) GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {

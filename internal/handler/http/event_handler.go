@@ -399,7 +399,19 @@ func (h *EventHandler) SubmitWorkshopRating(w http.ResponseWriter, r *http.Reque
 	rating.UserID = userID
 
 	if err := h.service.SubmitWorkshopRating(r.Context(), &rating); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, services.ErrCalificacionFueraDeRango):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, services.ErrTallerNoEncontrado):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, services.ErrTallerSinTerminar):
+			// 422 y no 409: no choca con nada guardado, es que todavía no toca.
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		case errors.Is(err, services.ErrTallerYaCalificado):
+			http.Error(w, err.Error(), http.StatusConflict)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

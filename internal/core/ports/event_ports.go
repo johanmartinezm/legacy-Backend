@@ -20,6 +20,8 @@ type EventRepository interface {
 	UpdateEventStatus(ctx context.Context, id, status string) error
 	DeleteEvent(ctx context.Context, id string) error
 	CreateWorkshop(ctx context.Context, workshop *domain.Workshop) error
+	// GetWorkshopByID devuelve domain.ErrNotFound si el taller no existe.
+	GetWorkshopByID(ctx context.Context, id string) (*domain.Workshop, error)
 	// UpdateWorkshop y DeleteWorkshop tocan un solo taller por id. Devuelven
 	// domain.ErrNotFound si no existe.
 	UpdateWorkshop(ctx context.Context, workshop *domain.Workshop) error
