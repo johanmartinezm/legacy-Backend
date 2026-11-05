@@ -251,7 +251,11 @@ func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID s
 		       COALESCE(u.email_encrypted, ''), COALESCE(u.phone, ''),
 		       COALESCE(r.payment_status, ''), COALESCE(r.registration_status, ''),
 		       r.registration_date, r.total_paid, r.attendance_confirmed,
-		       COALESCE(r.qr_data, '') <> ''
+		       COALESCE(r.qr_data, '') <> '',
+		       COALESCE((SELECT array_agg(w.name ORDER BY w.start_date_time, w.name)
+		                   FROM events.registration_workshops rw
+		                   JOIN events.workshops w ON w.id = rw.workshop_id
+		                  WHERE rw.registration_id = r.id), '{}')
 		FROM events.registrations r
 		JOIN core.users u ON r.user_id = u.id
 		WHERE r.event_id = $1
@@ -275,6 +279,7 @@ func (r *EventRepository) GetRegistrationsByEvent(ctx context.Context, eventID s
 			&reg.Email, &reg.Phone,
 			&reg.PaymentStatus, &reg.RegistrationStatus, &reg.RegistrationDate,
 			&reg.TotalPaid, &reg.AttendanceConfirmed, &reg.TieneCredencial,
+			&reg.Workshops,
 		); err != nil {
 			return nil, err
 		}
@@ -480,6 +485,33 @@ func (r *EventRepository) ReplaceRegistrationWorkshops(ctx context.Context, regi
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// CountChosenByWorkshop dice cuántas inscripciones eligieron cada workshop del
+// evento. Los que nadie eligió no aparecen.
+func (r *EventRepository) CountChosenByWorkshop(ctx context.Context, eventID string) (map[string]int, error) {
+	query := `
+		SELECT rw.workshop_id::text, count(*)
+		  FROM events.registration_workshops rw
+		  JOIN events.workshops w ON w.id = rw.workshop_id
+		 WHERE w.event_id = $1::uuid
+		 GROUP BY rw.workshop_id`
+	rows, err := r.db.Query(ctx, query, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	conteo := map[string]int{}
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+		}
+		conteo[id] = n
+	}
+	return conteo, rows.Err()
 }
 
 func (r *EventRepository) GetChosenWorkshopIDs(ctx context.Context, userID, eventID string) ([]string, error) {

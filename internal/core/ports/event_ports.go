@@ -38,6 +38,8 @@ type EventRepository interface {
 	// GetChosenWorkshopIDs son los workshops que eligió el usuario en su
 	// inscripción a ese evento. Vacío si no eligió ninguno o no está inscrito.
 	GetChosenWorkshopIDs(ctx context.Context, userID, eventID string) ([]string, error)
+	// CountChosenByWorkshop: cuántas inscripciones eligieron cada workshop.
+	CountChosenByWorkshop(ctx context.Context, eventID string) (map[string]int, error)
 	GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error)
 	// ConfirmEventRegistration la usa el servicio de pagos al aprobarse el
 	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
@@ -129,6 +131,10 @@ type EventService interface {
 	// ElegirMisWorkshops reemplaza los workshops elegidos de la inscripción del
 	// usuario. Solo hasta el día anterior al evento y con las reglas del §10.
 	ElegirMisWorkshops(ctx context.Context, userID, eventID string, workshopIDs []string) error
+
+	// ResumenWorkshops: inscritos del evento y cuántos eligieron cada
+	// workshop. Para la pantalla de workshops del panel; va bajo AdminOnly.
+	ResumenWorkshops(ctx context.Context, eventID string) (*domain.ResumenWorkshops, error)
 
 	// QR & Attendance
 	CheckIn(ctx context.Context, qrData, staffID string) (*domain.CheckInResponse, error)

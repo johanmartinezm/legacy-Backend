@@ -518,6 +518,8 @@ func main() {
 		r.Post("/api/events/{id}/workshops", eventHandler.CreateWorkshop)
 		r.Put("/api/workshops/{id}", eventHandler.UpdateWorkshop)
 		r.Delete("/api/workshops/{id}", eventHandler.DeleteWorkshop)
+		// Inscritos y elegidos por workshop, para la pantalla de workshops.
+		r.Get("/api/events/{id}/workshops/resumen", eventHandler.ResumenWorkshops)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
 		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
 		// Rellenar el codigo de acceso que falta, en bloque o por persona. Es la

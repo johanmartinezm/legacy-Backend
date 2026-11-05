@@ -588,6 +588,20 @@ func escribirErrorDeWorkshops(w http.ResponseWriter, err error) {
 	}
 }
 
+// ResumenWorkshops sirve a la pantalla de workshops del panel cuántos inscritos
+// tiene el evento y cuántos eligieron cada workshop. Va bajo AdminOnly: la
+// pantalla lee el evento por la ruta pública, y estos números no son para
+// cualquiera.
+func (h *EventHandler) ResumenWorkshops(w http.ResponseWriter, r *http.Request) {
+	resumen, err := h.service.ResumenWorkshops(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resumen)
+}
+
 // ElegirMisWorkshops reemplaza los workshops elegidos de mi inscripción a un
 // evento: PUT /api/events/{id}/workshops/mine con {"workshops": ["<id>", ...]}.
 // Responde con la agenda nueva, para que la app no tenga que pedirla aparte.

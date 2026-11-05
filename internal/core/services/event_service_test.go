@@ -27,6 +27,14 @@ type MockEventRepository struct {
 	GetWorkshopsByEventIDFunc         func(ctx context.Context, eventID string) ([]domain.Workshop, error)
 	ReplaceRegistrationWorkshopsFunc  func(ctx context.Context, regID string, workshopIDs []string) error
 	GetChosenWorkshopIDsFunc          func(ctx context.Context, userID, eventID string) ([]string, error)
+	CountChosenByWorkshopFunc         func(ctx context.Context, eventID string) (map[string]int, error)
+}
+
+func (m *MockEventRepository) CountChosenByWorkshop(ctx context.Context, eID string) (map[string]int, error) {
+	if m.CountChosenByWorkshopFunc == nil {
+		return map[string]int{}, nil
+	}
+	return m.CountChosenByWorkshopFunc(ctx, eID)
 }
 
 func (m *MockEventRepository) GetRegistrationsSinCredencial(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error) {

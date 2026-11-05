@@ -4,6 +4,18 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-05]: Resumen de workshops para el panel y «workshop» en los mensajes
+- **Alcance:** ruta AdminOnly `GET /api/events/{id}/workshops/resumen` (inscritos del evento y cuántos
+  eligieron cada workshop: `ResumenWorkshops` en `workshops_eleccion.go`, `CountChosenByWorkshop` en el
+  repositorio), `GetRegistrationsByEvent` devuelve `workshops` (nombres elegidos, por hora) con cada
+  inscrito, y los mensajes «el taller necesita…» (`domain/errors.go`) y los de calificar pasan a decir
+  «workshop». Sin migración. Rama `feature/talleres-aparte`, **solo en local**.
+- **Criterios de QA** (comprobados en local con el evento «[PRUEBA] Workshops por franja»):
+  1. Con `qa-app` inscrito y tres elegidos, `GET …/workshops/resumen` con token de admin →
+     `{"inscritos":1,"elegidos":{<id>:1, <id>:1, <id>:1}}`; sin sesión → 401.
+  2. `GET /api/events/{id}/registrations` trae en cada inscrito `workshops` con los tres nombres.
+  3. Guardar un workshop sin nombre desde el panel → 400 «el workshop necesita un nombre».
+
 ### [2026-11-05]: Elegir los workshops al inscribirse (§10 del plan de workshops)
 - **Alcance:** `workshops_eleccion.go` (franjas, reglas y cortes), `event_service.go` (`RegisterUser`
   valida la elección antes de crear nada y cierra la app desde el primer día; `SubmitWorkshopRating`

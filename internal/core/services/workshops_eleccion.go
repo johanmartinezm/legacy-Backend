@@ -228,6 +228,19 @@ func (s *EventService) ElegirMisWorkshops(ctx context.Context, userID, eventID s
 	return s.repo.ReplaceRegistrationWorkshops(ctx, reg.ID, elegidos)
 }
 
+// ResumenWorkshops cuenta inscritos y elegidos para el panel.
+func (s *EventService) ResumenWorkshops(ctx context.Context, eventID string) (*domain.ResumenWorkshops, error) {
+	inscritos, err := s.repo.CountRegistrationsByEvent(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	elegidos, err := s.repo.CountChosenByWorkshop(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.ResumenWorkshops{Inscritos: inscritos, Elegidos: elegidos}, nil
+}
+
 // comprobarWorkshopElegido deja calificar solo lo que se eligió. Una inscripción
 // sin ningún workshop elegido califica como antes (§10.6, punto 3): así no se
 // quedan sin poder hacerlo los inscritos del Summit de septiembre, los del panel

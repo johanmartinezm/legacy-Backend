@@ -341,6 +341,17 @@ type EventRegistrant struct {
 	// panel para marcar en la lista a quién le falta, porque si no el que se
 	// entera es quien está en la puerta el día del evento.
 	TieneCredencial bool `json:"tieneCredencial"`
+	// Workshops son los nombres de los workshops que eligió, por hora de inicio.
+	// Vacío si no eligió ninguno (§10 del plan de workshops).
+	Workshops []string `json:"workshops"`
+}
+
+// ResumenWorkshops es lo que la pantalla de workshops del panel necesita de las
+// inscripciones: cuántos inscritos hay, para avisar al añadir o mover un
+// workshop, y cuántos eligieron cada uno.
+type ResumenWorkshops struct {
+	Inscritos int            `json:"inscritos"`
+	Elegidos  map[string]int `json:"elegidos"`
 }
 
 type WorkshopRating struct {

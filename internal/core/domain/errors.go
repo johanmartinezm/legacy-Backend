@@ -75,8 +75,8 @@ var (
 	// ErrTallerSinNombre y ErrTallerHorarioInvalido los devuelve el servicio al
 	// crear o editar un taller. En español por la misma razón: el controlador
 	// los devuelve tal cual.
-	ErrTallerSinNombre       = errors.New("el taller necesita un nombre")
-	ErrTallerHorarioInvalido = errors.New("el taller necesita inicio y fin, y el fin no puede ser anterior al inicio")
+	ErrTallerSinNombre       = errors.New("el workshop necesita un nombre")
+	ErrTallerHorarioInvalido = errors.New("el workshop necesita inicio y fin, y el fin no puede ser anterior al inicio")
 
 	// ErrIdentidadSocialInvalida la devuelve el registro cuando el `apple_id` o
 	// el `google_id` que manda el cliente no es un token de identidad que el
