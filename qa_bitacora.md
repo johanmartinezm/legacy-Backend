@@ -4,6 +4,31 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-05]: Material de cada workshop: imagen, archivo y video (parte A, backend)
+- **Alcance:** migración `scripts/20261105_material_de_workshops.sql` (cinco columnas `material_*` en
+  `events.workshops`; aditiva e idempotente), `domain.MaterialDeWorkshop` (sale en cada workshop como
+  `material`), `workshops_material.go` (validación: video solo de YouTube o Vimeo y apuntando a un
+  video, archivo solo si lo subió el panel y hasta 25 MB), `documento_handler.go` (nuevo: sube PDF,
+  Word, Excel, PowerPoint o ZIP comprobando el contenido y no solo la extensión, y los sirve como
+  descarga con su nombre), `UpdateWorkshopMaterial` en el repositorio (solo las columnas del material).
+  Rutas: `POST /api/documents/upload` y `PUT /api/workshops/{id}/material` (AdminOnly) y
+  `GET /api/documents/{nombre}` (pública, como las imágenes). Los archivos quedan en
+  `<uploads_dir>/documentos`, fuera de git. Tests en `workshops_material_test.go` y
+  `documento_handler_test.go`. Rama `feature/talleres-aparte`, **solo en local**.
+- **🔴 Antes de desplegar:** correr la migración antes del binario, y comprobar que `uploads_dir` del
+  servidor está en un volumen montado: si no, los archivos se pierden en cada despliegue.
+- **Criterios de QA** (comprobados en local con «[PRUEBA] Comunicación entre generaciones»):
+  1. Subir un PDF con tildes y espacios en el nombre → 200 con `name`, `originalName` y `size`.
+  2. Subir un `.pdf` que por dentro es un ejecutable → 400 «el archivo no es lo que dice su extensión».
+     Sin sesión → 401.
+  3. Guardar el material con el archivo y un video de YouTube → 200; con un video de otro sitio → 400
+     «el video tiene que ser de YouTube o de Vimeo».
+  4. **Editar el workshop desde el panel no borra el material** (`PUT /api/workshops/{id}` sin material
+     y después `GET` del evento: el material sigue).
+  5. `GET /api/documents/{nombre}` → 200, `application/pdf`, `Content-Disposition: attachment` con el
+     nombre sin el UUID. Un `..%2F..%2Fconfig.yaml` → 404.
+  6. La migración corrida dos veces no cambia nada.
+
 ### [2026-11-05]: El teléfono de los inscritos sale descifrado
 - **Alcance:** `event_service.go` (`GetEventRegistrants` descifra también el teléfono, que se cifra al
   registrarse en `auth_service.go`; antes solo nombre y correo) y `inscritos_evento_test.go` (el test

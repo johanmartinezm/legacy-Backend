@@ -265,6 +265,7 @@ func main() {
 	// meses, pero nunca se instancio ni se enruto: adjuntar una imagen a un hilo
 	// respondia 404 y la app lo mostraba como un fallo al subir.
 	imageHandler := handler.NewImageHandler(cfg.Storage.UploadsDir)
+	documentHandler := handler.NewDocumentHandler(cfg.Storage.UploadsDir)
 
 	// 4. Router Setup
 	r := chi.NewRouter()
@@ -322,6 +323,10 @@ func main() {
 	// la app ya instalados piden /images/... directamente.
 	r.Get("/api/images/{fileName}", imageHandler.GetImage)
 	r.Get("/images/{fileName}", imageHandler.GetImage)
+	// El archivo del material de un workshop, como descarga. Público por lo
+	// mismo que las imágenes: el material lo ven todos y el nombre lleva un
+	// UUID que no se adivina.
+	r.Get("/api/documents/{fileName}", documentHandler.GetDocument)
 
 	// Webhook de CredibanCo. Va aquí, sin AuthMiddleware, porque quien llama es
 	// la pasarela y no tiene un token nuestro. El handler no se cree el
@@ -520,6 +525,11 @@ func main() {
 		r.Delete("/api/workshops/{id}", eventHandler.DeleteWorkshop)
 		// Inscritos y elegidos por workshop, para la pantalla de workshops.
 		r.Get("/api/events/{id}/workshops/resumen", eventHandler.ResumenWorkshops)
+		// Material de cada workshop (parte A del plan de workshops): el archivo se
+		// sube aparte y luego se guarda con la imagen y el video. Ruta propia para
+		// que editar el workshop no borre el material.
+		r.Post("/api/documents/upload", documentHandler.UploadDocument)
+		r.Put("/api/workshops/{id}/material", eventHandler.ActualizarMaterial)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
 		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
 		// Rellenar el codigo de acceso que falta, en bloque o por persona. Es la

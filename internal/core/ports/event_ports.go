@@ -40,6 +40,9 @@ type EventRepository interface {
 	GetChosenWorkshopIDs(ctx context.Context, userID, eventID string) ([]string, error)
 	// CountChosenByWorkshop: cuántas inscripciones eligieron cada workshop.
 	CountChosenByWorkshop(ctx context.Context, eventID string) (map[string]int, error)
+	// UpdateWorkshopMaterial escribe solo el material de un workshop.
+	// domain.ErrNotFound si el workshop no existe.
+	UpdateWorkshopMaterial(ctx context.Context, id string, material domain.MaterialDeWorkshop) error
 	GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error)
 	// ConfirmEventRegistration la usa el servicio de pagos al aprobarse el
 	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
@@ -135,6 +138,10 @@ type EventService interface {
 	// ResumenWorkshops: inscritos del evento y cuántos eligieron cada
 	// workshop. Para la pantalla de workshops del panel; va bajo AdminOnly.
 	ResumenWorkshops(ctx context.Context, eventID string) (*domain.ResumenWorkshops, error)
+
+	// ActualizarMaterialWorkshop valida y guarda el material de un workshop
+	// (imagen, archivo y video). Va bajo AdminOnly.
+	ActualizarMaterialWorkshop(ctx context.Context, id string, material domain.MaterialDeWorkshop) (*domain.Workshop, error)
 
 	// QR & Attendance
 	CheckIn(ctx context.Context, qrData, staffID string) (*domain.CheckInResponse, error)

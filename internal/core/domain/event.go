@@ -81,6 +81,31 @@ type Workshop struct {
 	StartDateTime time.Time `json:"startDateTime" db:"start_date_time"`
 	EndDateTime   time.Time `json:"endDateTime" db:"end_date_time"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+
+	// Material del workshop (parte A del plan de workshops). Lo carga el panel
+	// con su propia ruta y la app lo muestra cuando el workshop termina. No
+	// entra en el UPDATE del workshop: si entrara, cada edición lo borraría.
+	Material MaterialDeWorkshop `json:"material" db:"-"`
+}
+
+// MaterialDeWorkshop: una imagen, un archivo y un video por workshop. Cualquier
+// campo vacío es «no hay».
+type MaterialDeWorkshop struct {
+	// ImageUrl es otra imagen, distinta de la del workshop (decidido el
+	// 2026-10-28). Mismo formato que Workshop.ImageUrl.
+	ImageUrl string `json:"imageUrl"`
+	// FileName es el nombre en disco, «<uuid>_<nombre>»; se descarga por
+	// GET /api/documents/{FileName}. FileOriginalName es el que se muestra.
+	FileName         string `json:"fileName"`
+	FileOriginalName string `json:"fileOriginalName"`
+	FileSize         int64  `json:"fileSize"`
+	// VideoUrl es un enlace de YouTube o de Vimeo.
+	VideoUrl string `json:"videoUrl"`
+}
+
+// Vacio dice si el workshop no tiene ningún material.
+func (m MaterialDeWorkshop) Vacio() bool {
+	return m.ImageUrl == "" && m.FileName == "" && m.VideoUrl == ""
 }
 
 // Estados de un evento. Se corresponden con el CHECK de events.events.status.

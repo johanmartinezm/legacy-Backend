@@ -85,6 +85,9 @@ func (s *stubEventService) GetAgenda(ctx context.Context, userID string) ([]doma
 }
 func (s *stubEventService) AddToAgenda(ctx context.Context, uID, wID string) error      { return nil }
 func (s *stubEventService) RemoveFromAgenda(ctx context.Context, uID, wID string) error { return nil }
+func (s *stubEventService) ActualizarMaterialWorkshop(ctx context.Context, id string, m domain.MaterialDeWorkshop) (*domain.Workshop, error) {
+	return &domain.Workshop{ID: id, Material: m}, nil
+}
 func (s *stubEventService) ResumenWorkshops(ctx context.Context, eID string) (*domain.ResumenWorkshops, error) {
 	return &domain.ResumenWorkshops{}, nil
 }

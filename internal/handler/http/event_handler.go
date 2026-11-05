@@ -199,6 +199,32 @@ func (h *EventHandler) DeleteWorkshop(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ActualizarMaterial: PUT /api/workshops/{id}/material con
+// {imageUrl, fileName, fileOriginalName, fileSize, videoUrl}. Ruta propia y no
+// dentro de PUT /api/workshops/{id}: aquel UPDATE escribe todo lo que recibe, y
+// si el diálogo del workshop no mandara el material, cada edición lo borraría.
+func (h *EventHandler) ActualizarMaterial(w http.ResponseWriter, r *http.Request) {
+	var material domain.MaterialDeWorkshop
+	if err := json.NewDecoder(r.Body).Decode(&material); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	workshop, err := h.service.ActualizarMaterialWorkshop(r.Context(), chi.URLParam(r, "id"), material)
+	var invalido *services.ErrorMaterial
+	switch {
+	case errors.As(err, &invalido):
+		http.Error(w, invalido.Motivo, http.StatusBadRequest)
+		return
+	case err != nil:
+		escribirErrorDeTaller(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(workshop)
+}
+
 func escribirErrorDeTaller(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrTallerSinNombre), errors.Is(err, domain.ErrTallerHorarioInvalido):

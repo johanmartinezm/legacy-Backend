@@ -30,6 +30,10 @@ type MockEventRepository struct {
 	CountChosenByWorkshopFunc         func(ctx context.Context, eventID string) (map[string]int, error)
 }
 
+func (m *MockEventRepository) UpdateWorkshopMaterial(ctx context.Context, id string, mat domain.MaterialDeWorkshop) error {
+	return nil
+}
+
 func (m *MockEventRepository) CountChosenByWorkshop(ctx context.Context, eID string) (map[string]int, error) {
 	if m.CountChosenByWorkshopFunc == nil {
 		return map[string]int{}, nil

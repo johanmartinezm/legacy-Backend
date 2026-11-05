@@ -146,7 +146,10 @@ func (r *EventRepository) GetWorkshopsByEventID(ctx context.Context, eventID str
 			COALESCE(room, '') as room, 
 			COALESCE(speaker, '') as speaker, 
 			COALESCE(image_url, '') as image_url, 
-			start_date_time, end_date_time
+			start_date_time, end_date_time,
+			COALESCE(material_image_url, ''), COALESCE(material_file_name, ''),
+			COALESCE(material_file_original_name, ''), COALESCE(material_file_size, 0),
+			COALESCE(material_video_url, '')
 		FROM events.workshops
 		WHERE event_id = $1::uuid
 		ORDER BY start_date_time ASC
@@ -163,6 +166,8 @@ func (r *EventRepository) GetWorkshopsByEventID(ctx context.Context, eventID str
 		err := rows.Scan(
 			&w.ID, &w.EventID, &w.EventTitle, &w.Name, &w.Description, &w.Room, &w.Speaker, &w.ImageUrl,
 			&w.StartDateTime, &w.EndDateTime,
+			&w.Material.ImageUrl, &w.Material.FileName, &w.Material.FileOriginalName,
+			&w.Material.FileSize, &w.Material.VideoUrl,
 		)
 		if err != nil {
 			return nil, err
@@ -647,7 +652,10 @@ func (r *EventRepository) CreateWorkshop(ctx context.Context, w *domain.Workshop
 func (r *EventRepository) GetWorkshopByID(ctx context.Context, id string) (*domain.Workshop, error) {
 	query := `
 		SELECT id, event_id, name, COALESCE(description, ''), COALESCE(room, ''),
-		       COALESCE(speaker, ''), COALESCE(image_url, ''), start_date_time, end_date_time
+		       COALESCE(speaker, ''), COALESCE(image_url, ''), start_date_time, end_date_time,
+		       COALESCE(material_image_url, ''), COALESCE(material_file_name, ''),
+		       COALESCE(material_file_original_name, ''), COALESCE(material_file_size, 0),
+		       COALESCE(material_video_url, '')
 		FROM events.workshops
 		WHERE id = $1
 	`
@@ -655,6 +663,8 @@ func (r *EventRepository) GetWorkshopByID(ctx context.Context, id string) (*doma
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&w.ID, &w.EventID, &w.Name, &w.Description, &w.Room,
 		&w.Speaker, &w.ImageUrl, &w.StartDateTime, &w.EndDateTime,
+		&w.Material.ImageUrl, &w.Material.FileName, &w.Material.FileOriginalName,
+		&w.Material.FileSize, &w.Material.VideoUrl,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -681,6 +691,28 @@ func (r *EventRepository) UpdateWorkshop(ctx context.Context, w *domain.Workshop
 		return domain.ErrNotFound
 	}
 	return err
+}
+
+// UpdateWorkshopMaterial escribe solo las columnas del material. Vacío se
+// guarda como NULL, que es «no hay». No toca nada más del workshop, y el UPDATE
+// del workshop no toca el material.
+func (r *EventRepository) UpdateWorkshopMaterial(ctx context.Context, id string, m domain.MaterialDeWorkshop) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE events.workshops
+		   SET material_image_url          = NULLIF($1, ''),
+		       material_file_name          = NULLIF($2, ''),
+		       material_file_original_name = NULLIF($3, ''),
+		       material_file_size          = NULLIF($4, 0),
+		       material_video_url          = NULLIF($5, '')
+		 WHERE id = $6`,
+		m.ImageUrl, m.FileName, m.FileOriginalName, m.FileSize, m.VideoUrl, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // DeleteWorkshop borra un taller y, por ON DELETE CASCADE, la agenda de los
