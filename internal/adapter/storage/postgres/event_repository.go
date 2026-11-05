@@ -172,7 +172,18 @@ func (r *EventRepository) GetWorkshopsByEventID(ctx context.Context, eventID str
 	return workshops, nil
 }
 
+// consultor es lo que comparten el pool y una transacción, para que la misma
+// consulta sirva suelta y dentro de CreateRegistrationWithWorkshops.
+type consultor interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 func (r *EventRepository) CreateRegistration(ctx context.Context, reg *domain.Registration) error {
+	return crearInscripcion(ctx, r.db, reg)
+}
+
+func crearInscripcion(ctx context.Context, db consultor, reg *domain.Registration) error {
 	query := `
 		INSERT INTO events.registrations (
 			user_id, event_id, payment_status, registration_status, qr_data, total_paid,
@@ -186,7 +197,7 @@ func (r *EventRepository) CreateRegistration(ctx context.Context, reg *domain.Re
 	// consigo misma, mientras que NULL no. Desde que la carga masiva puede
 	// crear inscripciones sin credencial, la segunda de ellas violaría la
 	// restricción. Es exactamente el mismo caso que el alias en core.users.
-	return r.db.QueryRow(ctx, query,
+	return db.QueryRow(ctx, query,
 		reg.UserID, reg.EventID, reg.PaymentStatus, reg.RegistrationStatus, reg.QRData, reg.TotalPaid,
 		reg.ParticipantName, reg.ParticipantEmail, reg.ParticipantPhone,
 	).Scan(&reg.ID, &reg.RegistrationDate)
@@ -417,18 +428,81 @@ func (r *EventRepository) GetRegistrationsByUser(ctx context.Context, userID str
 }
 
 func (r *EventRepository) AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error {
-	if len(workshopIDs) == 0 {
-		return nil
-	}
+	return guardarWorkshopsElegidos(ctx, r.db, registrationID, workshopIDs)
+}
 
-	query := `INSERT INTO events.registration_workshops (registration_id, workshop_id) VALUES ($1, $2)`
+// guardarWorkshopsElegidos añade la elección sin repetir: ON CONFLICT porque la
+// clave es (registration_id, workshop_id) y un id repetido no debe tumbar todo.
+func guardarWorkshopsElegidos(ctx context.Context, db consultor, registrationID string, workshopIDs []string) error {
+	query := `INSERT INTO events.registration_workshops (registration_id, workshop_id)
+		VALUES ($1, $2) ON CONFLICT DO NOTHING`
 	for _, workshopID := range workshopIDs {
-		_, err := r.db.Exec(ctx, query, registrationID, workshopID)
-		if err != nil {
+		if _, err := db.Exec(ctx, query, registrationID, workshopID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// CreateRegistrationWithWorkshops crea la inscripción y su elección de
+// workshops en una transacción: o quedan las dos, o ninguna.
+func (r *EventRepository) CreateRegistrationWithWorkshops(ctx context.Context, reg *domain.Registration, workshopIDs []string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := crearInscripcion(ctx, tx, reg); err != nil {
+		return err
+	}
+	if err := guardarWorkshopsElegidos(ctx, tx, reg.ID, workshopIDs); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// ReplaceRegistrationWorkshops cambia la elección entera de una inscripción. El
+// DELETE solo toca la elección de esa inscripción, nunca los workshops.
+func (r *EventRepository) ReplaceRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM events.registration_workshops WHERE registration_id = $1::uuid`,
+		registrationID); err != nil {
+		return err
+	}
+	if err := guardarWorkshopsElegidos(ctx, tx, registrationID, workshopIDs); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *EventRepository) GetChosenWorkshopIDs(ctx context.Context, userID, eventID string) ([]string, error) {
+	query := `
+		SELECT rw.workshop_id::text
+		  FROM events.registration_workshops rw
+		  JOIN events.registrations reg ON reg.id = rw.registration_id
+		 WHERE reg.user_id = $1::uuid AND reg.event_id = $2::uuid`
+	rows, err := r.db.Query(ctx, query, userID, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error) {
@@ -746,6 +820,10 @@ func (r *EventRepository) GetEventSurveySummary(ctx context.Context, eventID str
 	return &summary, nil
 }
 
+// GetAgenda son los workshops que eligió el usuario en sus inscripciones. Desde
+// el 2026-11-05 lee de registration_workshops, la misma elección que ve la
+// puerta, y no de user_agenda, que era una lista aparte sin ninguna regla (§10
+// del plan de workshops). user_agenda se conserva, sin uso.
 func (r *EventRepository) GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error) {
 	query := `
 		SELECT 
@@ -756,9 +834,10 @@ func (r *EventRepository) GetAgenda(ctx context.Context, userID string) ([]domai
 			COALESCE(w.image_url, '') as image_url, 
 			w.start_date_time, w.end_date_time
 		FROM events.workshops w
-		JOIN events.user_agenda ua ON w.id = ua.workshop_id
+		JOIN events.registration_workshops rw ON w.id = rw.workshop_id
+		JOIN events.registrations reg ON reg.id = rw.registration_id
 		JOIN events.events e ON w.event_id = e.id
-		WHERE ua.user_id = $1::uuid
+		WHERE reg.user_id = $1::uuid
 		ORDER BY w.start_date_time ASC
 	`
 	rows, err := r.db.Query(ctx, query, userID)

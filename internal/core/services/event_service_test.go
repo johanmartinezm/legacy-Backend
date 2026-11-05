@@ -24,6 +24,9 @@ type MockEventRepository struct {
 	CountRegistrationsByEventFunc     func(ctx context.Context, eventID string) (int, error)
 	GetRegistrationsSinCredencialFunc func(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error)
 	SetRegistrationQRFunc             func(ctx context.Context, regID, qrData string) error
+	GetWorkshopsByEventIDFunc         func(ctx context.Context, eventID string) ([]domain.Workshop, error)
+	ReplaceRegistrationWorkshopsFunc  func(ctx context.Context, regID string, workshopIDs []string) error
+	GetChosenWorkshopIDsFunc          func(ctx context.Context, userID, eventID string) ([]string, error)
 }
 
 func (m *MockEventRepository) GetRegistrationsSinCredencial(ctx context.Context, eventID string, ids []string) ([]domain.Registration, error) {
@@ -64,7 +67,10 @@ func (m *MockEventRepository) GetEventByID(ctx context.Context, id string) (*dom
 	return m.GetEventByIDFunc(ctx, id)
 }
 func (m *MockEventRepository) GetWorkshopsByEventID(ctx context.Context, id string) ([]domain.Workshop, error) {
-	return nil, nil
+	if m.GetWorkshopsByEventIDFunc == nil {
+		return nil, nil
+	}
+	return m.GetWorkshopsByEventIDFunc(ctx, id)
 }
 func (m *MockEventRepository) ListCategories(ctx context.Context) ([]domain.EventCategory, error) {
 	return nil, nil
@@ -93,6 +99,30 @@ func (m *MockEventRepository) CreateRegistration(ctx context.Context, r *domain.
 }
 func (m *MockEventRepository) AddRegistrationWorkshops(ctx context.Context, id string, wIDs []string) error {
 	return m.AddRegistrationWorkshopsFunc(ctx, id, wIDs)
+}
+
+// Imita la transacción con los dos ganchos de siempre, para que los tests que
+// ya fijaban CreateRegistrationFunc sigan viendo la inscripción creada.
+func (m *MockEventRepository) CreateRegistrationWithWorkshops(ctx context.Context, r *domain.Registration, wIDs []string) error {
+	if err := m.CreateRegistrationFunc(ctx, r); err != nil {
+		return err
+	}
+	if len(wIDs) > 0 && m.AddRegistrationWorkshopsFunc != nil {
+		return m.AddRegistrationWorkshopsFunc(ctx, r.ID, wIDs)
+	}
+	return nil
+}
+func (m *MockEventRepository) ReplaceRegistrationWorkshops(ctx context.Context, id string, wIDs []string) error {
+	if m.ReplaceRegistrationWorkshopsFunc == nil {
+		return nil
+	}
+	return m.ReplaceRegistrationWorkshopsFunc(ctx, id, wIDs)
+}
+func (m *MockEventRepository) GetChosenWorkshopIDs(ctx context.Context, uID, eID string) ([]string, error) {
+	if m.GetChosenWorkshopIDsFunc == nil {
+		return nil, nil
+	}
+	return m.GetChosenWorkshopIDsFunc(ctx, uID, eID)
 }
 
 // Sin gancho fijado devuelve "no hay inscripcion" en vez de reventar.

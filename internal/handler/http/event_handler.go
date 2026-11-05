@@ -273,6 +273,9 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 			if req.UserID != "" {
 				registration.UserID = req.UserID
 			}
+			// Un administrador que inscribe a otra persona desde el panel queda
+			// exento de las reglas de la app (§10.6, punto 4).
+			registration.DesdeApp = !(IsAdmin(r.Context()) && req.UserID != "")
 			if req.PaymentStatus != "" {
 				registration.PaymentStatus = req.PaymentStatus
 			}
@@ -286,9 +289,15 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Sin cuerpo JSON también es la app: la versión publicada hasta la 1.0.1 no
+	// manda nada en esta llamada.
+	if r.Header.Get("Content-Type") != "application/json" {
+		registration.DesdeApp = true
+	}
+
 	err := h.service.RegisterUser(r.Context(), registration)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		escribirErrorDeWorkshops(w, err)
 		return
 	}
 
@@ -409,6 +418,8 @@ func (h *EventHandler) SubmitWorkshopRating(w http.ResponseWriter, r *http.Reque
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		case errors.Is(err, services.ErrTallerYaCalificado):
 			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, services.ErrWorkshopNoElegido):
+			http.Error(w, err.Error(), http.StatusForbidden)
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -558,6 +569,57 @@ func (h *EventHandler) GetAgenda(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(agenda)
+}
+
+// escribirErrorDeWorkshops traduce los errores de la inscripción y de la
+// elección de workshops. El texto va tal cual a la app: está en español y dice
+// qué falta.
+func escribirErrorDeWorkshops(w http.ResponseWriter, err error) {
+	var eleccion *services.ErrorEleccion
+	switch {
+	case errors.As(err, &eleccion):
+		http.Error(w, eleccion.Motivo, http.StatusBadRequest)
+	case errors.Is(err, services.ErrInscripcionesCerradas),
+		errors.Is(err, services.ErrEleccionCerrada):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, services.ErrSinInscripcion):
+		http.Error(w, err.Error(), http.StatusForbidden)
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// ElegirMisWorkshops reemplaza los workshops elegidos de mi inscripción a un
+// evento: PUT /api/events/{id}/workshops/mine con {"workshops": ["<id>", ...]}.
+// Responde con la agenda nueva, para que la app no tenga que pedirla aparte.
+func (h *EventHandler) ElegirMisWorkshops(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Workshops []string `json:"workshops"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "El cuerpo debe ser {\"workshops\": [ids]}", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.ElegirMisWorkshops(r.Context(), userID, eventID, req.Workshops); err != nil {
+		escribirErrorDeWorkshops(w, err)
+		return
+	}
+
+	agenda, err := h.service.GetAgenda(r.Context(), userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(agenda)
 }

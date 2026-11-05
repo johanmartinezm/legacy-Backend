@@ -29,6 +29,15 @@ type EventRepository interface {
 	DeleteWorkshopsByEventID(ctx context.Context, eventID string) error
 	CreateRegistration(ctx context.Context, registration *domain.Registration) error
 	AddRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error
+	// CreateRegistrationWithWorkshops crea la inscripción y sus workshops en una
+	// sola transacción: si falla una parte, no queda ninguna.
+	CreateRegistrationWithWorkshops(ctx context.Context, registration *domain.Registration, workshopIDs []string) error
+	// ReplaceRegistrationWorkshops cambia la elección entera de una inscripción,
+	// en una transacción.
+	ReplaceRegistrationWorkshops(ctx context.Context, registrationID string, workshopIDs []string) error
+	// GetChosenWorkshopIDs son los workshops que eligió el usuario en su
+	// inscripción a ese evento. Vacío si no eligió ninguno o no está inscrito.
+	GetChosenWorkshopIDs(ctx context.Context, userID, eventID string) ([]string, error)
 	GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error)
 	// ConfirmEventRegistration la usa el servicio de pagos al aprobarse el
 	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
@@ -116,6 +125,10 @@ type EventService interface {
 	GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error)
 	AddToAgenda(ctx context.Context, userID, workshopID string) error
 	RemoveFromAgenda(ctx context.Context, userID, workshopID string) error
+
+	// ElegirMisWorkshops reemplaza los workshops elegidos de la inscripción del
+	// usuario. Solo hasta el día anterior al evento y con las reglas del §10.
+	ElegirMisWorkshops(ctx context.Context, userID, eventID string, workshopIDs []string) error
 
 	// QR & Attendance
 	CheckIn(ctx context.Context, qrData, staffID string) (*domain.CheckInResponse, error)

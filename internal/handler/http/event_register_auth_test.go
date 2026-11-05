@@ -85,6 +85,9 @@ func (s *stubEventService) GetAgenda(ctx context.Context, userID string) ([]doma
 }
 func (s *stubEventService) AddToAgenda(ctx context.Context, uID, wID string) error      { return nil }
 func (s *stubEventService) RemoveFromAgenda(ctx context.Context, uID, wID string) error { return nil }
+func (s *stubEventService) ElegirMisWorkshops(ctx context.Context, uID, eID string, ids []string) error {
+	return nil
+}
 func (s *stubEventService) CheckIn(ctx context.Context, qr, staff string) (*domain.CheckInResponse, error) {
 	if s.errCheckIn != nil {
 		return nil, s.errCheckIn

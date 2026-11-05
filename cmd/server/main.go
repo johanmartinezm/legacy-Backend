@@ -412,6 +412,10 @@ func main() {
 		r.Post("/api/workshops/{id}/agenda", eventHandler.AddToAgenda)
 		r.Delete("/api/workshops/{id}/agenda", eventHandler.RemoveFromAgenda)
 
+		// Elegir o cambiar mis workshops de un evento, hasta el día anterior
+		// (§10 del plan de workshops). La agenda lee de esta misma elección.
+		r.Put("/api/events/{id}/workshops/mine", eventHandler.ElegirMisWorkshops)
+
 		// Payments
 		r.Post("/api/payments/intent", paymentHandler.CreatePaymentIntent)
 		r.Get("/api/payments/verify", paymentHandler.VerifyPayment)

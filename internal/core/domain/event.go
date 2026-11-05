@@ -144,6 +144,13 @@ type Registration struct {
 	// una carga distinga «inscritas» de «ya inscritas» sin consultar el evento
 	// fila por fila. No se persiste ni sale al JSON.
 	YaEstabaInscrito bool `json:"-" db:"-"`
+
+	// DesdeApp dice que la inscripción la pide el propio usuario desde la app,
+	// y no un administrador desde el panel ni una carga masiva. Solo entonces
+	// rigen las reglas del §10 del plan de workshops: inscripción cerrada desde
+	// el primer día del evento y un workshop elegido en cada franja. Lo fija el
+	// handler; en su valor cero, RegisterUser hace lo de siempre.
+	DesdeApp bool `json:"-" db:"-"`
 }
 
 // AvisoDeAlta dice qué correo sale al crear una inscripción confirmada.

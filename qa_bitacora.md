@@ -4,6 +4,37 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-05]: Elegir los workshops al inscribirse (§10 del plan de workshops)
+- **Alcance:** `workshops_eleccion.go` (franjas, reglas y cortes), `event_service.go` (`RegisterUser`
+  valida la elección antes de crear nada y cierra la app desde el primer día; `SubmitWorkshopRating`
+  exige haber elegido el workshop), `event_repository.go` (`CreateRegistrationWithWorkshops` y
+  `ReplaceRegistrationWorkshops` en transacción, `GetChosenWorkshopIDs`, y `GetAgenda` lee de
+  `registration_workshops` en vez de `user_agenda`), `event_handler.go` (`DesdeApp`, errores 400/403/409,
+  nuevo `ElegirMisWorkshops`), ruta `PUT /api/events/{id}/workshops/mine` en `main.go`. Migración
+  `scripts/20261105_agenda_a_workshops_elegidos.sql` (copia la agenda a la elección; aditiva e
+  idempotente). Tests en `workshops_eleccion_test.go`. Rama `feature/talleres-aparte`, **solo en local**.
+- **Reglas:** desde la app hay que elegir exactamente un workshop por franja (mismo día en hora de
+  Colombia, horarios que se cruzan aunque sea en parte); sin cupo. Se elige o cambia hasta el día
+  anterior al evento; desde las 00:00 del primer día, nadie, y la app ya no inscribe. El panel (con
+  `userID`) y la carga masiva quedan exentos, pero sus ids tienen que ser del evento. Calificar exige
+  haber elegido el workshop, salvo inscripciones sin ninguno elegido.
+- **🔴 Antes de desplegar:** la app publicada (1.0.1) no manda workshops, así que **no podrá inscribirse
+  a eventos con workshops** hasta publicar la versión nueva de la app. Desplegar el backend y la app a
+  la vez, o asumirlo.
+- **Criterios de QA** (comprobados en local con `qa-app` y el evento «[PRUEBA] Workshops por franja»):
+  1. Inscribirse sin cuerpo, como la app publicada, a un evento con workshops → 400 «falta elegir un
+     workshop el 10/12 de 09:00 a 11:00».
+  2. Dejar una franja sin elegir → 400 que nombra la franja; elegir dos que se cruzan en parte (9:00–10:30
+     y 9:30–11:00) → 400 «… se cruzan …»; un workshop de otro evento → 400. Ninguno crea inscripción.
+  3. Uno por franja → 201, y quedan guardados los tres; `GET /api/events/agenda` los devuelve.
+  4. `PUT /api/events/{id}/workshops/mine` antes del día del evento → 200 con la agenda nueva; dejando una
+     franja vacía → 400; sin estar inscrito → 403.
+  5. Inscribirse desde la app a un evento que empieza hoy → 409 «las inscripciones a este evento ya
+     cerraron», sin crear nada. Desde el panel, con `userID`, el mismo evento → 201.
+  6. Correr la migración dos veces → `INSERT 0 0` la segunda: no duplica.
+  7. Calificar un workshop terminado que no se eligió → 403; si la inscripción no eligió ninguno, califica
+     como antes (tests de servicio).
+
 ### [2026-10-28]: El listado de categorías ya no falla por una descripción vacía
 - **Alcance:** `event_repository.go` (`ListCategories` con `COALESCE` en `description`,
   `order_index` y `created_at`, las tres anulables). Sin migración. Rama `feature/talleres-aparte`,

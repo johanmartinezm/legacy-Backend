@@ -50,6 +50,17 @@ type EventService struct {
 	// dispara un correo por persona, y sin esto salían todos a la vez.
 	colaCorreos  chan func()
 	arrancarCola sync.Once
+
+	// reloj permite fijar la hora en los tests de los cortes del §10 (cierre de
+	// inscripciones y de la elección de workshops). Nil es time.Now.
+	reloj func() time.Time
+}
+
+func (s *EventService) ahora() time.Time {
+	if s.reloj != nil {
+		return s.reloj()
+	}
+	return time.Now()
 }
 
 func NewEventService(repo ports.EventRepository, crypto ports.CryptoService) *EventService {
@@ -254,6 +265,20 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		return err
 	}
 
+	// Desde las 00:00 del primer día del evento nadie se inscribe desde la app:
+	// es el mismo corte que la elección de workshops, y así nadie queda inscrito
+	// sin haber podido elegirlos. El panel y la carga masiva siguen pudiendo.
+	if reg.DesdeApp && !eleccionAbierta(event, s.ahora()) {
+		return ErrInscripcionesCerradas
+	}
+
+	// Los workshops se validan antes de crear nada: una elección mala no deja
+	// una inscripción a medias.
+	workshopIDs, err := s.prepararWorkshopsDeInscripcion(ctx, reg)
+	if err != nil {
+		return err
+	}
+
 	// Contacto del participante: se cifra igual que el resto de datos
 	// personales. Si viene vacío se deja vacío, que significa "usa los del
 	// perfil", en vez de cifrar cadenas vacías que luego no dicen nada.
@@ -310,21 +335,11 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		reg.QRData = "REG-" + uuid.NewString()
 	}
 
-	// 4. Create Registration in repository
-	err = s.repo.CreateRegistration(ctx, reg)
-	if err != nil {
+	// 4 y 5. La inscripción y sus workshops, en una sola transacción. Antes eran
+	// dos pasos sueltos: si fallaba el segundo, la inscripción quedaba creada
+	// sin los workshops y la persona recibía un error de algo que sí se hizo.
+	if err := s.repo.CreateRegistrationWithWorkshops(ctx, reg, workshopIDs); err != nil {
 		return err
-	}
-
-	// 5. Add workshops if any
-	if len(reg.Workshops) > 0 {
-		var workshopIDs []string
-		for _, w := range reg.Workshops {
-			workshopIDs = append(workshopIDs, w.ID)
-		}
-		if err := s.repo.AddRegistrationWorkshops(ctx, reg.ID, workshopIDs); err != nil {
-			return err
-		}
 	}
 
 	// 6. Confirmación por correo. Solo si la inscripción ya da derecho a entrar:
@@ -537,8 +552,11 @@ func (s *EventService) SubmitWorkshopRating(ctx context.Context, rating *domain.
 	if err != nil {
 		return err
 	}
-	if time.Now().Before(taller.EndDateTime) {
+	if s.ahora().Before(taller.EndDateTime) {
 		return ErrTallerSinTerminar
+	}
+	if err := s.comprobarWorkshopElegido(ctx, rating.UserID, taller); err != nil {
+		return err
 	}
 
 	if err := s.repo.CreateWorkshopRating(ctx, rating); err != nil {
