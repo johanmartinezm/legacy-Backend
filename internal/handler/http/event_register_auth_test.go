@@ -182,6 +182,34 @@ func TestRegister_CamposReservadosAAdministradores(t *testing.T) {
 		}
 	})
 
+	t.Run("Lo que llega de la app se marca como de la app", func(t *testing.T) {
+		// La app publicada manda Content-Type JSON sin cuerpo: el decodificado
+		// falla, y aun así tienen que regir las reglas del §10.
+		casos := []struct {
+			nombre string
+			cuerpo map[string]any
+			user   string
+			rol    string
+			app    bool
+		}{
+			{"sin cuerpo", nil, "user-1", "familia", true},
+			{"con workshops", map[string]any{"workshops": []string{"w-1"}}, "user-1", "familia", true},
+			{"un admin para sí mismo", nil, "admin-1", RoleAdmin, true},
+			{"un admin inscribiendo a otro", map[string]any{"userID": "otra-persona"}, "admin-1", RoleAdmin, false},
+		}
+		for _, c := range casos {
+			svc := &stubEventService{}
+			req, rec := peticion(c.cuerpo, c.user, c.rol)
+			NewEventHandler(svc, nil).Register(rec, req)
+			if svc.recibida == nil {
+				t.Fatalf("%s: no llegó al servicio (HTTP %d)", c.nombre, rec.Code)
+			}
+			if svc.recibida.DesdeApp != c.app {
+				t.Errorf("%s: DesdeApp = %v, se esperaba %v", c.nombre, svc.recibida.DesdeApp, c.app)
+			}
+		}
+	})
+
 	t.Run("Los talleres siguen aceptándose sin ser administrador", func(t *testing.T) {
 		svc := &stubEventService{}
 		req, rec := peticion(map[string]any{"workshops": []string{"w-1", "w-2"}}, "user-1", "familia")

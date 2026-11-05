@@ -34,6 +34,8 @@ Entrada de trabajo para validación de API.
   6. Correr la migración dos veces → `INSERT 0 0` la segunda: no duplica.
   7. Calificar un workshop terminado que no se eligió → 403; si la inscripción no eligió ninguno, califica
      como antes (tests de servicio).
+  8. Como la app publicada: `Content-Type: application/json` **sin cuerpo** → también rigen las reglas
+     (corregido el mismo día: al principio esa combinación se trataba como del panel y se saltaba todo).
 
 ### [2026-10-28]: El listado de categorías ya no falla por una descripción vacía
 - **Alcance:** `event_repository.go` (`ListCategories` con `COALESCE` en `description`,

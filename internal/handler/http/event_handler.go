@@ -230,9 +230,14 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Default registration values
+	// Toda inscripción es de la app salvo la de un administrador que inscribe a
+	// otra persona desde el panel (§10.6, punto 4). Por defecto, de la app: la
+	// versión publicada manda Content-Type JSON sin cuerpo, y con eso el
+	// decodificado falla y no se llega a mirar nada más.
 	registration := &domain.Registration{
-		UserID:  requesterID,
-		EventID: eventID,
+		UserID:   requesterID,
+		EventID:  eventID,
+		DesdeApp: true,
 	}
 
 	// Try to decode body if present (optional)
@@ -273,8 +278,6 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 			if req.UserID != "" {
 				registration.UserID = req.UserID
 			}
-			// Un administrador que inscribe a otra persona desde el panel queda
-			// exento de las reglas de la app (§10.6, punto 4).
 			registration.DesdeApp = !(IsAdmin(r.Context()) && req.UserID != "")
 			if req.PaymentStatus != "" {
 				registration.PaymentStatus = req.PaymentStatus
@@ -287,12 +290,6 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 			registration.ParticipantEmail = req.ParticipantEmail
 			registration.ParticipantPhone = req.ParticipantPhone
 		}
-	}
-
-	// Sin cuerpo JSON también es la app: la versión publicada hasta la 1.0.1 no
-	// manda nada en esta llamada.
-	if r.Header.Get("Content-Type") != "application/json" {
-		registration.DesdeApp = true
 	}
 
 	err := h.service.RegisterUser(r.Context(), registration)
