@@ -500,6 +500,12 @@ func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string, 
 			if v, err := s.crypto.Decrypt(registrants[i].Email); err == nil {
 				registrants[i].Email = v
 			}
+			// El teléfono se cifra al registrarse, como el correo. Hasta el
+			// 2026-11-05 no se descifraba aquí y el panel lo mostraba cifrado.
+			// Uno guardado en claro no se puede descifrar y pasa tal cual.
+			if v, err := s.crypto.Decrypt(registrants[i].Phone); err == nil {
+				registrants[i].Phone = v
+			}
 		}
 		registrants[i].FullName = strings.TrimSpace(nombre + " " + apellido)
 	}

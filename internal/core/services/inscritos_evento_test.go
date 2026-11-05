@@ -35,13 +35,13 @@ func repoConInscritos(inscritos []domain.EventRegistrant) *MockEventRepository {
 	}
 }
 
-func TestGetEventRegistrants_DescifraNombreYCorreo(t *testing.T) {
+func TestGetEventRegistrants_DescifraNombreCorreoYTelefono(t *testing.T) {
 	repo := repoConInscritos([]domain.EventRegistrant{{
 		RegistrationID:     "reg-1",
 		FirstName:          prefijoCifrado + "Ana",
 		LastName:           prefijoCifrado + "Restrepo",
 		Email:              prefijoCifrado + "ana@example.com",
-		Phone:              "+57 300 000 0000",
+		Phone:              prefijoCifrado + "+57 300 000 0000",
 		PaymentStatus:      "paid",
 		RegistrationStatus: domain.RegistrationConfirmed,
 	}})
@@ -59,9 +59,11 @@ func TestGetEventRegistrants_DescifraNombreYCorreo(t *testing.T) {
 	if inscritos[0].Email != "ana@example.com" {
 		t.Errorf("correo esperado descifrado, llegó %q", inscritos[0].Email)
 	}
-	// El teléfono no está cifrado en la base: tiene que pasar intacto.
+	// El teléfono también se cifra al registrarse (auth_service.go, Register).
+	// Hasta el 2026-11-05 este test daba por hecho que no, y el panel mostraba
+	// el texto cifrado en la columna de contacto.
 	if inscritos[0].Phone != "+57 300 000 0000" {
-		t.Errorf("el teléfono no debe tocarse, llegó %q", inscritos[0].Phone)
+		t.Errorf("teléfono esperado descifrado, llegó %q", inscritos[0].Phone)
 	}
 }
 

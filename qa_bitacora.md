@@ -4,6 +4,16 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-05]: El teléfono de los inscritos sale descifrado
+- **Alcance:** `event_service.go` (`GetEventRegistrants` descifra también el teléfono, que se cifra al
+  registrarse en `auth_service.go`; antes solo nombre y correo) y `inscritos_evento_test.go` (el test
+  daba por hecho que el teléfono no se cifraba). Sin migración. Rama `feature/talleres-aparte`, solo
+  en local.
+- **Criterios de QA:**
+  1. En el panel, «Inscritos» de un evento: la columna de contacto muestra el teléfono legible, no un
+     texto cifrado (comprobado en local con `qa-app`: «3000000000»).
+  2. Un teléfono guardado en claro, si lo hubiera, sigue saliendo igual.
+
 ### [2026-11-05]: Resumen de workshops para el panel y «workshop» en los mensajes
 - **Alcance:** ruta AdminOnly `GET /api/events/{id}/workshops/resumen` (inscritos del evento y cuántos
   eligieron cada workshop: `ResumenWorkshops` en `workshops_eleccion.go`, `CountChosenByWorkshop` en el
