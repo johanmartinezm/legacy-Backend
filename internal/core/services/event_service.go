@@ -530,9 +530,9 @@ func (s *EventService) GetEventRegistrants(ctx context.Context, eventID string, 
 // devuelve tal cual y la app los muestra al usuario.
 var (
 	ErrCalificacionFueraDeRango = errors.New("la calificación debe estar entre 1 y 5 estrellas")
-	ErrTallerNoEncontrado       = errors.New("el taller no existe")
-	ErrTallerSinTerminar        = errors.New("podrás calificar el taller cuando termine")
-	ErrTallerYaCalificado       = errors.New("ya calificaste este taller")
+	ErrTallerNoEncontrado       = errors.New("el workshop no existe")
+	ErrTallerSinTerminar        = errors.New("podrás calificar el workshop cuando termine")
+	ErrTallerYaCalificado       = errors.New("ya calificaste este workshop")
 )
 
 // SubmitWorkshopRating guarda la calificación de un taller ya terminado.
