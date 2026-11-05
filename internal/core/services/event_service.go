@@ -51,6 +51,10 @@ type EventService struct {
 	colaCorreos  chan func()
 	arrancarCola sync.Once
 
+	// notifier avisa por push al aprobar o rechazar una inscripción (parte B).
+	// Puede ser nil: se omite el aviso. Ver ConAvisos.
+	notifier ports.NotificationService
+
 	// reloj permite fijar la hora en los tests de los cortes del §10 (cierre de
 	// inscripciones y de la elección de workshops). Nil es time.Now.
 	reloj func() time.Time
@@ -114,6 +118,9 @@ func (s *EventService) GetEventDetails(ctx context.Context, id string) (*domain.
 }
 
 func (s *EventService) CreateEvent(ctx context.Context, e *domain.Event) error {
+	if err := validarLinkDePago(e); err != nil {
+		return err
+	}
 	err := s.repo.CreateEvent(ctx, e)
 	if err != nil {
 		return err
@@ -138,6 +145,9 @@ func (s *EventService) CreateEvent(ctx context.Context, e *domain.Event) error {
 // elegidos en las inscripciones y las calificaciones. Ahora los talleres van
 // por CreateWorkshop, UpdateWorkshop y DeleteWorkshop.
 func (s *EventService) UpdateEvent(ctx context.Context, e *domain.Event) error {
+	if err := validarLinkDePago(e); err != nil {
+		return err
+	}
 	return s.repo.UpdateEvent(ctx, e)
 }
 
@@ -243,7 +253,11 @@ func (s *EventService) DescifrarContactoParticipante(reg *domain.Registration) {
 func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registration) error {
 	// 1. Check if already registered
 	existing, _ := s.repo.GetRegistrationByUserAndEvent(ctx, reg.UserID, reg.EventID)
-	if existing != nil {
+	// Una inscripción rechazada no cuenta como «ya inscrito»: la persona puede
+	// volver a reservar, y la misma fila vuelve a quedar pendiente (§7.5,
+	// decisión 1). Pasa por todas las reglas de una inscripción nueva.
+	reactivar := existing != nil && existing.RegistrationStatus == domain.RegistrationRejected
+	if existing != nil && !reactivar {
 		reg.ID = existing.ID
 		reg.PaymentStatus = existing.PaymentStatus
 		reg.RegistrationStatus = existing.RegistrationStatus
@@ -277,6 +291,14 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 	workshopIDs, err := s.prepararWorkshopsDeInscripcion(ctx, reg)
 	if err != nil {
 		return err
+	}
+
+	// Cupo del evento: solo frena a la app. El panel y la carga masiva pueden
+	// pasarlo (§7.5, decisión 8).
+	if reg.DesdeApp {
+		if err := s.comprobarCupo(ctx, event); err != nil {
+			return err
+		}
 	}
 
 	// Contacto del participante: se cifra igual que el resto de datos
@@ -333,6 +355,10 @@ func (s *EventService) RegisterUser(ctx context.Context, reg *domain.Registratio
 		// asi que cualquiera podia fabricar el codigo de otro y CheckIn lo daba
 		// por bueno. uuid.NewString() usa crypto/rand.
 		reg.QRData = "REG-" + uuid.NewString()
+	}
+
+	if reactivar {
+		return s.reactivarInscripcion(ctx, reg, existing, event, workshopIDs)
 	}
 
 	// 4 y 5. La inscripción y sus workshops, en una sola transacción. Antes eran
@@ -397,7 +423,7 @@ func (s *EventService) GenerarCredenciales(ctx context.Context, eventID string, 
 		// Una inscripción pendiente de pago no recibe credencial: sería
 		// entregar el acceso a un evento que nadie ha pagado. CheckIn ya lo
 		// rechazaría en la puerta, pero el correo habría salido igual.
-		if reg.IsPendingPayment() {
+		if reg.SinAcceso() {
 			continue
 		}
 
@@ -452,7 +478,7 @@ func (s *EventService) GetMyRegistrations(ctx context.Context, userID string) ([
 		registrations = append(registrations, reg)
 	}
 	for i := range registrations {
-		if registrations[i].RegistrationStatus == domain.RegistrationPendingPayment {
+		if domain.EstadoSinAcceso(registrations[i].RegistrationStatus) {
 			registrations[i].QRData = ""
 			registrations[i].AccessURL = ""
 			continue
@@ -584,6 +610,9 @@ func (s *EventService) GetEventFeedback(ctx context.Context, eventID string) ([]
 var (
 	ErrCheckInNotFound       = errors.New("invalid QR data or registration not found")
 	ErrCheckInPendingPayment = errors.New("registration is pending payment")
+	// ErrCheckInRechazada: el pago no se confirmó. La reserva tenía QR desde
+	// que se hizo, así que sin esto entraría (parte B del plan de workshops).
+	ErrCheckInRechazada = errors.New("registration was rejected")
 )
 
 // ErrCredencialEnEventoVirtual lo devuelve GenerarCredenciales cuando el evento
@@ -726,6 +755,9 @@ func (s *EventService) CheckIn(ctx context.Context, qrData, staffID string) (*do
 	// cliente se acuerde de ocultar nada.
 	if reg.IsPendingPayment() {
 		return nil, ErrCheckInPendingPayment
+	}
+	if reg.SinAcceso() {
+		return nil, ErrCheckInRechazada
 	}
 
 	// 3. Record attendance (updates confirmation and logs)

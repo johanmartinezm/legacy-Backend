@@ -43,6 +43,11 @@ type EventRepository interface {
 	// UpdateWorkshopMaterial escribe solo el material de un workshop.
 	// domain.ErrNotFound si el workshop no existe.
 	UpdateWorkshopMaterial(ctx context.Context, id string, material domain.MaterialDeWorkshop) error
+	// Parte B del plan de workshops: aprobar, rechazar, cupo y volver a reservar.
+	GetRegistrationByID(ctx context.Context, id string) (*domain.Registration, error)
+	RejectRegistration(ctx context.Context, id string) error
+	CountActiveRegistrations(ctx context.Context, eventID string) (int, error)
+	ReactivateRegistration(ctx context.Context, reg *domain.Registration, workshopIDs []string) error
 	GetRegistrationByUserAndEvent(ctx context.Context, userID, eventID string) (*domain.Registration, error)
 	// ConfirmEventRegistration la usa el servicio de pagos al aprobarse el
 	// cobro. Devuelve domain.ErrNotFound si no había inscripción que confirmar.
@@ -142,6 +147,11 @@ type EventService interface {
 	// ActualizarMaterialWorkshop valida y guarda el material de un workshop
 	// (imagen, archivo y video). Va bajo AdminOnly.
 	ActualizarMaterialWorkshop(ctx context.Context, id string, material domain.MaterialDeWorkshop) (*domain.Workshop, error)
+
+	// Parte B del plan de workshops: el administrador aprueba o rechaza una
+	// inscripción pendiente de pago tras cruzar el pago por fuera del sistema.
+	AprobarInscripcion(ctx context.Context, registrationID string) (*domain.Registration, error)
+	RechazarInscripcion(ctx context.Context, registrationID string) (*domain.Registration, error)
 
 	// QR & Attendance
 	CheckIn(ctx context.Context, qrData, staffID string) (*domain.CheckInResponse, error)

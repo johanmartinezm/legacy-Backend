@@ -28,6 +28,35 @@ type MockEventRepository struct {
 	ReplaceRegistrationWorkshopsFunc  func(ctx context.Context, regID string, workshopIDs []string) error
 	GetChosenWorkshopIDsFunc          func(ctx context.Context, userID, eventID string) ([]string, error)
 	CountChosenByWorkshopFunc         func(ctx context.Context, eventID string) (map[string]int, error)
+	GetRegistrationByIDFunc           func(ctx context.Context, id string) (*domain.Registration, error)
+	RejectRegistrationFunc            func(ctx context.Context, id string) error
+	CountActiveRegistrationsFunc      func(ctx context.Context, eventID string) (int, error)
+	ReactivateRegistrationFunc        func(ctx context.Context, reg *domain.Registration, workshopIDs []string) error
+}
+
+func (m *MockEventRepository) GetRegistrationByID(ctx context.Context, id string) (*domain.Registration, error) {
+	if m.GetRegistrationByIDFunc == nil {
+		return nil, domain.ErrNotFound
+	}
+	return m.GetRegistrationByIDFunc(ctx, id)
+}
+func (m *MockEventRepository) RejectRegistration(ctx context.Context, id string) error {
+	if m.RejectRegistrationFunc == nil {
+		return nil
+	}
+	return m.RejectRegistrationFunc(ctx, id)
+}
+func (m *MockEventRepository) CountActiveRegistrations(ctx context.Context, eID string) (int, error) {
+	if m.CountActiveRegistrationsFunc == nil {
+		return 0, nil
+	}
+	return m.CountActiveRegistrationsFunc(ctx, eID)
+}
+func (m *MockEventRepository) ReactivateRegistration(ctx context.Context, r *domain.Registration, ids []string) error {
+	if m.ReactivateRegistrationFunc == nil {
+		return nil
+	}
+	return m.ReactivateRegistrationFunc(ctx, r, ids)
 }
 
 func (m *MockEventRepository) UpdateWorkshopMaterial(ctx context.Context, id string, mat domain.MaterialDeWorkshop) error {

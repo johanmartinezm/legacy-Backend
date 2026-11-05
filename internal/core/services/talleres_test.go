@@ -54,7 +54,7 @@ func TestEditarEvento_NoTocaSusTalleres(t *testing.T) {
 	svc := NewEventService(repo, nil)
 
 	// Un panel viejo todavía podría mandar talleres en el PUT: se ignoran.
-	evento := &domain.Event{ID: "evt-1", Title: "Summit", Workshops: []domain.Workshop{tallerValido()}}
+	evento := &domain.Event{ID: "evt-1", Title: "Summit", IsFree: true, Workshops: []domain.Workshop{tallerValido()}}
 	if err := svc.UpdateEvent(context.Background(), evento); err != nil {
 		t.Fatal(err)
 	}

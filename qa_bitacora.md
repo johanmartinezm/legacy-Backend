@@ -4,6 +4,33 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-05]: Pago por link externo, aprobación manual y cupo del evento (parte B, backend)
+- **Alcance:** migración `scripts/20261105_pago_por_link_y_rechazo.sql` (`events.events.payment_url` y el
+  estado `rejected` en el CHECK; idempotente), `pago_por_link.go` (link https obligatorio en eventos de
+  pago, cupo, aprobar, rechazar, volver a reservar y aviso push), `event_service.go` (`RegisterUser`:
+  cupo solo para la app y una rechazada se reactiva; crear y editar evento validan el link),
+  `domain.SinAcceso` (pendiente **o rechazada** no da acceso: credencial, «Mi credencial», respuesta al
+  reservar y puerta), repositorio (`payment_url` y cuatro métodos nuevos), rutas AdminOnly
+  `POST /api/registrations/{id}/aprobar` y `/rechazar`, y `ConAvisos` en `main.go`. Tests en
+  `pago_por_link_test.go`. Rama `feature/talleres-aparte`, **solo en local**.
+- **🔴 Antes de desplegar:** la migración va antes del binario. Los eventos de pago que ya existen no
+  tienen link: el panel lo exigirá la próxima vez que se guarden. En producción tienen cupo el Summit
+  (300), la masterclass del 20-oct (100) y Legacy Local Bucaramanga (30): al desplegar, ese límite
+  empieza a cerrar inscripciones desde la app.
+- **Criterios de QA** (comprobados en local con «[PRUEBA] Masterclass de pago por link» y `qa-app`):
+  1. Crear un evento de pago sin link → 400 «un evento de pago necesita el link de pago»; con `http://`
+     → 400; con `https://` → 201, y el evento devuelve `paymentUrl`.
+  2. Inscribirse → 201 pendiente de pago, sin QR en la respuesta.
+  3. Rechazar sin ser admin → 403. Como admin → `rejected`. Esa inscripción no entra por la puerta (403
+     «La inscripción fue rechazada…») ni ve su QR en «Mi credencial».
+  4. Volver a reservar → la **misma** inscripción, otra vez pendiente.
+  5. Aprobar → `confirmed` y `paid`; aprobar otra vez → 200 sin repetir nada; rechazar una confirmada →
+     409. Ya aprobada, «Mi credencial» muestra su QR.
+  6. Con límite 1 y otra persona pendiente, inscribirse desde la app → 409 «ya no quedan cupos para
+     este evento». Desde el panel sí se puede.
+  7. Aprobar y rechazar mandan push `{type: inscripcion_aprobada | inscripcion_rechazada, id: <evento>}`
+     (tests de servicio; en local FCM está en modo mock).
+
 ### [2026-11-05]: Material de cada workshop: imagen, archivo y video (parte A, backend)
 - **Alcance:** migración `scripts/20261105_material_de_workshops.sql` (cinco columnas `material_*` en
   `events.workshops`; aditiva e idempotente), `domain.MaterialDeWorkshop` (sale en cada workshop como

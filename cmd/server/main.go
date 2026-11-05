@@ -112,7 +112,8 @@ func main() {
 
 	eventRepo := postgres.NewEventRepository(dbPool)
 	eventService := services.NewEventService(eventRepo, cryptoService).
-		ConCorreoDeInscripcion(userRepo, emailService)
+		ConCorreoDeInscripcion(userRepo, emailService).
+		ConAvisos(notificationService)
 	eventHandler := handler.NewEventHandler(eventService, notificationService)
 	// Aviso de la mañana del evento a los inscritos confirmados. Vive en
 	// memoria como el hub del chat: con dos instancias, la tabla
@@ -530,6 +531,10 @@ func main() {
 		// que editar el workshop no borre el material.
 		r.Post("/api/documents/upload", documentHandler.UploadDocument)
 		r.Put("/api/workshops/{id}/material", eventHandler.ActualizarMaterial)
+		// Pago por link externo (parte B): el administrador aprueba o rechaza
+		// cada inscripción pendiente tras confirmar el pago por fuera.
+		r.Post("/api/registrations/{id}/aprobar", eventHandler.AprobarInscripcion)
+		r.Post("/api/registrations/{id}/rechazar", eventHandler.RechazarInscripcion)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
 		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
 		// Rellenar el codigo de acceso que falta, en bloque o por persona. Es la

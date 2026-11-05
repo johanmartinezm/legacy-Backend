@@ -85,6 +85,12 @@ func (s *stubEventService) GetAgenda(ctx context.Context, userID string) ([]doma
 }
 func (s *stubEventService) AddToAgenda(ctx context.Context, uID, wID string) error      { return nil }
 func (s *stubEventService) RemoveFromAgenda(ctx context.Context, uID, wID string) error { return nil }
+func (s *stubEventService) AprobarInscripcion(ctx context.Context, id string) (*domain.Registration, error) {
+	return &domain.Registration{ID: id, RegistrationStatus: domain.RegistrationConfirmed}, nil
+}
+func (s *stubEventService) RechazarInscripcion(ctx context.Context, id string) (*domain.Registration, error) {
+	return &domain.Registration{ID: id, RegistrationStatus: domain.RegistrationRejected}, nil
+}
 func (s *stubEventService) ActualizarMaterialWorkshop(ctx context.Context, id string, m domain.MaterialDeWorkshop) (*domain.Workshop, error) {
 	return &domain.Workshop{ID: id, Material: m}, nil
 }

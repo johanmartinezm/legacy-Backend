@@ -76,7 +76,7 @@ func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) 
 		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
 		       e.location, e.is_virtual, e.access_url, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
-		       e.action_status, e.button_text, e.attendees_limit, e.includes, e.model,
+		       e.action_status, e.button_text, e.attendees_limit, e.includes, e.model, e.payment_url,
 		       COALESCE(e.status, '') AS status,
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
@@ -96,7 +96,7 @@ func (r *EventRepository) GetEvents(ctx context.Context, incluirInactivos bool) 
 		err := rows.Scan(
 			&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
 			&e.Location, &e.IsVirtual, &e.AccessURL, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
-			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Model, &e.Status, &e.CategoryOrder,
+			&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Model, &e.PaymentURL, &e.Status, &e.CategoryOrder,
 		)
 		if err != nil {
 			return nil, err
@@ -116,7 +116,7 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 		SELECT e.id, COALESCE(e.category_id::text, '') AS category_id,
 		       COALESCE(c.name, '') AS category, e.title, e.description, e.image_url,
 		       e.location, e.is_virtual, e.access_url, e.speaker_main, e.start_date, e.end_date, e.price, e.is_free,
-		       e.action_status, e.button_text, e.attendees_limit, e.includes, e.model,
+		       e.action_status, e.button_text, e.attendees_limit, e.includes, e.model, e.payment_url,
 		       COALESCE(e.status, '') AS status,
 		       COALESCE(c.order_index, 9999) AS order_index
 		FROM events.events e
@@ -127,7 +127,7 @@ func (r *EventRepository) GetEventByID(ctx context.Context, id string) (*domain.
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&e.ID, &e.CategoryID, &e.Category, &e.Title, &e.Description, &e.ImageUrl,
 		&e.Location, &e.IsVirtual, &e.AccessURL, &e.SpeakerMain, &e.StartDate, &e.EndDate, &e.Price, &e.IsFree,
-		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Model, &e.Status, &e.CategoryOrder,
+		&e.ActionStatus, &e.ButtonText, &e.AttendeesLimit, &e.Includes, &e.Model, &e.PaymentURL, &e.Status, &e.CategoryOrder,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -574,12 +574,12 @@ func (r *EventRepository) GetRegistrationByUserAndEvent(ctx context.Context, use
 
 func (r *EventRepository) CreateEvent(ctx context.Context, e *domain.Event) error {
 	query := `
-		INSERT INTO events.events (category_id, title, description, image_url, location, is_virtual, access_url, speaker_main, start_date, end_date, price, is_free, action_status, button_text, attendees_limit, includes, model)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		INSERT INTO events.events (category_id, title, description, image_url, location, is_virtual, access_url, speaker_main, start_date, end_date, price, is_free, action_status, button_text, attendees_limit, includes, model, payment_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id, created_at, updated_at
 	`
 	return r.db.QueryRow(ctx, query,
-		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes, e.Model,
+		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes, e.Model, e.PaymentURL,
 	).Scan(&e.ID, &e.CreatedAt, &e.UpdatedAt)
 }
 
@@ -598,11 +598,11 @@ func (r *EventRepository) UpdateEvent(ctx context.Context, e *domain.Event) erro
 		SET category_id = $1, title = $2, description = $3, image_url = $4, location = $5, is_virtual = $6,
 		    access_url = $7, speaker_main = $8,
 		    start_date = $9, end_date = $10, price = $11, is_free = $12, action_status = $13, button_text = $14,
-		    attendees_limit = $15, includes = $16, model = $17, updated_at = NOW()
-		WHERE id = $18
+		    attendees_limit = $15, includes = $16, model = $17, payment_url = $18, updated_at = NOW()
+		WHERE id = $19
 	`
 	_, err := r.db.Exec(ctx, query,
-		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes, e.Model,
+		e.CategoryID, e.Title, e.Description, e.ImageUrl, e.Location, e.IsVirtual, e.AccessURL, e.SpeakerMain, e.StartDate, e.EndDate, e.Price, e.IsFree, e.ActionStatus, e.ButtonText, e.AttendeesLimit, e.Includes, e.Model, e.PaymentURL,
 		e.ID,
 	)
 	return err
@@ -691,6 +691,95 @@ func (r *EventRepository) UpdateWorkshop(ctx context.Context, w *domain.Workshop
 		return domain.ErrNotFound
 	}
 	return err
+}
+
+// GetRegistrationByID trae lo que necesitan aprobar y rechazar: de quién es, de
+// qué evento y en qué estado está. domain.ErrNotFound si no existe.
+func (r *EventRepository) GetRegistrationByID(ctx context.Context, id string) (*domain.Registration, error) {
+	var reg domain.Registration
+	err := r.db.QueryRow(ctx, `
+		SELECT id, user_id, event_id, COALESCE(payment_status, ''), COALESCE(registration_status, ''),
+		       COALESCE(qr_data, ''), COALESCE(participant_email, '')
+		  FROM events.registrations
+		 WHERE id = $1::uuid`, id,
+	).Scan(&reg.ID, &reg.UserID, &reg.EventID, &reg.PaymentStatus, &reg.RegistrationStatus, &reg.QRData,
+		&reg.ParticipantEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &reg, nil
+}
+
+// RejectRegistration pasa a rechazada una inscripción **pendiente de pago**. El
+// WHERE incluye el estado para que dos administradores a la vez no rechacen
+// una que el otro acaba de aprobar: devuelve domain.ErrNotFound si ya no
+// estaba pendiente.
+func (r *EventRepository) RejectRegistration(ctx context.Context, id string) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE events.registrations
+		   SET registration_status = $1
+		 WHERE id = $2::uuid AND registration_status = $3`,
+		domain.RegistrationRejected, id, domain.RegistrationPendingPayment)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// CountActiveRegistrations cuenta las inscripciones que ocupan cupo: las
+// confirmadas y las pendientes de pago. Las rechazadas no (§7.5, decisión 3).
+func (r *EventRepository) CountActiveRegistrations(ctx context.Context, eventID string) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `
+		SELECT count(*)
+		  FROM events.registrations
+		 WHERE event_id = $1::uuid
+		   AND COALESCE(registration_status, '') <> $2`,
+		eventID, domain.RegistrationRejected).Scan(&n)
+	return n, err
+}
+
+// ReactivateRegistration vuelve a poner pendiente de pago una inscripción
+// rechazada, con su nueva elección de workshops, en una transacción. Es lo que
+// pasa cuando la persona vuelve a reservar: la fila es única por usuario y
+// evento, así que no se crea otra. Conserva el QR que ya tenía; SinAcceso lo
+// deja sin valor hasta que se apruebe.
+func (r *EventRepository) ReactivateRegistration(ctx context.Context, reg *domain.Registration, workshopIDs []string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE events.registrations
+		   SET registration_status = $1, payment_status = 'pending',
+		       participant_name = NULLIF($2, ''), participant_email = NULLIF($3, ''),
+		       participant_phone = NULLIF($4, '')
+		 WHERE id = $5::uuid AND registration_status = $6`,
+		domain.RegistrationPendingPayment,
+		reg.ParticipantName, reg.ParticipantEmail, reg.ParticipantPhone,
+		reg.ID, domain.RegistrationRejected)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM events.registration_workshops WHERE registration_id = $1::uuid`, reg.ID); err != nil {
+		return err
+	}
+	if err := guardarWorkshopsElegidos(ctx, tx, reg.ID, workshopIDs); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateWorkshopMaterial escribe solo las columnas del material. Vacío se

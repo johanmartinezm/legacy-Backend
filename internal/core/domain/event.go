@@ -44,6 +44,10 @@ type Event struct {
 	Status         string     `json:"status" db:"status"`
 	ButtonText     string     `json:"buttonText" db:"button_text"`
 	AttendeesLimit *int       `json:"attendees_limit" db:"attendees_limit"`
+	// PaymentURL es el link de pago externo (parte B del plan de workshops). Es
+	// obligatorio, https, en todo evento que no sea gratuito: quien se inscribe
+	// queda pendiente, paga por ahí, y el administrador aprueba desde el panel.
+	PaymentURL *string `json:"paymentUrl" db:"payment_url"`
 	Includes       *string    `json:"includes" db:"includes"`
 	// Model es el modelo de trabajo del evento («7 dimensiones DINASTÍA»).
 	// Opcional: la app solo pinta la fila si viene con texto. Hasta el
@@ -135,6 +139,9 @@ const (
 	// inscripción existe —de ahí se sabe quién intentó comprar— pero no da
 	// derecho a entrar.
 	RegistrationPendingPayment = "pending_payment"
+	// RegistrationRejected: el administrador no pudo confirmar el pago. No da
+	// acceso, libera el cupo, y la persona puede volver a reservar.
+	RegistrationRejected = "rejected"
 )
 
 type Registration struct {
@@ -230,6 +237,19 @@ type AltaImportada struct {
 // para no dar por buena una entrada que nadie ha pagado.
 func (r *Registration) IsPendingPayment() bool {
 	return r.RegistrationStatus == RegistrationPendingPayment
+}
+
+// SinAcceso dice si la inscripción no da derecho a entrar ni a ver la
+// credencial: pendiente de pago o rechazada. Desde la parte B del plan de
+// workshops hay dos estados así, y una rechazada viene de una pendiente, así
+// que ya tiene QR: mirar solo IsPendingPayment la dejaría entrar.
+func (r *Registration) SinAcceso() bool {
+	return EstadoSinAcceso(r.RegistrationStatus)
+}
+
+// EstadoSinAcceso es SinAcceso para quien solo tiene el estado.
+func EstadoSinAcceso(estado string) bool {
+	return estado == RegistrationPendingPayment || estado == RegistrationRejected
 }
 
 // UserRegistration es una inscripción con los datos del evento que hacen falta

@@ -77,7 +77,7 @@ func (h *EventHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.CreateEvent(r.Context(), &event); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		escribirErrorDeEvento(w, err)
 		return
 	}
 
@@ -145,7 +145,7 @@ func (h *EventHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	event.ID = id
 
 	if err := h.service.UpdateEvent(r.Context(), &event); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		escribirErrorDeEvento(w, err)
 		return
 	}
 
@@ -333,7 +333,7 @@ func (h *EventHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// La app lee el QR de GET /api/me/registrations (campo `qrData`), no de
 	// aquí (`qr_data`), así que no se queda sin nada que mostrar.
 	respuesta := *registration
-	if respuesta.IsPendingPayment() {
+	if respuesta.SinAcceso() {
 		respuesta.QRData = ""
 	}
 
@@ -609,9 +609,56 @@ func escribirErrorDeWorkshops(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, services.ErrSinInscripcion):
 		http.Error(w, err.Error(), http.StatusForbidden)
+	case errors.Is(err, services.ErrCupoLleno):
+		http.Error(w, err.Error(), http.StatusConflict)
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// escribirErrorDeEvento: un evento inválido (p. ej. de pago sin link) es un 400
+// con el motivo en español, que el panel muestra tal cual.
+func escribirErrorDeEvento(w http.ResponseWriter, err error) {
+	var invalido *services.ErrorEvento
+	if errors.As(err, &invalido) {
+		http.Error(w, invalido.Motivo, http.StatusBadRequest)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+// AprobarInscripcion: POST /api/registrations/{id}/aprobar, bajo AdminOnly. El
+// administrador la usa tras confirmar el pago por fuera del sistema (§7.5,
+// decisión 5). Responde la inscripción como queda.
+func (h *EventHandler) AprobarInscripcion(w http.ResponseWriter, r *http.Request) {
+	reg, err := h.service.AprobarInscripcion(r.Context(), chi.URLParam(r, "id"))
+	h.responderDecisionDePago(w, reg, err)
+}
+
+// RechazarInscripcion: POST /api/registrations/{id}/rechazar, bajo AdminOnly.
+func (h *EventHandler) RechazarInscripcion(w http.ResponseWriter, r *http.Request) {
+	reg, err := h.service.RechazarInscripcion(r.Context(), chi.URLParam(r, "id"))
+	h.responderDecisionDePago(w, reg, err)
+}
+
+func (h *EventHandler) responderDecisionDePago(w http.ResponseWriter, reg *domain.Registration, err error) {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		http.Error(w, "la inscripción no existe", http.StatusNotFound)
+		return
+	case errors.Is(err, services.ErrInscripcionNoPendiente):
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	case err != nil:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"registrationId":     reg.ID,
+		"registrationStatus": reg.RegistrationStatus,
+		"paymentStatus":      reg.PaymentStatus,
+	})
 }
 
 // ResumenWorkshops sirve a la pantalla de workshops del panel cuántos inscritos
@@ -719,6 +766,8 @@ func (h *EventHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, services.ErrCheckInPendingPayment):
 			http.Error(w, "La inscripción está pendiente de pago", http.StatusPaymentRequired)
+		case errors.Is(err, services.ErrCheckInRechazada):
+			http.Error(w, "La inscripción fue rechazada: el pago no se confirmó", http.StatusForbidden)
 		case errors.Is(err, services.ErrCheckInNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		default:
