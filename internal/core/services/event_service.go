@@ -121,6 +121,14 @@ func (s *EventService) CreateEvent(ctx context.Context, e *domain.Event) error {
 	if err := validarLinkDePago(e); err != nil {
 		return err
 	}
+	for i := range e.Workshops {
+		if err := validarTaller(&e.Workshops[i]); err != nil {
+			return err
+		}
+		if err := validarDentroDelEvento(&e.Workshops[i], e); err != nil {
+			return err
+		}
+	}
 	err := s.repo.CreateEvent(ctx, e)
 	if err != nil {
 		return err
@@ -156,7 +164,11 @@ func (s *EventService) CreateWorkshop(ctx context.Context, eventID string, w *do
 	if err := validarTaller(w); err != nil {
 		return err
 	}
-	if _, err := s.repo.GetEventByID(ctx, eventID); err != nil {
+	evento, err := s.repo.GetEventByID(ctx, eventID)
+	if err != nil {
+		return err
+	}
+	if err := validarDentroDelEvento(w, evento); err != nil {
 		return err
 	}
 	w.EventID = eventID
@@ -168,7 +180,45 @@ func (s *EventService) UpdateWorkshop(ctx context.Context, w *domain.Workshop) e
 	if err := validarTaller(w); err != nil {
 		return err
 	}
+	// El evento sale del taller guardado, no del cuerpo: el PUT no lo cambia.
+	actual, err := s.repo.GetWorkshopByID(ctx, w.ID)
+	if err != nil {
+		return err
+	}
+	evento, err := s.repo.GetEventByID(ctx, actual.EventID)
+	if err != nil {
+		return err
+	}
+	if err := validarDentroDelEvento(w, evento); err != nil {
+		return err
+	}
 	return s.repo.UpdateWorkshop(ctx, w)
+}
+
+// validarDentroDelEvento exige que el workshop empiece y termine entre el
+// primer y el último día del evento, en hora de Colombia. Un workshop fuera de
+// fechas habilita la calificación y el material antes de que el evento empiece
+// (pasó con datos de prueba el 2026-11-06). start_date y end_date son columnas
+// `date`, así que se comparan como día, igual que eventoTerminado.
+func validarDentroDelEvento(w *domain.Workshop, e *domain.Event) error {
+	desde := e.StartDate.UTC().Format("2006-01-02")
+	hasta := desde
+	if e.EndDate != nil {
+		hasta = e.EndDate.UTC().Format("2006-01-02")
+	}
+	inicio := w.StartDateTime.In(colombia).Format("2006-01-02")
+	fin := w.EndDateTime.In(colombia).Format("2006-01-02")
+	if inicio >= desde && fin <= hasta {
+		return nil
+	}
+	dia := func(d string) string {
+		t, _ := time.Parse("2006-01-02", d)
+		return t.Format("02/01/2006")
+	}
+	if desde == hasta {
+		return fmt.Errorf("%w: el %s", domain.ErrTallerFueraDelEvento, dia(desde))
+	}
+	return fmt.Errorf("%w: del %s al %s", domain.ErrTallerFueraDelEvento, dia(desde), dia(hasta))
 }
 
 func (s *EventService) DeleteWorkshop(ctx context.Context, id string) error {

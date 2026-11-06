@@ -4,6 +4,22 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-06]: Un workshop tiene que estar dentro de las fechas de su evento
+- **Alcance:** `core/services/event_service.go` (`validarDentroDelEvento`, aplicada al crear y editar
+  un workshop y al crear un evento que ya los traiga; al editar, el evento sale del workshop guardado),
+  `core/domain/errors.go` (`ErrTallerFueraDelEvento`), `handler/http/event_handler.go` (400 con el
+  mensaje). Tests en `talleres_test.go`. Rama `feature/talleres-aparte`, **solo en local**.
+  Motivo: un workshop con fecha anterior al evento habilitaba la calificación y el material en la app
+  antes de que el evento empezara (se vio con datos de prueba del Summit local). Se compara por día en
+  hora de Colombia; un evento sin `end_date` es de un solo día.
+- **Criterios de QA** (comprobados contra la API local):
+  1. `POST /api/events/{id}/workshops` con un workshop antes del primer día responde 400: «el workshop
+     tiene que estar dentro de las fechas del evento: del 18/11/2026 al 20/11/2026».
+  2. `PUT /api/workshops/{id}` que lo mueve después del último día responde 400 y no cambia la base.
+  3. Un workshop del último día a las 21:00 (02:00 UTC del día siguiente) se acepta.
+  4. Antes de desplegar: buscar en producción workshops fuera de las fechas de su evento; quedarán sin
+     poder editarse hasta corregir la fecha.
+
 ### [2026-11-05]: Pago por link externo, aprobación manual y cupo del evento (parte B, backend)
 - **Alcance:** migración `scripts/20261105_pago_por_link_y_rechazo.sql` (`events.events.payment_url` y el
   estado `rejected` en el CHECK; idempotente), `pago_por_link.go` (link https obligatorio en eventos de

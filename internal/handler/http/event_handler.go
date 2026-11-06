@@ -227,7 +227,8 @@ func (h *EventHandler) ActualizarMaterial(w http.ResponseWriter, r *http.Request
 
 func escribirErrorDeTaller(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, domain.ErrTallerSinNombre), errors.Is(err, domain.ErrTallerHorarioInvalido):
+	case errors.Is(err, domain.ErrTallerSinNombre), errors.Is(err, domain.ErrTallerHorarioInvalido),
+		errors.Is(err, domain.ErrTallerFueraDelEvento):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)

@@ -26,7 +26,13 @@ func (r *repoDeTalleres) GetEventByID(ctx context.Context, id string) (*domain.E
 	if r.sinEvento {
 		return nil, domain.ErrNotFound
 	}
-	return &domain.Event{ID: id}, nil
+	// Evento del 4 al 6 de noviembre: tallerValido cae dentro.
+	fin := time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
+	return &domain.Event{ID: id, StartDate: time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC), EndDate: &fin}, nil
+}
+
+func (r *repoDeTalleres) GetWorkshopByID(ctx context.Context, id string) (*domain.Workshop, error) {
+	return &domain.Workshop{ID: id, EventID: "evt-1"}, nil
 }
 
 func (r *repoDeTalleres) DeleteWorkshopsByEventID(ctx context.Context, id string) error {
@@ -143,5 +149,69 @@ func TestEditarTaller_ConservaElID(t *testing.T) {
 	}
 	if len(repo.editados) != 1 || repo.editados[0].ID != "ws-1" {
 		t.Fatalf("se esperaba editar ws-1 y llegó %+v", repo.editados)
+	}
+}
+
+// Un workshop fuera de las fechas del evento habilitaba la calificación y el
+// material antes de que el evento empezara (datos de prueba, 2026-11-06).
+func TestTallerFueraDelEvento_NoLlegaALaBase(t *testing.T) {
+	// El evento va del 4 al 6 de noviembre (repoDeTalleres).
+	hora := func(dia, h int) time.Time { return time.Date(2026, 11, dia, h, 0, 0, 0, colombia) }
+
+	casos := []struct {
+		nombre        string
+		inicio, fin   time.Time
+		fueraDeFechas bool
+	}{
+		{"antes del evento", hora(3, 9), hora(3, 10), true},
+		{"empieza el día anterior", hora(3, 23), hora(4, 1), true},
+		{"después del evento", hora(7, 9), hora(7, 10), true},
+		{"termina el día siguiente", hora(6, 23), hora(7, 1), true},
+		{"primer día a primera hora", hora(4, 0), hora(4, 1), false},
+		{"último día por la noche", hora(6, 22), hora(6, 23), false},
+	}
+	for _, c := range casos {
+		repo := &repoDeTalleres{}
+		svc := NewEventService(repo, nil)
+
+		crear := domain.Workshop{Name: "Sucesión", StartDateTime: c.inicio, EndDateTime: c.fin}
+		errCrear := svc.CreateWorkshop(context.Background(), "evt-1", &crear)
+		editar := domain.Workshop{ID: "ws-1", Name: "Sucesión", StartDateTime: c.inicio, EndDateTime: c.fin}
+		errEditar := svc.UpdateWorkshop(context.Background(), &editar)
+
+		for _, err := range []error{errCrear, errEditar} {
+			if c.fueraDeFechas && !errors.Is(err, domain.ErrTallerFueraDelEvento) {
+				t.Errorf("%s: se esperaba ErrTallerFueraDelEvento y llegó %v", c.nombre, err)
+			}
+			if !c.fueraDeFechas && err != nil {
+				t.Errorf("%s: se rechazó un workshop dentro del evento: %v", c.nombre, err)
+			}
+		}
+		if c.fueraDeFechas && len(repo.creados)+len(repo.editados) != 0 {
+			t.Errorf("%s: llegó a la base", c.nombre)
+		}
+	}
+}
+
+func TestTallerFueraDelEvento_ElMensajeDiceLasFechas(t *testing.T) {
+	svc := NewEventService(&repoDeTalleres{}, nil)
+	taller := tallerValido()
+	taller.StartDateTime = time.Date(2026, 10, 26, 10, 0, 0, 0, colombia)
+	taller.EndDateTime = taller.StartDateTime.Add(time.Hour)
+
+	err := svc.CreateWorkshop(context.Background(), "evt-1", &taller)
+	quiere := "el workshop tiene que estar dentro de las fechas del evento: del 04/11/2026 al 06/11/2026"
+	if err == nil || err.Error() != quiere {
+		t.Errorf("mensaje: %v", err)
+	}
+}
+
+func TestCrearEventoConTallerFueraDeFechas(t *testing.T) {
+	svc := NewEventService(&repoDeTalleres{}, nil)
+	taller := tallerValido() // 5 de noviembre
+	evento := &domain.Event{Title: "Summit", IsFree: true,
+		StartDate: time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC), Workshops: []domain.Workshop{taller}}
+	if err := svc.CreateEvent(context.Background(), evento); !errors.Is(err, domain.ErrTallerFueraDelEvento) {
+		t.Errorf("se esperaba ErrTallerFueraDelEvento y llegó %v", err)
 	}
 }

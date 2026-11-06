@@ -77,6 +77,9 @@ var (
 	// los devuelve tal cual.
 	ErrTallerSinNombre       = errors.New("el workshop necesita un nombre")
 	ErrTallerHorarioInvalido = errors.New("el workshop necesita inicio y fin, y el fin no puede ser anterior al inicio")
+	// ErrTallerFueraDelEvento: el workshop empieza antes del primer día del
+	// evento o termina después del último. El servicio le añade las fechas.
+	ErrTallerFueraDelEvento = errors.New("el workshop tiene que estar dentro de las fechas del evento")
 
 	// ErrIdentidadSocialInvalida la devuelve el registro cuando el `apple_id` o
 	// el `google_id` que manda el cliente no es un token de identidad que el
