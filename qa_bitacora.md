@@ -4,6 +4,17 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-09]: La app 1.0.1 puede seguir inscribiéndose a eventos con workshops
+- **Alcance:** `workshops_eleccion.go` (`prepararWorkshopsDeInscripcion`: una inscripción sin ningún
+  workshop se acepta como antes del §10, también desde la app). Test `TestLaAppViejaSeInscribeSinElegir`.
+  Decidido al desplegar: la 1.0.1 no sabe elegir y, con la regla completa, nadie con esa versión podía
+  inscribirse a Bucaramanga (11-nov) ni al de IA (18-nov). La app nueva no llega sin elegir (su hoja no
+  deja seguir) y cambiar la elección sigue con la regla completa. **Temporal:** volver a exigirlo cuando
+  la 1.0.1 deje de usarse.
+- **Criterios de QA:**
+  1. Con un token de app, `POST /api/events/<evento con workshops>/register` sin cuerpo: 201.
+  2. El mismo con un workshop de una sola de dos franjas: 400 «falta elegir un workshop…».
+
 ### [2026-11-09]: Rol de administrador «eventos»: solo eventos, inscritos y asistencia
 - **Alcance:** `domain/admin_user.go` (roles `admin`, `superadmin`, `eventos`; `NormalizarRolAdmin`,
   `RolDelToken`), `domain/errors.go` (`ErrRolAdminInvalido`), `auth_service.go` (`AdminLogin` firma el

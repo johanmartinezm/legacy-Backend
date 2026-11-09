@@ -203,6 +203,21 @@ func TestEleccionInvalidaNoCreaLaInscripcion(t *testing.T) {
 	}
 }
 
+// La app 1.0.1 publicada no sabe elegir workshops y se inscribe sin mandar
+// ninguno. Se acepta como antes del §10, para no dejarla fuera de los eventos
+// con workshops (decidido el 2026-11-09). Elegir a medias sigue sin valer.
+func TestLaAppViejaSeInscribeSinElegir(t *testing.T) {
+	repo := nuevoRepoDeEleccion(eventoDel("2026-12-10"), dosFranjas())
+	svc := servicioA(repo, hora("2026-12-09", "10:00"))
+
+	if err := svc.RegisterUser(context.Background(), inscripcionApp()); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if repo.creadas != 1 || len(repo.guardados) != 0 {
+		t.Errorf("creadas = %d, guardados = %v; se esperaba la inscripción sin workshops", repo.creadas, repo.guardados)
+	}
+}
+
 func TestLaAppNoInscribeDesdeElPrimerDia(t *testing.T) {
 	repo := nuevoRepoDeEleccion(eventoDel("2026-12-10"), nil)
 	svc := servicioA(repo, hora("2026-12-10", "06:00"))

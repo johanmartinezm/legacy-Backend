@@ -180,7 +180,14 @@ func (s *EventService) prepararWorkshopsDeInscripcion(ctx context.Context, reg *
 	}
 	elegidos = idsUnicos(elegidos)
 
-	if !reg.DesdeApp && len(elegidos) == 0 {
+	// Sin ningún workshop se inscribe como antes del §10, también desde la app.
+	// Es por la 1.0.1 publicada, que no sabe elegir: con la regla completa, nadie
+	// con esa versión podría inscribirse a un evento con workshops (decidido el
+	// 2026-11-09, al desplegar). La app nueva no llega aquí sin elegir: su hoja
+	// no deja continuar hasta cubrir cada franja. Quien se inscriba así puede
+	// elegir después con ElegirMisWorkshops, que sí aplica la regla completa.
+	// Cuando la 1.0.1 deje de usarse, volver a exigirlo desde la app.
+	if len(elegidos) == 0 {
 		return nil, nil
 	}
 
