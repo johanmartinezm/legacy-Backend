@@ -328,6 +328,9 @@ func main() {
 	// mismo que las imágenes: el material lo ven todos y el nombre lleva un
 	// UUID que no se adivina.
 	r.Get("/api/documents/{fileName}", documentHandler.GetDocument)
+	// El último tramo es el nombre original, solo para que los visores lo
+	// muestren y la descarga conserve las tildes.
+	r.Get("/api/documents/{fileName}/{descarga}", documentHandler.GetDocument)
 
 	// Webhook de CredibanCo. Va aquí, sin AuthMiddleware, porque quien llama es
 	// la pasarela y no tiene un token nuestro. El handler no se cree el

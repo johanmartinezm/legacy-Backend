@@ -4,6 +4,19 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-09]: La descarga del material lleva el nombre original, con tildes
+- **Alcance:** `documento_handler.go` (`GetDocument` acepta un último tramo con el nombre original;
+  `Content-Disposition` con `filename` en ASCII y `filename*=UTF-8''` con las tildes), `main.go` (ruta
+  `GET /api/documents/{fileName}/{descarga}`). La de un solo tramo sigue igual para las apps
+  instaladas. Test en `documento_handler_test.go`. Hallazgo 5 del recorrido del 09-11. Rama
+  `feature/talleres-aparte`, **solo en local**.
+  Antes los visores de PDF titulaban con el nombre del servidor («c7812220-ef19-…») y la descarga se
+  llamaba «Gu-a-del-workshop.pdf».
+- **Criterios de QA:**
+  1. `GET /api/documents/<guardado>/Gu%C3%ADa%20del%20workshop.pdf`: 200 y `filename*=UTF-8''Gu%C3%ADa%20del%20workshop.pdf`.
+  2. El mismo sin el último tramo: 200, como antes.
+  3. Con un último tramo `x.exe`: el nombre de la descarga termina en la extensión real (`x.exe.pdf`).
+
 ### [2026-11-09]: Mis calificaciones de los workshops de un evento
 - **Alcance:** ruta nueva `GET /api/events/{id}/workshop-ratings/me` (grupo con `AuthMiddleware`,
   `main.go`), `EventHandler.GetMyWorkshopRatings`, `EventService.GetMyWorkshopRatings`,

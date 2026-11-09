@@ -97,11 +97,42 @@ func TestDescargarDocumento(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("HTTP %d", rec.Code)
 	}
-	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="Agenda.pdf"` {
+	if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="Agenda.pdf"; filename*=UTF-8''Agenda.pdf` {
 		t.Errorf("Content-Disposition = %q", cd)
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "application/pdf" {
 		t.Errorf("Content-Type = %q", ct)
+	}
+
+	// Con el nombre original al final de la URL (desde el 2026-11-09): los
+	// visores titulan con ese tramo y la descarga conserva las tildes.
+	conNombre := func(descarga string) string {
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/x/y", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("fileName", nombre)
+		rctx.URLParams.Add("descarga", descarga)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		h.GetDocument(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%q: HTTP %d", descarga, rec.Code)
+		}
+		return rec.Header().Get("Content-Disposition")
+	}
+	casos := map[string]string{
+		// Tildes en filename*, ASCII en filename.
+		"Gu%C3%ADa%20del%20workshop.pdf": `attachment; filename="Gu-a-del-workshop.pdf"; filename*=UTF-8''Gu%C3%ADa%20del%20workshop.pdf`,
+		// La extensión es siempre la del archivo real.
+		"Gu%C3%ADa.exe": `attachment; filename="Gu-a.exe.pdf"; filename*=UTF-8''Gu%C3%ADa.exe.pdf`,
+		// Ni carpetas ni comillas que rompan la cabecera.
+		`..%2F..%2Fx"y.pdf`: `attachment; filename="xy.pdf"; filename*=UTF-8''xy.pdf`,
+		// Vacío: el guardado sin UUID, como sin el tramo.
+		"": `attachment; filename="Agenda.pdf"; filename*=UTF-8''Agenda.pdf`,
+	}
+	for descarga, esperado := range casos {
+		if cd := conNombre(descarga); cd != esperado {
+			t.Errorf("%q: Content-Disposition = %q, se esperaba %q", descarga, cd, esperado)
+		}
 	}
 
 	// Ni salir de la carpeta ni archivos que no existen.

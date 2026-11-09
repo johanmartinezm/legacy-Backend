@@ -4,6 +4,7 @@ import (
 	"applegacy/backend/internal/core/services"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -128,10 +129,18 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// GetDocument: GET /api/documents/{fileName}. Público, como las imágenes: el
-// material lo ven todos los usuarios (§5, decisión 1), y el nombre lleva un
-// UUID que no se puede adivinar. Se sirve como descarga, con el nombre
-// original sin el UUID.
+// GetDocument: GET /api/documents/{fileName} y /api/documents/{fileName}/{descarga}.
+// Público, como las imágenes: el material lo ven todos los usuarios (§5,
+// decisión 1), y el nombre lleva un UUID que no se puede adivinar. Se sirve
+// como descarga.
+//
+// {descarga} es el nombre original («Guía del workshop.pdf»), que la app y el
+// panel ponen al final de la URL desde el 2026-11-09: los visores de PDF
+// titulan con el último tramo de la dirección, y con un solo tramo mostraban
+// «c7812220-ef19-…». Además el nombre guardado pierde las tildes
+// («Gu-a-del-workshop.pdf»); el original las conserva y va en `filename*`.
+// Sin {descarga} —apps ya instaladas— se usa el guardado sin el UUID, como
+// antes.
 func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	nombre := chi.URLParam(r, "fileName")
 	if d, err := url.PathUnescape(nombre); err == nil {
@@ -145,14 +154,66 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	visible := nombre
-	if len(visible) > 37 && visible[36] == '_' {
-		visible = visible[37:]
+	ext := strings.ToLower(filepath.Ext(nombre))
+	visible := nombreVisible(chi.URLParam(r, "descarga"), ext)
+	if visible == "" {
+		visible = nombre
+		if len(visible) > 37 && visible[36] == '_' {
+			visible = visible[37:]
+		}
 	}
-	if ct, ok := contentTypeDeDocumento[strings.ToLower(filepath.Ext(nombre))]; ok {
+	if ct, ok := contentTypeDeDocumento[ext]; ok {
 		w.Header().Set("Content-Type", ct)
 	}
-	w.Header().Set("Content-Disposition", `attachment; filename="`+visible+`"`)
+	w.Header().Set("Content-Disposition", contentDisposition(visible))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeFile(w, r, ruta)
+}
+
+// nombreVisible limpia el {descarga} de la URL: sin carpetas, sin caracteres
+// de control ni comillas, y con la extensión del archivo real, para que un
+// enlace manipulado no haga pasar un .pdf por otra cosa. "" si no sirve.
+func nombreVisible(descarga, ext string) string {
+	if d, err := url.PathUnescape(descarga); err == nil {
+		descarga = d
+	}
+	descarga = filepath.Base(strings.ReplaceAll(descarga, `\`, "/"))
+	var b strings.Builder
+	for _, c := range descarga {
+		if c < 0x20 || c == 0x7f || c == '"' {
+			continue
+		}
+		b.WriteRune(c)
+	}
+	limpio := strings.TrimSpace(b.String())
+	if limpio == "" || limpio == "." || limpio == "/" {
+		return ""
+	}
+	if strings.ToLower(filepath.Ext(limpio)) != ext {
+		limpio += ext
+	}
+	return limpio
+}
+
+// contentDisposition pone el nombre dos veces: `filename` en ASCII para los
+// clientes viejos y `filename*` en UTF-8 (RFC 6266) con las tildes.
+func contentDisposition(visible string) string {
+	return `attachment; filename="` + nombreSeguro(visible) + `"; filename*=UTF-8''` +
+		codificarRFC5987(visible)
+}
+
+// codificarRFC5987 deja tal cual solo los attr-char del RFC 5987 y codifica
+// en %XX el resto de bytes UTF-8. url.PathEscape no vale: deja «:», «=» o «@».
+func codificarRFC5987(s string) string {
+	const permitidos = "!#$&+-.^_`|~"
+	var b strings.Builder
+	for _, c := range []byte(s) {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+			strings.IndexByte(permitidos, c) >= 0 {
+			b.WriteByte(c)
+			continue
+		}
+		fmt.Fprintf(&b, "%%%02X", c)
+	}
+	return b.String()
 }
