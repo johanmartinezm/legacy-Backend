@@ -4,6 +4,14 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-09]: `priceLabel` en pesos colombianos
+- **Alcance:** `EventService.populatePriceLabel` («COP $180.000»; antes pegaba «.000.000» a cualquier
+  cifra: 120 → «$120.000.000»). Ni la app ni el panel lo leen —componen su propia etiqueta—, pero la
+  API lo devuelve. Test `etiqueta_precio_test.go`. Rama `feature/talleres-aparte`, **solo en local**.
+- **Criterios de QA:**
+  1. `GET /api/events/<[PRUEBA] Desayuno…>`: `priceLabel` = «COP $180.000».
+  2. Un evento gratuito: «GRATIS».
+
 ### [2026-11-09]: La descarga del material lleva el nombre original, con tildes
 - **Alcance:** `documento_handler.go` (`GetDocument` acepta un último tramo con el nombre original;
   `Content-Disposition` con `filename` en ASCII y `filename*=UTF-8''` con las tildes), `main.go` (ruta

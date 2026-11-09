@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -781,12 +783,34 @@ func validateSurveyRatings(survey *domain.EventSurvey) error {
 	return nil
 }
 
+// populatePriceLabel escribe el precio como lo muestra la app: «COP $180.000».
+// Los eventos son en pesos colombianos desde el 2026-11-09. Hasta esa fecha
+// pegaba «.000.000» detrás de cualquier cifra (120 → «$120.000.000»); no lo
+// leía nadie —la app y el panel componen su propia etiqueta—, pero la API lo
+// devolvía así.
 func (s *EventService) populatePriceLabel(e *domain.Event) {
-	if e.IsFree {
+	if e.IsFree || e.Price == 0 {
 		e.PriceLabel = "GRATIS"
-	} else {
-		e.PriceLabel = fmt.Sprintf("$%.0f.000.000", e.Price)
+		return
 	}
+	e.PriceLabel = "COP $" + conPuntosDeMiles(int64(math.Round(e.Price)))
+}
+
+// conPuntosDeMiles: 180000 → «180.000».
+func conPuntosDeMiles(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	signo := ""
+	if strings.HasPrefix(s, "-") {
+		signo, s = "-", s[1:]
+	}
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteRune(c)
+	}
+	return signo + b.String()
 }
 
 func (s *EventService) GetAgenda(ctx context.Context, userID string) ([]domain.Workshop, error) {
