@@ -654,6 +654,19 @@ func (s *EventService) GetEventFeedback(ctx context.Context, eventID string) ([]
 	return s.repo.GetRatingsByEventID(ctx, eventID)
 }
 
+// GetMyWorkshopRatings devuelve una lista vacía, no nil, si aún no calificó
+// ninguno: la app recorre la respuesta directamente.
+func (s *EventService) GetMyWorkshopRatings(ctx context.Context, eventID, userID string) ([]domain.WorkshopRating, error) {
+	ratings, err := s.repo.GetWorkshopRatingsByUser(ctx, eventID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if ratings == nil {
+		ratings = []domain.WorkshopRating{}
+	}
+	return ratings, nil
+}
+
 // Errores del check-in. Centinelas por el mismo motivo que los de la encuesta:
 // el handler tiene que separar "ese QR no existe" de "ese QR es de una reserva
 // sin pagar", y son dos respuestas distintas para el personal de la puerta.

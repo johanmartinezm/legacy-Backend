@@ -406,6 +406,9 @@ func main() {
 		// registrado en el evento y solo admite una respuesta por persona.
 		r.Post("/api/events/{id}/survey", eventHandler.SubmitEventSurvey)
 		r.Get("/api/events/{id}/survey/me", eventHandler.GetMyEventSurvey)
+		// Mis calificaciones de los workshops del evento, para que la app no
+		// ofrezca calificar otra vez lo ya calificado.
+		r.Get("/api/events/{id}/workshop-ratings/me", eventHandler.GetMyWorkshopRatings)
 
 		// Mi credencial: los eventos en los que el usuario esta inscrito, con su
 		// QR. Cuelga de /api/me y no de /api/events porque el patron

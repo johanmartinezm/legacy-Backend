@@ -890,6 +890,34 @@ func (r *EventRepository) CreateEventSurvey(ctx context.Context, s *domain.Event
 	return err
 }
 
+// GetWorkshopRatingsByUser no pagina: el UNIQUE (workshop_id, user_id) deja
+// como mucho una fila por workshop del evento, así que el tamaño lo fija el
+// número de workshops de un solo evento.
+func (r *EventRepository) GetWorkshopRatingsByUser(ctx context.Context, eventID, userID string) ([]domain.WorkshopRating, error) {
+	query := `
+		SELECT wr.id, wr.workshop_id, w.name, wr.user_id, wr.rating, wr.comment, wr.created_at
+		FROM events.workshop_ratings wr
+		JOIN events.workshops w ON wr.workshop_id = w.id
+		WHERE w.event_id = $1 AND wr.user_id = $2
+		ORDER BY w.start_date_time, wr.id
+	`
+	rows, err := r.db.Query(ctx, query, eventID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ratings := []domain.WorkshopRating{}
+	for rows.Next() {
+		var wr domain.WorkshopRating
+		if err := rows.Scan(&wr.ID, &wr.WorkshopID, &wr.WorkshopName, &wr.UserID, &wr.Rating, &wr.Comment, &wr.CreatedAt); err != nil {
+			return nil, err
+		}
+		ratings = append(ratings, wr)
+	}
+	return ratings, rows.Err()
+}
+
 // GetEventSurveyByUser devuelve (nil, nil) si el usuario aun no ha respondido:
 // no haber contestado no es un error.
 func (r *EventRepository) GetEventSurveyByUser(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error) {

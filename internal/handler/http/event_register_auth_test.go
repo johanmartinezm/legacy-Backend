@@ -64,6 +64,9 @@ func (s *stubEventService) SubmitWorkshopRating(ctx context.Context, r *domain.W
 func (s *stubEventService) GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error) {
 	return nil, nil
 }
+func (s *stubEventService) GetMyWorkshopRatings(ctx context.Context, eID, uID string) ([]domain.WorkshopRating, error) {
+	return []domain.WorkshopRating{}, nil
+}
 func (s *stubEventService) GenerarCredenciales(ctx context.Context, eventID string, registrationIDs []string, avisarPorCorreo bool) (int, error) {
 	return 0, nil
 }

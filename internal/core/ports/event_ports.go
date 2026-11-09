@@ -73,6 +73,9 @@ type EventRepository interface {
 	SetRegistrationQR(ctx context.Context, registrationID, qrData string) error
 	CreateWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetRatingsByEventID(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
+	// GetWorkshopRatingsByUser son las calificaciones de un usuario a los
+	// workshops de un evento: como mucho una por workshop.
+	GetWorkshopRatingsByUser(ctx context.Context, eventID, userID string) ([]domain.WorkshopRating, error)
 
 	// Encuesta general del evento
 	CreateEventSurvey(ctx context.Context, survey *domain.EventSurvey) error
@@ -127,6 +130,9 @@ type EventService interface {
 	GenerarCredenciales(ctx context.Context, eventID string, registrationIDs []string, avisarPorCorreo bool) (int, error)
 	SubmitWorkshopRating(ctx context.Context, rating *domain.WorkshopRating) error
 	GetEventFeedback(ctx context.Context, eventID string) ([]domain.WorkshopRating, error)
+	// GetMyWorkshopRatings le dice a la app qué workshops del evento ya calificó
+	// el usuario, para no ofrecerle calificarlos otra vez.
+	GetMyWorkshopRatings(ctx context.Context, eventID, userID string) ([]domain.WorkshopRating, error)
 
 	// Encuesta general del evento
 	SubmitEventSurvey(ctx context.Context, survey *domain.EventSurvey) error

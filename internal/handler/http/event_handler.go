@@ -6,6 +6,7 @@ import (
 	"applegacy/backend/internal/core/services"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -535,6 +536,29 @@ func (h *EventHandler) GetMyEventSurvey(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(survey)
+}
+
+// GetMyWorkshopRatings devuelve las calificaciones del usuario a los workshops
+// del evento (lista vacía si no calificó ninguno). La app las usa para mostrar
+// «Tu calificación» en vez de ofrecer calificar otra vez: hasta el 2026-11-09
+// ofrecía el formulario y solo al enviarlo decía «ya calificaste».
+func (h *EventHandler) GetMyWorkshopRatings(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "id")
+	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ratings, err := h.service.GetMyWorkshopRatings(r.Context(), eventID, userID)
+	if err != nil {
+		log.Printf("GetMyWorkshopRatings evento %s: %v", eventID, err)
+		http.Error(w, "no se pudieron leer tus calificaciones", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ratings)
 }
 
 func (h *EventHandler) GetEventSurveySummary(w http.ResponseWriter, r *http.Request) {

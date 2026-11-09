@@ -4,6 +4,20 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-09]: Mis calificaciones de los workshops de un evento
+- **Alcance:** ruta nueva `GET /api/events/{id}/workshop-ratings/me` (grupo con `AuthMiddleware`,
+  `main.go`), `EventHandler.GetMyWorkshopRatings`, `EventService.GetMyWorkshopRatings`,
+  `EventRepository.GetWorkshopRatingsByUser`. Devuelve las calificaciones del usuario a los workshops
+  de ese evento; `[]` si no calificó ninguno. Sin migración. Test `mis_calificaciones_test.go`.
+  La usa la app para mostrar «Tu calificación» en vez de ofrecer calificar otra vez (hallazgo 3 del
+  recorrido del 09-11). Rama `feature/talleres-aparte`, **solo en local**; sale con la próxima versión
+  de la app, aunque la publicada no la necesita.
+- **Criterios de QA:**
+  1. Con el token de `qa-app`, `GET /api/events/<[PRUEBA] Evento terminado>/workshop-ratings/me`:
+     200 con las de Comunicación (4) y Gobierno.
+  2. El mismo `GET` sobre «[PRUEBA] Workshops por franja»: 200 con `[]`, no `null`.
+  3. Sin token: 401.
+
 ### [2026-11-06]: Un workshop tiene que estar dentro de las fechas de su evento
 - **Alcance:** `core/services/event_service.go` (`validarDentroDelEvento`, aplicada al crear y editar
   un workshop y al crear un evento que ya los traiga; al editar, el evento sale del workshop guardado),

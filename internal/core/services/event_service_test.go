@@ -17,6 +17,7 @@ type MockEventRepository struct {
 	GetRegistrationsByUserFunc        func(ctx context.Context, userID string) ([]domain.UserRegistration, error)
 	CreateEventSurveyFunc             func(ctx context.Context, survey *domain.EventSurvey) error
 	GetEventSurveyByUserFunc          func(ctx context.Context, eventID, userID string) (*domain.EventSurvey, error)
+	GetWorkshopRatingsByUserFunc      func(ctx context.Context, eventID, userID string) ([]domain.WorkshopRating, error)
 	GetEventSurveySummaryFunc         func(ctx context.Context, eventID string) (*domain.EventSurveySummary, error)
 	GetRegistrationByQRFunc           func(ctx context.Context, qr string) (*domain.Registration, *domain.CheckInResponse, error)
 	RecordAttendanceFunc              func(ctx context.Context, regID, staffID string) (time.Time, bool, error)
@@ -184,6 +185,12 @@ func (m *MockEventRepository) CreateWorkshopRating(ctx context.Context, r *domai
 }
 func (m *MockEventRepository) GetRatingsByEventID(ctx context.Context, id string) ([]domain.WorkshopRating, error) {
 	return nil, nil
+}
+func (m *MockEventRepository) GetWorkshopRatingsByUser(ctx context.Context, eID, uID string) ([]domain.WorkshopRating, error) {
+	if m.GetWorkshopRatingsByUserFunc == nil {
+		return nil, nil
+	}
+	return m.GetWorkshopRatingsByUserFunc(ctx, eID, uID)
 }
 func (m *MockEventRepository) GetAgenda(ctx context.Context, uID string) ([]domain.Workshop, error) {
 	return nil, nil
