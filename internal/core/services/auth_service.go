@@ -538,6 +538,11 @@ func (s *AuthService) RegisterAdmin(ctx context.Context, admin *domain.AdminUser
 	if existing, _ := s.adminRepo.FindByEmail(ctx, admin.Email); existing != nil {
 		return errors.New("admin already exists")
 	}
+	rol, err := domain.NormalizarRolAdmin(admin.Role)
+	if err != nil {
+		return err
+	}
+	admin.Role = rol
 	// 2. Hash password
 	if err := domain.ValidarContrasena(password); err != nil {
 		return err
@@ -564,7 +569,9 @@ func (s *AuthService) AdminLogin(ctx context.Context, email, password string) (s
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  admin.ID,
 		"exp":  time.Now().Add(s.tokenDuration).Unix(),
-		"role": "admin",
+		// El rol de la cuenta, no siempre "admin": es lo que separa a quien solo
+		// valida asistencia (ver domain.RolDelToken).
+		"role": domain.RolDelToken(admin.Role),
 	})
 	return token.SignedString(s.jwtSecret)
 }
@@ -604,6 +611,11 @@ func (s *AuthService) ListAdmins(ctx context.Context) ([]*domain.AdminUser, erro
 
 // UpdateAdmin updates admin details.
 func (s *AuthService) UpdateAdmin(ctx context.Context, admin *domain.AdminUser) error {
+	rol, err := domain.NormalizarRolAdmin(admin.Role)
+	if err != nil {
+		return err
+	}
+	admin.Role = rol
 	admin.UpdatedAt = time.Now()
 	return s.adminRepo.Update(ctx, admin)
 }

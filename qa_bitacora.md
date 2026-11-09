@@ -4,6 +4,25 @@ Entrada de trabajo para validación de API.
 
 ---
 
+### [2026-11-09]: Rol de administrador «eventos»: solo eventos, inscritos y asistencia
+- **Alcance:** `domain/admin_user.go` (roles `admin`, `superadmin`, `eventos`; `NormalizarRolAdmin`,
+  `RolDelToken`), `domain/errors.go` (`ErrRolAdminInvalido`), `auth_service.go` (`AdminLogin` firma el
+  rol de la cuenta —antes siempre «admin»—; alta y edición validan el rol), `admin_handler.go` (400 con
+  rol desconocido), `admin_middleware.go` (`StaffEventos`), `middleware.go` (`VeEventosOcultos`),
+  `event_handler.go` (listado y detalle), `main.go` (`GET /api/events/{id}/registrations` y
+  `POST /api/events/check-in` pasan a un grupo `StaffEventos`). Solo `eventos` cambia el claim:
+  `superadmin` o cualquier valor viejo siguen firmando «admin». Test `rol_eventos_test.go`. Rama
+  `feature/talleres-aparte`, **solo en local**.
+- **Criterios de QA:**
+  1. Crear un administrador con rol «eventos» y entrar con él: el token lleva `role: eventos`.
+  2. Con ese token responden 200: `GET /api/events`, `GET /api/events/{id}`,
+     `GET /api/events/{id}/registrations`, y `POST /api/events/check-in` llega a la lógica (404 con un
+     código inventado, 403 con una inscripción rechazada).
+  3. Con ese token responden 403: crear, editar, ocultar o borrar eventos; aprobar o rechazar pagos;
+     generar credenciales; resumen de workshops; feedback; usuarios; administradores; estadísticas.
+  4. Un administrador normal sigue entrando a todo, incluidos inscritos y check-in.
+  5. `POST /api/admin/register` con `role: "root"` responde 400.
+
 ### [2026-11-09]: `priceLabel` en pesos colombianos
 - **Alcance:** `EventService.populatePriceLabel` («COP $180.000»; antes pegaba «.000.000» a cualquier
   cifra: 120 → «$120.000.000»). Ni la app ni el panel lo leen —componen su propia etiqueta—, pero la

@@ -38,7 +38,7 @@ func (h *AdminHandler) RegisterAdmin(w http.ResponseWriter, r *http.Request) {
 	if err := h.auth.RegisterAdmin(context.Background(), admin, payload.Password); err != nil {
 		// Una contraseña corta la manda quien pide; el resto sí son fallos del
 		// servidor.
-		if errors.Is(err, domain.ErrContrasenaCorta) {
+		if errors.Is(err, domain.ErrContrasenaCorta) || errors.Is(err, domain.ErrRolAdminInvalido) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -92,6 +92,10 @@ func (h *AdminHandler) UpdateAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	admin.ID = id
 	if err := h.auth.UpdateAdmin(context.Background(), &admin); err != nil {
+		if errors.Is(err, domain.ErrRolAdminInvalido) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

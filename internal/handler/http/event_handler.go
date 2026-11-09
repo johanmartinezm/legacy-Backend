@@ -42,12 +42,12 @@ func (h *EventHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 func (h *EventHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	// El panel consume este mismo listado y necesita ver los inactivos para
 	// poder reactivarlos; a todos los demas se les ocultan.
-	events, err := h.service.ListEvents(r.Context(), IsAdmin(r.Context()))
+	events, err := h.service.ListEvents(r.Context(), VeEventosOcultos(r.Context()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !IsAdmin(r.Context()) {
+	if !VeEventosOcultos(r.Context()) {
 		for i := range events {
 			events[i].OcultarEnlaceDeAcceso()
 		}
@@ -63,7 +63,7 @@ func (h *EventHandler) GetEventDetails(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	if !IsAdmin(r.Context()) {
+	if !VeEventosOcultos(r.Context()) {
 		event.OcultarEnlaceDeAcceso()
 	}
 	w.Header().Set("Content-Type", "application/json")

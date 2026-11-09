@@ -504,6 +504,17 @@ func main() {
 	// Admin Public Routes
 	r.Post("/api/admin/login", adminHandler.AdminLogin)
 
+	// Personal de eventos: el administrador y la cuenta de rol "eventos", que
+	// solo ve los inscritos y registra la asistencia. Estas dos rutas salieron
+	// del bloque AdminOnly de abajo el 2026-11-09; todo lo demas sigue alli y
+	// esa cuenta recibe 403. Los eventos los lee por GET /api/events, que ya
+	// es publica.
+	r.Group(func(r chi.Router) {
+		r.Use(handler.StaffEventos([]byte(cfg.Security.JWTSecret)))
+		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
+		r.Post("/api/events/check-in", eventHandler.CheckIn)
+	})
+
 	// Admin routes (protected, admin only)
 	r.Group(func(r chi.Router) {
 		r.Use(handler.AdminOnly([]byte(cfg.Security.JWTSecret)))
@@ -542,13 +553,11 @@ func main() {
 		r.Post("/api/registrations/{id}/aprobar", eventHandler.AprobarInscripcion)
 		r.Post("/api/registrations/{id}/rechazar", eventHandler.RechazarInscripcion)
 		r.Get("/api/events/{id}/feedback", eventHandler.GetEventFeedback)
-		r.Get("/api/events/{id}/registrations", eventHandler.GetEventRegistrants)
 		// Rellenar el codigo de acceso que falta, en bloque o por persona. Es la
 		// vuelta del interruptor de la carga masiva: quien se importo sin
 		// credencial no pasa el check-in hasta pasar por aqui.
 		r.Post("/api/events/{id}/registrations/credenciales", eventHandler.GenerarCredenciales)
 		r.Get("/api/events/{id}/survey/summary", eventHandler.GetEventSurveySummary)
-		r.Post("/api/events/check-in", eventHandler.CheckIn)
 
 		// Admin Banner Management
 		r.Get("/api/admin/banners", bannerHandler.AdminListAll)

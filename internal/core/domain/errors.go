@@ -63,6 +63,10 @@ var (
 	// cambiar contraseña devuelven err.Error() tal cual al cliente.
 	ErrContrasenaCorta = errors.New("la contraseña debe tener al menos 6 caracteres")
 
+	// ErrRolAdminInvalido: el rol de una cuenta del panel no es uno de los que
+	// conoce NormalizarRolAdmin.
+	ErrRolAdminInvalido = errors.New("rol de administrador no válido")
+
 	// ErrFechaNoReconocida la devuelve ParsearFechaDeNacimiento cuando el valor
 	// no encaja en ninguno de los tres formatos aceptados.
 	ErrFechaNoReconocida = errors.New("formato de fecha no reconocido")

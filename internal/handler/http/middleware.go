@@ -23,6 +23,18 @@ const UserRoleKey contextKey = "userRole"
 // familia, empresa o profesional.
 const RoleAdmin = "admin"
 
+// RoleEventos es el claim de una cuenta del panel que solo ve eventos e
+// inscritos y valida asistencia (domain.RolAdminEventos). AdminOnly la rechaza.
+const RoleEventos = "eventos"
+
+// VeEventosOcultos: el panel lista también los eventos ocultos y ve el enlace
+// de acceso de los virtuales. Vale para el administrador y para quien valida
+// asistencia, que puede tener que hacerlo en un evento oculto.
+func VeEventosOcultos(ctx context.Context) bool {
+	role, _ := ctx.Value(UserRoleKey).(string)
+	return role == RoleAdmin || role == RoleEventos
+}
+
 // IsAdmin indica si quien hace la peticion tiene rol de administrador.
 func IsAdmin(ctx context.Context) bool {
 	role, _ := ctx.Value(UserRoleKey).(string)
