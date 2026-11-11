@@ -2,6 +2,21 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-11]: Encender y apagar el carrusel del Inicio desde el panel
+- **Alcance:** migración `scripts/20261111_carrusel_inicio_visible.sql` (columna `visible` en
+  `core.secciones_inicio` y fila `carrusel-inicio`, pantalla `banners`), `domain/seccion_inicio.go`
+  (`Visible`, `CambiosSeccionInicio.Visible`) y `seccion_inicio_repository.go`. Sin rutas nuevas: va por
+  `GET /api/inicio/secciones` y `PUT /api/admin/inicio/secciones/carrusel-inicio`. **Migración antes
+  que el binario**: el binario selecciona `visible` y sin la columna el Inicio de la app perdería
+  imágenes y textos de las tarjetas.
+- **Criterios de QA:**
+  1. `GET /api/inicio/secciones` incluye `carrusel-inicio` con `visible: true`, y las demás filas
+     traen `visible: true`.
+  2. `PUT .../carrusel-inicio` con `{"visible": false}`: el GET público dice `false`.
+  3. Un PUT sin `visible` (p. ej. solo `titulo`) no lo cambia.
+  4. Las páginas Tarjetas del Inicio, Textos de LSO y Textos de Legacy+ del panel no muestran la fila
+     nueva.
+
 ### [2026-11-11]: El directorio de miembros respeta el perfil público
 - **Alcance:** `chat_repository.go` (`ListMembers` filtra `is_public_profile IS TRUE`),
   `importacion_service.go` (`PerfilPublicoDeCuentaImportada`, hoy `false`, a la espera de que el

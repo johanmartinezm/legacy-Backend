@@ -25,8 +25,12 @@ type SeccionInicio struct {
 	ImagenURL string `json:"imagen_url" db:"imagen_url"`
 	// Titulo y Texto vacíos significan «los de siempre»: la app usa los que
 	// trae escritos en su código.
-	Titulo        string    `json:"titulo" db:"titulo"`
-	Texto         string    `json:"texto" db:"texto"`
+	Titulo string `json:"titulo" db:"titulo"`
+	Texto  string `json:"texto" db:"texto"`
+	// Visible: si la app muestra la sección. Hoy solo lo lee para
+	// «carrusel-inicio» (el carrusel de banners del Inicio, desde
+	// 20261111_carrusel_inicio_visible.sql); en las demás filas no cambia nada.
+	Visible       bool      `json:"visible" db:"visible"`
 	ActualizadaEn time.Time `json:"actualizada_en" db:"actualizada_en"`
 }
 
@@ -37,4 +41,5 @@ type CambiosSeccionInicio struct {
 	ImagenURL *string `json:"imagen_url"`
 	Titulo    *string `json:"titulo"`
 	Texto     *string `json:"texto"`
+	Visible   *bool   `json:"visible"`
 }

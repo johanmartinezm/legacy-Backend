@@ -17,7 +17,7 @@ func NewSeccionInicioRepository(db *pgxpool.Pool) *SeccionInicioRepository {
 	return &SeccionInicioRepository{db: db}
 }
 
-const camposSeccionInicio = `slug, nombre, orden, pantalla, imagen_url, titulo, texto, actualizada_en`
+const camposSeccionInicio = `slug, nombre, orden, pantalla, imagen_url, titulo, texto, visible, actualizada_en`
 
 // ListAll no pagina: las secciones las siembra una migración, una por tarjeta
 // del Inicio, así que son una docena.
@@ -33,7 +33,7 @@ func (r *SeccionInicioRepository) ListAll(ctx context.Context) ([]*domain.Seccio
 	var secciones []*domain.SeccionInicio
 	for rows.Next() {
 		var s domain.SeccionInicio
-		if err := rows.Scan(&s.Slug, &s.Nombre, &s.Orden, &s.Pantalla, &s.ImagenURL, &s.Titulo, &s.Texto, &s.ActualizadaEn); err != nil {
+		if err := rows.Scan(&s.Slug, &s.Nombre, &s.Orden, &s.Pantalla, &s.ImagenURL, &s.Titulo, &s.Texto, &s.Visible, &s.ActualizadaEn); err != nil {
 			return nil, err
 		}
 		secciones = append(secciones, &s)
@@ -50,13 +50,14 @@ func (r *SeccionInicioRepository) Actualizar(ctx context.Context, slug string, c
 		SET imagen_url = COALESCE($1, imagen_url),
 		    titulo = COALESCE($2, titulo),
 		    texto = COALESCE($3, texto),
+		    visible = COALESCE($4, visible),
 		    actualizada_en = CURRENT_TIMESTAMP
-		WHERE slug = $4
+		WHERE slug = $5
 		RETURNING ` + camposSeccionInicio
 
 	var s domain.SeccionInicio
-	err := r.db.QueryRow(ctx, sql, c.ImagenURL, c.Titulo, c.Texto, slug).Scan(
-		&s.Slug, &s.Nombre, &s.Orden, &s.Pantalla, &s.ImagenURL, &s.Titulo, &s.Texto, &s.ActualizadaEn,
+	err := r.db.QueryRow(ctx, sql, c.ImagenURL, c.Titulo, c.Texto, c.Visible, slug).Scan(
+		&s.Slug, &s.Nombre, &s.Orden, &s.Pantalla, &s.ImagenURL, &s.Titulo, &s.Texto, &s.Visible, &s.ActualizadaEn,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
