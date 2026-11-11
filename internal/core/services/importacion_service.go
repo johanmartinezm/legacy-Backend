@@ -49,6 +49,17 @@ var ErrSinServicioDeEventos = errors.New("la importacion no puede inscribir a un
 // heredado del DEFAULT de la tabla, que es `familia` (§2.3).
 const RolDeCuentaImportada = "profesional"
 
+// PerfilPublicoDeCuentaImportada: si quien llega por la carga masiva sale en el
+// directorio de miembros. Se fija aquí porque el INSERT escribe el campo
+// explícito y no usa el DEFAULT true de la tabla: sin esta línea quedaba en el
+// false del valor cero de Go sin que nadie lo hubiera decidido.
+//
+// Apagado mientras el cliente decide (2026-11-11): esas personas aceptaron los
+// términos del evento, no necesariamente salir en un directorio. Cada una puede
+// encenderlo desde editar perfil en la app. Si el cliente prefiere que salgan
+// desde el principio, basta con cambiarlo a true.
+const PerfilPublicoDeCuentaImportada = false
+
 // Simular recorre el archivo sin escribir nada.
 func (s *ImportacionService) Simular(ctx context.Context, filas []domain.FilaImportacion, opciones domain.OpcionesImportacion) (*domain.ResultadoImportacion, error) {
 	if opciones.ConEvento() && s.eventos == nil {
@@ -312,6 +323,7 @@ func (s *ImportacionService) validarFila(fila domain.FilaImportacion) ([]domain.
 		Direccion:            strings.TrimSpace(fila.Direccion),
 		Sexo:                 strings.TrimSpace(fila.Sexo),
 		Role:                 RolDeCuentaImportada,
+		IsPublicProfile:      PerfilPublicoDeCuentaImportada,
 		TermsAccepted:        fila.AceptaTerminos,
 		// El archivo trae una sola casilla, la de los términos del evento.
 		// `data_sharing_accepted` se da por aceptado en una carga masiva, con su

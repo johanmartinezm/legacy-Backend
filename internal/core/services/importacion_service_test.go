@@ -147,6 +147,12 @@ func TestAplicar_CreaLaCuentaConLoQueDiceElPlan(t *testing.T) {
 	}
 	// El rol se fija; el DEFAULT de la tabla es 'familia' y dejarlo al azar
 	// metería a todo el mundo mal.
+	// Se compara con la constante y no con false: lo que se protege es que el
+	// valor salga de una decisión y no del cero de Go, aunque hoy coincidan.
+	if creado.IsPublicProfile != PerfilPublicoDeCuentaImportada {
+		t.Errorf("perfil público esperado %v, llegó %v",
+			PerfilPublicoDeCuentaImportada, creado.IsPublicProfile)
+	}
 	if creado.Role != RolDeCuentaImportada {
 		t.Errorf("rol esperado %q, llegó %q", RolDeCuentaImportada, creado.Role)
 	}

@@ -183,18 +183,24 @@ func (r *ChatRepository) MarkAsRead(ctx context.Context, connectionID, userID st
 
 // ListMembers devuelve el directorio de la comunidad tal como lo ve viewerID.
 //
-// Se excluyen tres cosas: uno mismo, las cuentas eliminadas —que tras
-// anonimizarse aparecían en el listado como "Usuario eliminado"— y las personas
-// con las que hay un bloqueo en cualquier dirección. Este último filtro es la
-// mitad que de verdad importa del bloqueo: si quien bloquea sigue viendo a
-// quien bloqueó en el directorio, puede volver a invitarle y el bloqueo no
-// protege de nada.
+// Se excluyen cuatro cosas: uno mismo, las cuentas eliminadas —que tras
+// anonimizarse aparecían en el listado como "Usuario eliminado"—, quien apagó
+// su perfil público y las personas con las que hay un bloqueo en cualquier
+// dirección. Este último filtro es la mitad que de verdad importa del bloqueo:
+// si quien bloquea sigue viendo a quien bloqueó en el directorio, puede volver
+// a invitarle y el bloqueo no protege de nada.
+//
+// El perfil público no se respetaba hasta el 2026-11-11; antes de desplegar
+// este filtro hay que aplicar scripts/20261111_perfil_publico_por_defecto.sql,
+// o desaparecen cuentas que nunca lo apagaron. `IS TRUE` deja fuera también
+// un NULL, que la columna admite.
 func (r *ChatRepository) ListMembers(ctx context.Context, viewerID string) ([]*domain.User, error) {
 	sql := `
 		SELECT id, first_name, last_name, email_encrypted, company_name, job_title
 		FROM core.users u
 		WHERE u.id <> $1
 		  AND u.deleted_at IS NULL
+		  AND u.is_public_profile IS TRUE
 		  AND NOT EXISTS (
 			SELECT 1 FROM core.user_blocks b
 			WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)

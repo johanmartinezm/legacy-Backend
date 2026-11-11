@@ -2,6 +2,24 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-11]: El directorio de miembros respeta el perfil público
+- **Alcance:** `chat_repository.go` (`ListMembers` filtra `is_public_profile IS TRUE`),
+  `importacion_service.go` (`PerfilPublicoDeCuentaImportada`, hoy `false`, a la espera de que el
+  cliente decida) y su test, migración `scripts/20261111_perfil_publico_por_defecto.sql`. El campo
+  existía pero nada lo leía, y la carga masiva lo dejaba en `false` por el valor cero de Go. La
+  migración enciende las cuentas activas que lo tenían apagado sin haberlo elegido (5 en producción el
+  11-11), salvo la de revisión de Apple. **Orden de despliegue: primero la migración, luego el
+  binario**; al revés, esas cuentas desaparecen del directorio hasta aplicarla.
+- **Criterios de QA:**
+  1. Tras aplicar la migración en producción, solo la cuenta de revisión de Apple queda con el perfil
+     apagado entre las activas.
+  2. En la app, Comunidad → miembros: aparecen las mismas personas que antes del despliegue, menos la
+     cuenta de revisión de Apple.
+  3. Una cuenta apaga «Mostrar mi perfil en el directorio» en editar perfil: otra cuenta deja de verla
+     en el directorio. Al encenderlo, vuelve a salir.
+  4. Guardar el perfil sin tocar el interruptor no lo cambia.
+  5. Una cuenta creada por la carga masiva no sale en el directorio hasta que la persona lo enciende.
+
 ---
 
 ### [2026-11-09]: La app 1.0.1 puede seguir inscribiéndose a eventos con workshops
