@@ -10,6 +10,10 @@ Entrada de trabajo para validación de API.
   migración enciende las cuentas activas que lo tenían apagado sin haberlo elegido (5 en producción el
   11-11), salvo la de revisión de Apple. **Orden de despliegue: primero la migración, luego el
   binario**; al revés, esas cuentas desaparecen del directorio hasta aplicarla.
+  **Desplegado el 2026-11-11.** La primera versión de la migración no excluía a los importados y
+  encendió 157 cuentas: esa mañana habían entrado 153 por la carga masiva. Se devolvieron a ocultas
+  antes de desplegar el filtro y el script ya las excluye (`debe_cambiar_contrasena`). Quedan 35
+  visibles, 153 importados ocultos y la cuenta de Apple oculta.
 - **Criterios de QA:**
   1. Tras aplicar la migración en producción, solo la cuenta de revisión de Apple queda con el perfil
      apagado entre las activas.

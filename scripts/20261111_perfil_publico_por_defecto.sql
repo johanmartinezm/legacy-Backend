@@ -25,6 +25,17 @@
 -- (la carga masiva fija el valor en vez de dejar el cero de Go) y, en la app,
 -- profile_edit_screen.dart (interruptor).
 --
+-- Tampoco se tocan las cuentas de la carga masiva que aún no han entrado
+-- (debe_cambiar_contrasena): nacen ocultas a propósito
+-- (PerfilPublicoDeCuentaImportada) mientras el cliente decide.
+--
+-- 🔴 Aplicada en producción el 2026-11-11 SIN esa condición: encendió 157
+-- cuentas en vez de 4, porque esa mañana habían entrado 153 asistentes por la
+-- carga masiva. Se corrigió a mano minutos después, antes de desplegar el
+-- filtro, devolviendo a false esas 153 (las que tenían debe_cambiar_contrasena,
+-- creadas ese día y con el updated_at de la migración). Respaldo previo:
+-- backup_20261111_1108_pre_perfil_publico.sql.gz en el directorio de despliegue.
+--
 -- Idempotente: volver a aplicarla no cambia nada.
 
 UPDATE core.users
@@ -32,4 +43,5 @@ UPDATE core.users
        updated_at = now()
  WHERE deleted_at IS NULL
    AND is_public_profile IS NOT TRUE
+   AND debe_cambiar_contrasena IS NOT TRUE
    AND id <> '4ac874cb-bfae-4c06-a1ab-d2eed855e061';
