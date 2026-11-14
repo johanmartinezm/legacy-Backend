@@ -2,6 +2,17 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-13]: La sesión de la app dura 30 días; la del panel sigue en 24 horas
+- **Alcance:** `core/services/auth_service.go` (constantes `DuracionSesionApp` y `DuracionSesionPanel`
+  en lugar del campo `tokenDuration`), test `duracion_sesion_test.go`. Afecta a `POST /api/login`, al
+  acceso con Google y Apple, y a `POST /api/admin/login`. Sin migración. Funciona con la app ya
+  publicada: con «Recordarme» marcado deja de pedir la contraseña cada día.
+- **Criterios de QA:**
+  1. Entrar en la app con correo y contraseña: el `exp` del token es 30 días después.
+  2. Entrar con Google o Apple: igual, 30 días.
+  3. Entrar en el panel: el `exp` es 24 horas después.
+  4. Con «Recordarme» marcado, cerrar la app y abrirla al día siguiente: entra sin pedir contraseña.
+
 ### [2026-11-11]: Encender y apagar el carrusel del Inicio desde el panel
 - **Alcance:** migración `scripts/20261111_carrusel_inicio_visible.sql` (columna `visible` en
   `core.secciones_inicio` y fila `carrusel-inicio`, pantalla `banners`), `domain/seccion_inicio.go`

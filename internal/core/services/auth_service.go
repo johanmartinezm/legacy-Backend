@@ -27,7 +27,6 @@ type AuthService struct {
 	emailService   ports.EmailService
 	crypto         *security.CryptoService
 	jwtSecret      []byte
-	tokenDuration  time.Duration
 	resetURL       string
 	verifyURL      string
 	googleClientID string
@@ -36,6 +35,25 @@ type AuthService struct {
 	// rechaza en vez de dejar pasar a cualquiera, que es lo que hacía antes.
 	appleValidator ports.ValidadorDeApple
 }
+
+// Cuánto vale un token antes de que haya que volver a escribir la contraseña.
+//
+// Hasta el 2026-11-13 eran 24 horas para todos, y como no hay refresh token,
+// «Recordarme» en la app solo recordaba un día: al siguiente había que entrar
+// otra vez. La app guarda el token en el almacenamiento cifrado del teléfono
+// (Keystore / Keychain), así que alargarlo ahí cuesta poco.
+//
+// El panel se queda en 24 horas: sus cuentas pueden borrar contenido y cambiar
+// roles, y su token vive en el navegador.
+//
+// 🔴 Ningún token se puede revocar antes de que caduque —cerrar sesión solo lo
+// borra del dispositivo—. Con 30 días, un token robado sirve hasta 30 días; si
+// eso llega a importar, la salida es una lista de revocación o un
+// «contraseña cambiada en» comparado con el `iat`, no acortar este número.
+const (
+	DuracionSesionApp   = 30 * 24 * time.Hour
+	DuracionSesionPanel = 24 * time.Hour
+)
 
 func NewAuthService(
 	repo ports.UserRepository,
@@ -58,7 +76,6 @@ func NewAuthService(
 		emailService:   emailService,
 		crypto:         crypto,
 		jwtSecret:      []byte(jwtSecret),
-		tokenDuration:  24 * time.Hour,
 		resetURL:       resetURL,
 		verifyURL:      verifyURL,
 		googleClientID: googleClientID,
@@ -481,7 +498,7 @@ func (s *AuthService) SocialLogin(ctx context.Context, provider, idToken string)
 		"user_id": user.ID,
 		"email":   extractedEmail,
 		"role":    user.Role,
-		"exp":     time.Now().Add(s.tokenDuration).Unix(),
+		"exp":     time.Now().Add(DuracionSesionApp).Unix(),
 	})
 
 	tokenString, err := token.SignedString(s.jwtSecret)
@@ -526,7 +543,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	// Generate JWT with role claim
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  user.ID,
-		"exp":  time.Now().Add(s.tokenDuration).Unix(),
+		"exp":  time.Now().Add(DuracionSesionApp).Unix(),
 		"role": user.Role,
 	})
 	return token.SignedString(s.jwtSecret)
@@ -568,7 +585,7 @@ func (s *AuthService) AdminLogin(ctx context.Context, email, password string) (s
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  admin.ID,
-		"exp":  time.Now().Add(s.tokenDuration).Unix(),
+		"exp":  time.Now().Add(DuracionSesionPanel).Unix(),
 		// El rol de la cuenta, no siempre "admin": es lo que separa a quien solo
 		// valida asistencia (ver domain.RolDelToken).
 		"role": domain.RolDelToken(admin.Role),
