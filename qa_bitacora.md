@@ -4,7 +4,7 @@ Entrada de trabajo para validación de API.
 
 ### [2026-11-13]: La sesión de la app dura 30 días; la del panel sigue en 24 horas
 - **Alcance:** `core/services/auth_service.go` (constantes `DuracionSesionApp` y `DuracionSesionPanel`
-  en lugar del campo `tokenDuration`), test `duracion_sesion_test.go`. Afecta a `POST /api/login`, al
+  en lugar del campo `tokenDuration`), test `duracion_sesion_test.go`. Afecta a `POST /login`, al
   acceso con Google y Apple, y a `POST /api/admin/login`. Sin migración. Funciona con la app ya
   publicada: con «Recordarme» marcado deja de pedir la contraseña cada día.
 - **Criterios de QA:**
