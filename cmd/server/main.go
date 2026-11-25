@@ -188,6 +188,12 @@ func main() {
 	beneficioService := services.NewBeneficioService(beneficioRepo)
 	beneficioHandler := handler.NewBeneficioHandler(beneficioService)
 
+	// Listas de los formularios A y B de Legacy Board, administrables desde el
+	// panel. scripts/20261125_legacy_board_formularios.sql.
+	boardOpcionRepo := postgres.NewBoardOpcionRepository(dbPool)
+	boardOpcionService := services.NewBoardOpcionService(boardOpcionRepo)
+	boardOpcionHandler := handler.NewBoardOpcionHandler(boardOpcionService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -443,6 +449,11 @@ func main() {
 		// Board contact route
 		r.Post("/api/board/contact", boardHandler.Contact)
 
+		// Listas de los formularios de Legacy Board, para pintarlos. Con sesión y
+		// sin exigir el plus: son solo nombres de opciones, y el plus se valida al
+		// enviar.
+		r.Get("/api/board/opciones", boardOpcionHandler.Activas)
+
 		// Asesoria request route
 		r.Post("/api/asesoria/request", asesoriaHandler.Request)
 
@@ -596,6 +607,13 @@ func main() {
 		r.Post("/api/admin/beneficios", beneficioHandler.AdminCreate)
 		r.Put("/api/admin/beneficios/{id}", beneficioHandler.AdminUpdate)
 		r.Delete("/api/admin/beneficios/{id}", beneficioHandler.AdminDelete)
+
+		// Admin: listas de los formularios de Legacy Board. Sin DELETE: una opción
+		// ya usada en un envío se desactiva, no se borra.
+		r.Get("/api/admin/board/catalogos", boardOpcionHandler.AdminCatalogos)
+		r.Get("/api/admin/board/opciones", boardOpcionHandler.AdminList)
+		r.Post("/api/admin/board/opciones", boardOpcionHandler.AdminCreate)
+		r.Put("/api/admin/board/opciones/{id}", boardOpcionHandler.AdminUpdate)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)

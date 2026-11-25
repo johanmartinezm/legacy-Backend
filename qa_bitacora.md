@@ -2,6 +2,28 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-25]: Legacy Board, fase 2: listas administrables (backend)
+- **Alcance:** `internal/core/domain/board_opcion.go` (las opciones y el registro de los 18 catálogos,
+  con cuáles alimentan el matching), `ports/board_opcion_ports.go`,
+  `adapter/storage/postgres/board_opcion_repository.go`, `services/board_opcion_service.go` (con su
+  prueba), `handler/http/board_opcion_handler.go` y cinco rutas en `cmd/server/main.go`:
+  `GET /api/board/opciones` (con sesión: las activas de los 18 catálogos, agrupadas, para pintar los
+  formularios), y bajo `AdminOnly` `GET /api/admin/board/catalogos`,
+  `GET /api/admin/board/opciones?catalogo=`, `POST /api/admin/board/opciones` y
+  `PUT /api/admin/board/opciones/{id}`. Sin DELETE: una opción se desactiva. El código estable de las
+  opciones nuevas lo genera el servidor a partir del nombre (sin tildes, con sufijo `_2` si choca), y
+  el PUT nunca cambia ni el catálogo ni el código. Se rechaza un nombre repetido en el mismo catálogo
+  (también contra las inactivas) y un nombre con bytes que no eran UTF-8.
+- **Criterios de QA:**
+  1. Con sesión de la app, `GET /api/board/opciones` devuelve 18 catálogos y 140 opciones; sin sesión,
+     401.
+  2. Un usuario de la app contra `GET /api/admin/board/catalogos` recibe 403.
+  3. Crear «Energía y minería» en `sector` devuelve 201 con el código `energia_y_mineria`.
+  4. Crear «energía Y minería» en el mismo catálogo devuelve 409; en un catálogo inventado, 400.
+  5. Un PUT sin `activo` devuelve 400; uno que manda `catalogo` y `codigo` distintos los ignora.
+  6. Desactivada, la opción deja de salir en `GET /api/board/opciones` y sigue en la lista del panel.
+  7. Un PUT a un id que no existe devuelve 404.
+
 ### [2026-11-25]: Legacy Board, fase 1: modelo de datos de los formularios A y B
 - **Alcance:** `scripts/20261125_legacy_board_formularios.sql`. Crea el esquema `board` con tres
   tablas: `opciones` (una sola tabla para los 18 catálogos de los dos formularios, sembrados con 140
