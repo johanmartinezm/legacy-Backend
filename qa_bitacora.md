@@ -2,6 +2,27 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-25]: Legacy Board, fase 1: modelo de datos de los formularios A y B
+- **Alcance:** `scripts/20261125_legacy_board_formularios.sql`. Crea el esquema `board` con tres
+  tablas: `opciones` (una sola tabla para los 18 catálogos de los dos formularios, sembrados con 140
+  opciones), `envios` (un registro por Formulario A o B enviado, con las respuestas en claro en
+  `jsonb`, los datos personales y los textos confidenciales cifrados en `datos_cifrados` y el estado
+  pendiente / aprobada / rechazada con su último cambio) y `destinatarios_aviso` (los correos del
+  aviso de cada envío nuevo). Aún no hay código que la use: eso empieza en la fase 2. Son 18
+  catálogos y no 17, como decía el plan, porque la errata D sumó el de países; los números de juntas
+  y comités (0 a 9) quedan como número, no como catálogo.
+- **Criterios de QA:**
+  1. Aplicar la migración dos veces seguidas sobre la base local: las dos pasadas terminan sin error
+     y la segunda no añade filas (`select count(*) from board.opciones` sigue en 140).
+  2. `select catalogo, count(*) from board.opciones group by 1` devuelve 18 catálogos; `pais` tiene
+     30 opciones (28 países, «Otro» y «Remoto») y `rol` 15 (con «Otro»).
+  3. Insertar un segundo Formulario A para el mismo usuario falla por `uq_envios_un_formulario_a`.
+  4. Un segundo Formulario B pendiente del mismo usuario falla; si el primero ya está aprobado, pasa.
+  5. Pasar un envío a `rechazada` sin motivo falla por `envios_rechazo_con_motivo`.
+  6. Un envío con `acepta_terminos = false` falla, y un destinatario con mayúsculas también.
+  7. Renombrar una opción en `board.opciones` y volver a aplicar la migración: el nombre nuevo se
+     conserva (la siembra no pisa lo editado).
+
 ### [2026-11-13]: La sesión de la app dura 30 días; la del panel sigue en 24 horas
 - **Alcance:** `core/services/auth_service.go` (constantes `DuracionSesionApp` y `DuracionSesionPanel`
   en lugar del campo `tokenDuration`), test `duracion_sesion_test.go`. Afecta a `POST /login`, al
