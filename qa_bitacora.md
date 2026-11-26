@@ -2,6 +2,32 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-25]: Legacy Board, fase 3: motor de formularios y Formulario A (backend)
+- **Alcance:** `internal/core/domain/board_formulario.go` (tipos de campo y la configuración del
+  Formulario A: 5 secciones, 31 campos más la casilla de términos), `ports/board_opcion_ports.go`
+  (envíos), `adapter/storage/postgres/board_envio_repository.go`,
+  `services/board_formulario_service.go` (con su prueba), `handler/http/board_formulario_handler.go`,
+  `ImagenSubidaExiste` en `handler/http/image_handler.go` y dos rutas en `cmd/server/main.go`, las dos
+  detrás de `RequierePlus`: `GET /api/board/formularios/{clave}` (la configuración con las opciones
+  activas de cada lista y el `envio_actual` del usuario) y `POST /api/board/formularios/{clave}`
+  (valida, cifra los datos personales y los textos confidenciales, y guarda en pendiente). La
+  configuración vive en Go y la app la pinta tal cual: lo que se muestra y lo que se acepta son la
+  misma definición. El 2026-11-25 se añadió «Áreas que cubrieron esos programas» (multiselección de
+  expertise, obligatoria), que es la que usará el matching; el texto de programas queda informativo.
+  Aún no avisa a nadie al recibir un envío: eso es la fase 5.
+- **Criterios de QA:**
+  1. Un usuario sin el plus recibe 403 en `GET /api/board/formularios/A`; con el plus, 200 con 5
+     secciones (11, 6, 7, 3 y 4 campos) y `envio_actual: null`.
+  2. «País de residencia» no ofrece «Remoto»; «Regiones donde puede servir» sí, y no ofrece «Otro».
+  3. `GET /api/board/formularios/Z` devuelve 404.
+  4. Un envío con una región que el campo no ofrece devuelve 400 con `"campo": "regiones"`.
+  5. Un envío sin foto, o con una foto que no se subió por `/api/images/upload`, devuelve 400 con
+     `"campo": "foto"`.
+  6. El envío válido devuelve 201 con estado `pendiente`; repetirlo devuelve 409.
+  7. En `board.envios` el registro tiene `datos_cifrados` en base64 y `respuestas` sin el correo, el
+     teléfono, el nombre ni «Empresas / contextos».
+  8. Tras enviar, `GET /api/board/formularios/A` trae el `envio_actual` con su estado.
+
 ### [2026-11-25]: Legacy Board, fase 2: listas administrables (backend)
 - **Alcance:** `internal/core/domain/board_opcion.go` (las opciones y el registro de los 18 catálogos,
   con cuáles alimentan el matching), `ports/board_opcion_ports.go`,

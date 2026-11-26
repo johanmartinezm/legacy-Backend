@@ -3,6 +3,7 @@ package ports
 import (
 	"applegacy/backend/internal/core/domain"
 	"context"
+	"encoding/json"
 )
 
 // BoardOpcionRepository y BoardOpcionService: las listas administrables de los
@@ -26,4 +27,27 @@ type BoardOpcionService interface {
 	DeCatalogo(ctx context.Context, catalogo string) ([]*domain.OpcionBoard, error)
 	Crear(ctx context.Context, o *domain.OpcionBoard) error
 	Actualizar(ctx context.Context, o *domain.OpcionBoard) error
+}
+
+// BoardEnvioRepository guarda los formularios enviados (board.envios).
+type BoardEnvioRepository interface {
+	// Create devuelve un error que envuelve domain.ErrUniqueViolation si el
+	// usuario ya tiene el A, o ya tiene un B pendiente.
+	Create(ctx context.Context, e *domain.EnvioBoard) error
+	// Actual devuelve el envío que manda sobre el formulario: el A del usuario,
+	// o su B pendiente. domain.ErrNotFound si no hay.
+	Actual(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error)
+}
+
+// BoardFormularioService sirve los formularios a la app y recibe los envíos.
+type BoardFormularioService interface {
+	Formulario(ctx context.Context, userID, clave string) (*domain.FormularioBoard, error)
+	Enviar(ctx context.Context, userID, clave string, entrada EntradaEnvioBoard) (*domain.EnvioBoard, error)
+}
+
+// EntradaEnvioBoard es el cuerpo de POST /api/board/formularios/{clave}: las
+// respuestas por clave de campo, sin interpretar todavía.
+type EntradaEnvioBoard struct {
+	Respuestas     map[string]json.RawMessage `json:"respuestas"`
+	AceptaTerminos bool                       `json:"acepta_terminos"`
 }

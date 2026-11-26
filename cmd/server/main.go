@@ -194,6 +194,14 @@ func main() {
 	boardOpcionService := services.NewBoardOpcionService(boardOpcionRepo)
 	boardOpcionHandler := handler.NewBoardOpcionHandler(boardOpcionService)
 
+	// Formularios de Legacy Board: la configuración para la app y los envíos.
+	// La foto se valida contra el mismo directorio en el que la deja
+	// /api/images/upload.
+	boardEnvioRepo := postgres.NewBoardEnvioRepository(dbPool)
+	boardFormularioService := services.NewBoardFormularioService(boardOpcionRepo, boardEnvioRepo, cryptoService,
+		handler.ImagenSubidaExiste(cfg.Storage.UploadsDir))
+	boardFormularioHandler := handler.NewBoardFormularioHandler(boardFormularioService)
+
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
 	customContentRepo := postgres.NewCustomContentRepository(dbPool)
 	contentService := services.NewContentService(contentCatRepo, customContentRepo)
@@ -499,6 +507,9 @@ func main() {
 			r.Post("/api/forums/{forumID}/posts", forumHandler.PublishPost)
 			r.Post("/api/forums/posts/{postID}/report", forumHandler.ReportPost)
 			r.Get("/api/beneficios", beneficioHandler.ListActivos)
+			// Formularios de Legacy Board (A, postulación del consejero; B en la fase 4).
+			r.Get("/api/board/formularios/{clave}", boardFormularioHandler.Formulario)
+			r.Post("/api/board/formularios/{clave}", boardFormularioHandler.Enviar)
 		})
 
 		// Regular User Management (Admin Only)

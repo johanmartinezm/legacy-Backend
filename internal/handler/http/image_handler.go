@@ -214,3 +214,19 @@ func (h *ImageHandler) respondWithError(w http.ResponseWriter, code int, message
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
+
+// ImagenSubidaExiste devuelve una función que dice si una imagen subida por
+// /api/images/upload sigue en el directorio de subidas. La usan los formularios
+// de Legacy Board para no aceptar una foto que nunca llegó al servidor.
+func ImagenSubidaExiste(uploadDir string) func(nombre string) bool {
+	if strings.TrimSpace(uploadDir) == "" {
+		uploadDir = DefaultUploadDir
+	}
+	return func(nombre string) bool {
+		if nombre == "" || nombre != filepath.Base(nombre) {
+			return false
+		}
+		info, err := os.Stat(filepath.Join(uploadDir, nombre))
+		return err == nil && info.Mode().IsRegular()
+	}
+}
