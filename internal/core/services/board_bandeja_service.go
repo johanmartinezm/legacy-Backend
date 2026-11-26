@@ -36,12 +36,15 @@ var (
 	ErrFiltroBoardInvalido     = errors.New("filtro no válido para este formulario")
 	ErrDestinatarioBoard       = errors.New("hay un correo con formato no válido")
 	ErrDestinatariosBoardMucho = fmt.Errorf("se admiten hasta %d destinatarios", maxDestinatariosBoard)
+	// ErrMatchingNoDisponible: el matching es de solicitudes (B) aprobadas
+	// (decisión 2 del plan).
+	ErrMatchingNoDisponible = errors.New("los candidatos se calculan solo para solicitudes de empresarios aprobadas")
 )
 
 // EsErrorDeValidacionBandejaBoard dice si el error es de la petición (400).
 func EsErrorDeValidacionBandejaBoard(err error) bool {
 	for _, e := range []error{ErrEstadoBoardInvalido, ErrEstadoBoardSinMotivo, ErrEstadoBoardMotivoLargo,
-		ErrFiltroBoardInvalido, ErrDestinatarioBoard, ErrDestinatariosBoardMucho} {
+		ErrFiltroBoardInvalido, ErrDestinatarioBoard, ErrDestinatariosBoardMucho, ErrMatchingNoDisponible} {
 		if errors.Is(err, e) {
 			return true
 		}
@@ -359,4 +362,86 @@ func (s *BoardBandejaService) GuardarDestinatarios(ctx context.Context, correos 
 		return nil, err
 	}
 	return limpios, nil
+}
+
+// maxCandidatosBoard: cuántos candidatos se devuelven como mucho, los de más
+// porcentaje. El comité lee la cabeza de la lista, no la cola.
+const maxCandidatosBoard = 50
+
+// Candidatos cruza una solicitud aprobada del B con todos los consejeros
+// aprobados del A y los devuelve de mayor a menor porcentaje. Los que no
+// coinciden en nada (0 %) no salen. Empate: el que se postuló antes, y luego el
+// id, para que el orden sea siempre el mismo.
+func (s *BoardBandejaService) Candidatos(ctx context.Context, solicitudID string) ([]*domain.CandidatoBoard, error) {
+	sol, err := s.envios.FindByID(ctx, solicitudID)
+	if err != nil {
+		return nil, err
+	}
+	if sol.Formulario != "B" || sol.Estado != domain.EstadoEnvioAprobada {
+		return nil, ErrMatchingNoDisponible
+	}
+	todas, err := s.opciones.List(ctx, "", false)
+	if err != nil {
+		return nil, err
+	}
+	opciones := make(map[string]*domain.OpcionBoard, len(todas))
+	for _, o := range todas {
+		opciones[o.ID] = o
+	}
+	consejeros, err := s.envios.Aprobados(ctx, "A")
+	if err != nil {
+		return nil, err
+	}
+
+	type fila struct {
+		c     *domain.CandidatoBoard
+		envio *domain.EnvioBoard
+	}
+	var filas []fila
+	for _, e := range consejeros {
+		// Quien pide consejo no se recomienda a sí mismo.
+		if e.UserID == sol.UserID {
+			continue
+		}
+		r := CruzarBoard(sol.Respuestas, e.Respuestas, opciones)
+		if r.Porcentaje == 0 {
+			continue
+		}
+		datos := s.datos(e)
+		c := &domain.CandidatoBoard{
+			EnvioID: e.ID, Nombre: texto(datos["nombre_completo"]), FotoURL: e.FotoURL,
+			CargoActual: texto(e.Respuestas["cargo_actual"]), Porcentaje: r.Porcentaje, Razones: r.Razones,
+		}
+		if id := texto(e.Respuestas["honorarios"]); id != "" {
+			c.Honorarios = etiquetaOpcion(opciones, id)
+		}
+		if c.Razones == nil {
+			c.Razones = []string{}
+		}
+		filas = append(filas, fila{c, e})
+	}
+	slices.SortStableFunc(filas, func(a, b fila) int {
+		if a.c.Porcentaje != b.c.Porcentaje {
+			return b.c.Porcentaje - a.c.Porcentaje
+		}
+		if !a.envio.CreadoEn.Equal(b.envio.CreadoEn) {
+			return a.envio.CreadoEn.Compare(b.envio.CreadoEn)
+		}
+		return strings.Compare(a.envio.ID, b.envio.ID)
+	})
+	candidatos := make([]*domain.CandidatoBoard, 0, min(len(filas), maxCandidatosBoard))
+	for i, f := range filas {
+		if i == maxCandidatosBoard {
+			break
+		}
+		candidatos = append(candidatos, f.c)
+	}
+	return candidatos, nil
+}
+
+func etiquetaOpcion(opciones map[string]*domain.OpcionBoard, id string) string {
+	if o, ok := opciones[id]; ok {
+		return o.Etiqueta
+	}
+	return "(opción borrada)"
 }

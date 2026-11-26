@@ -50,6 +50,9 @@ type BoardEnvioRepository interface {
 	// CambiarEstado guarda el estado, el motivo, quién y cuándo.
 	CambiarEstado(ctx context.Context, id, estado, motivo, adminID string) error
 	MarcarAvisoEnviado(ctx context.Context, id string) error
+	// Aprobados devuelve todos los envíos aprobados de un formulario: los
+	// consejeros que entran al matching.
+	Aprobados(ctx context.Context, formulario string) ([]*domain.EnvioBoard, error)
 	Destinatarios(ctx context.Context) ([]string, error)
 	// ReemplazarDestinatarios deja exactamente esa lista, en una transacción.
 	ReemplazarDestinatarios(ctx context.Context, correos []string) error
@@ -63,6 +66,8 @@ type BoardBandejaService interface {
 	CambiarEstado(ctx context.Context, id, estado, motivo, adminID string) (*domain.DetalleEnvioBoard, error)
 	Destinatarios(ctx context.Context) ([]string, error)
 	GuardarDestinatarios(ctx context.Context, correos []string) ([]string, error)
+	// Candidatos cruza una solicitud aprobada con los consejeros aprobados.
+	Candidatos(ctx context.Context, solicitudID string) ([]*domain.CandidatoBoard, error)
 }
 
 // BoardFormularioService sirve los formularios a la app y recibe los envíos.

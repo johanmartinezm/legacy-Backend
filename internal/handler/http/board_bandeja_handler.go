@@ -104,6 +104,17 @@ func (h *BoardBandejaHandler) CambiarEstado(w http.ResponseWriter, r *http.Reque
 	responderJSON(w, http.StatusOK, d)
 }
 
+// Candidatos atiende GET /api/admin/board/envios/{id}/candidatos: los
+// consejeros aprobados que mejor encajan con una solicitud aprobada.
+func (h *BoardBandejaHandler) Candidatos(w http.ResponseWriter, r *http.Request) {
+	lista, err := h.service.Candidatos(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		h.responderError(w, "calculando candidatos", err)
+		return
+	}
+	responderJSON(w, http.StatusOK, lista)
+}
+
 func (h *BoardBandejaHandler) Destinatarios(w http.ResponseWriter, r *http.Request) {
 	correos, err := h.service.Destinatarios(r.Context())
 	if err != nil {

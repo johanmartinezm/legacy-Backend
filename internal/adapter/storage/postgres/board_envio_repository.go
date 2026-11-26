@@ -214,6 +214,30 @@ func (r *BoardEnvioRepository) CambiarEstado(ctx context.Context, id, estado, mo
 	return nil
 }
 
+// limiteAprobadosBoard es un techo de seguridad, no una página: el matching
+// necesita a todos los consejeros aprobados, que son decenas o cientos.
+const limiteAprobadosBoard = 5000
+
+func (r *BoardEnvioRepository) Aprobados(ctx context.Context, formulario string) ([]*domain.EnvioBoard, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+camposEnvioBoard+` FROM board.envios
+		WHERE formulario = $1 AND estado = 'aprobada'
+		ORDER BY creado_en ASC, id ASC
+		LIMIT $2`, formulario, limiteAprobadosBoard)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var envios []*domain.EnvioBoard
+	for rows.Next() {
+		var e domain.EnvioBoard
+		if err := escanearEnvioBoard(rows, &e); err != nil {
+			return nil, err
+		}
+		envios = append(envios, &e)
+	}
+	return envios, rows.Err()
+}
+
 func (r *BoardEnvioRepository) MarcarAvisoEnviado(ctx context.Context, id string) error {
 	_, err := r.db.Exec(ctx, `UPDATE board.envios SET aviso_enviado = true WHERE id = $1`, id)
 	return err

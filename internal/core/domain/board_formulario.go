@@ -319,3 +319,17 @@ type DetalleEnvioBoard struct {
 	EstadoCambiadoPor string                `json:"estado_cambiado_por"`
 	Secciones         []SeccionLegibleBoard `json:"secciones"`
 }
+
+// CandidatoBoard es un consejero aprobado cruzado con una solicitud del
+// empresario (fase 6). Lo ve solo el comité, en el panel.
+type CandidatoBoard struct {
+	EnvioID     string   `json:"envio_id"`
+	Nombre      string   `json:"nombre"`
+	FotoURL     string   `json:"foto_url"`
+	CargoActual string   `json:"cargo_actual"`
+	Porcentaje  int      `json:"porcentaje"`
+	Razones     []string `json:"razones"`
+	// Honorarios no puntúan (errata I); se muestran para comparar con el
+	// presupuesto de la solicitud.
+	Honorarios string `json:"honorarios"`
+}

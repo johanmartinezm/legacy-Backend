@@ -648,6 +648,7 @@ func main() {
 		r.Get("/api/admin/board/envios", boardBandejaHandler.Listar)
 		r.Get("/api/admin/board/envios/{id}", boardBandejaHandler.Detalle)
 		r.Put("/api/admin/board/envios/{id}/estado", boardBandejaHandler.CambiarEstado)
+		r.Get("/api/admin/board/envios/{id}/candidatos", boardBandejaHandler.Candidatos)
 		r.Get("/api/admin/board/destinatarios", boardBandejaHandler.Destinatarios)
 		r.Put("/api/admin/board/destinatarios", boardBandejaHandler.GuardarDestinatarios)
 

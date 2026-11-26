@@ -2,6 +2,24 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-25]: Legacy Board, fase 6: matching
+- **Alcance:** `internal/core/services/board_matching.go` (`CruzarBoard`, el cálculo, con su prueba),
+  `Candidatos` en `services/board_bandeja_service.go` (con `board_candidatos_test.go`), `Aprobados` en el
+  repositorio, `CandidatoBoard` en el dominio y la ruta `GET /api/admin/board/envios/{id}/candidatos`
+  bajo `AdminOnly`. Cruza una solicitud B **aprobada** con todos los consejeros A **aprobados**. Pesos
+  20/20/20/10/10/10/5/5; en las listas cuenta la fracción de lo pedido; lo no exigido no cuenta y se
+  reescala; «Otro» nunca suma (si la empresa pide justo «Otro», ese criterio no cuenta); la expertise del
+  consejero suma «Áreas que cubrieron esos programas». Devuelve hasta 50 candidatos de mayor a menor, sin
+  los de 0 % ni al propio solicitante; empate: el que se postuló antes. Determinista, sin IA.
+- **Criterios de QA:** (en local, con `LEGACY_CORREO_SIMULADO=1`)
+  1. Con una solicitud B aprobada y tres consejeros aprobados (uno que cubre todo, uno parcial y uno
+     solo del sector), `GET …/candidatos` devuelve 100 %, 56 % y 22 % en ese orden, con sus razones y
+     honorarios.
+  2. La razón de un área que el consejero solo tiene por sus programas dice «(por sus programas de
+     formación)».
+  3. Con una solicitud rechazada o pendiente, o con una postulación A, devuelve 400.
+  4. Un consejero pendiente o rechazado no aparece; tampoco el propio solicitante si es consejero.
+
 ### [2026-11-25]: Legacy Board, fase 4: Formulario B (solicitud del empresario)
 - **Alcance:** `internal/core/domain/board_formulario.go` (`FormularioB`: 5 secciones y 27 campos más
   los términos, con `PermiteNuevo`, y los filtros de la bandeja para el B), `Ultimo` en

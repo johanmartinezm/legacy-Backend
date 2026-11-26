@@ -47,6 +47,16 @@ func (r *repoEnviosBoardFake) MarcarAvisoEnviado(ctx context.Context, id string)
 	return nil
 }
 
+func (r *repoEnviosBoardFake) Aprobados(ctx context.Context, formulario string) ([]*domain.EnvioBoard, error) {
+	var out []*domain.EnvioBoard
+	for _, e := range r.guardados {
+		if e.Formulario == formulario && e.Estado == domain.EstadoEnvioAprobada {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func (r *repoEnviosBoardFake) Destinatarios(ctx context.Context) ([]string, error) {
 	return r.destinos, nil
 }
