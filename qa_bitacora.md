@@ -2,6 +2,27 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-25]: Legacy Board, fase 4: Formulario B (solicitud del empresario)
+- **Alcance:** `internal/core/domain/board_formulario.go` (`FormularioB`: 5 secciones y 27 campos más
+  los términos, con `PermiteNuevo`, y los filtros de la bandeja para el B), `Ultimo` en
+  `ports/board_opcion_ports.go` y `adapter/storage/postgres/board_envio_repository.go`,
+  `services/board_formulario_service.go` y la prueba `services/board_formulario_b_test.go`. El B usa las
+  mismas listas que el A. Va cifrado lo del §3.5 y, además, el nombre de la empresa. La app recibe el
+  **último** envío del formulario en cualquier estado (`envio_actual`), para que vea la decisión del
+  comité; enviar sigue bloqueado solo mientras haya una solicitud pendiente.
+- **Criterios de QA:** (en local, con `LEGACY_CORREO_SIMULADO=1` y un usuario Legacy+)
+  1. `GET /api/board/formularios/B` devuelve «Solicitud de consejero» con secciones de 8, 8, 5, 4 y 2
+     campos y `permite_nuevo: true`.
+  2. «Órgano a fortalecer» no ofrece «No aplica»; «Idioma requerido» no ofrece «Otro»; «País de la
+     empresa» no ofrece «Remoto».
+  3. Enviar una solicitud válida da 201; otra mientras la primera está pendiente da 409.
+  4. La bandeja con `formulario=B&filtro=sector&opcion=<agro>` la devuelve; el detalle muestra el nombre
+     de la empresa como confidencial y la expertise requerida legible.
+  5. Aprobada o rechazada, `GET /api/board/formularios/B` trae esa última con su estado, y una
+     solicitud nueva da 201.
+  6. El registro muestra el correo simulado de la solicitud nueva a cada destinatario y el de la
+     decisión al solicitante.
+
 ### [2026-11-25]: Legacy Board, fase 5: estados, bandeja y avisos (backend)
 - **Alcance:** `services/board_bandeja_service.go` (con su prueba), `handler/http/board_bandeja_handler.go`,
   las consultas de la bandeja en `adapter/storage/postgres/board_envio_repository.go`, los tipos del

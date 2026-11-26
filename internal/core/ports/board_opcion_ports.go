@@ -37,6 +37,9 @@ type BoardEnvioRepository interface {
 	// Actual devuelve el envío que manda sobre el formulario: el A del usuario,
 	// o su B pendiente. domain.ErrNotFound si no hay.
 	Actual(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error)
+	// Ultimo devuelve el envío más reciente del usuario en ese formulario, en
+	// cualquier estado: es lo que la app muestra. domain.ErrNotFound si no hay.
+	Ultimo(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error)
 
 	// Lo que sigue es de la bandeja del panel (fase 5).
 	Listar(ctx context.Context, filtro domain.FiltroEnviosBoard, limit, offset int) ([]*domain.EnvioBoard, error)

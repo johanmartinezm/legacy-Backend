@@ -16,6 +16,7 @@ type repoEnviosBoardFake struct {
 	actual *domain.EnvioBoard
 	creado *domain.EnvioBoard
 	choque bool
+	ultimo *domain.EnvioBoard
 	// De la bandeja (board_bandeja_service_test.go).
 	guardados   map[string]*domain.EnvioBoard
 	cambio      []string
@@ -32,6 +33,14 @@ func (r *repoEnviosBoardFake) Create(ctx context.Context, e *domain.EnvioBoard) 
 	e.Estado = domain.EstadoEnvioPendiente
 	r.creado = e
 	return nil
+}
+
+// Ultimo, en el falso, es el envío actual o, si no hay, el último decidido.
+func (r *repoEnviosBoardFake) Ultimo(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error) {
+	if r.ultimo != nil {
+		return r.ultimo, nil
+	}
+	return r.Actual(ctx, userID, formulario)
 }
 
 func (r *repoEnviosBoardFake) Actual(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error) {
@@ -55,6 +64,9 @@ func opcionesA() *repoOpcionesBoardFake {
 		{"idioma", "es"}, {"tipo_organo", "junta_directiva"}, {"tipo_organo", "no_aplica"},
 		{"expertise", "sucesion"}, {"dinastia", "cultura"}, {"disponibilidad", "1_2"},
 		{"modalidad", "virtual"}, {"honorarios", "r1"},
+		// Las del Formulario B.
+		{"idioma", "otro"}, {"tipo_empresa", "familiar"}, {"tamano_empresa", "11_50"}, {"generacion", "segunda"},
+		{"estado_junta", "activa"}, {"reto", "sucesion"}, {"urgencia", "trimestre"},
 	}
 	repo := &repoOpcionesBoardFake{}
 	for _, p := range pares {

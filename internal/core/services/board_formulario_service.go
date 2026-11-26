@@ -113,7 +113,10 @@ func (s *BoardFormularioService) Formulario(ctx context.Context, userID, clave s
 		f.Secciones[i] = domain.SeccionBoard{Titulo: sec.Titulo, Campos: campos}
 	}
 
-	actual, err := s.envios.Actual(ctx, userID, clave)
+	// Se muestra el último en cualquier estado: del B, el que ya tiene
+	// decisión también, para que la persona se entere de ella (si solo se
+	// mostrara el pendiente, tras la decisión vería el formulario vacío).
+	actual, err := s.envios.Ultimo(ctx, userID, clave)
 	switch {
 	case err == nil:
 		f.EnvioActual = actual

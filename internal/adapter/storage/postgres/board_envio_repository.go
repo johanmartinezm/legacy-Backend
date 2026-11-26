@@ -72,6 +72,24 @@ func (r *BoardEnvioRepository) Actual(ctx context.Context, userID, formulario st
 	return &e, nil
 }
 
+func (r *BoardEnvioRepository) Ultimo(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error) {
+	if !idValido(userID) {
+		return nil, domain.ErrNotFound
+	}
+	var e domain.EnvioBoard
+	err := escanearEnvioBoard(r.db.QueryRow(ctx, `SELECT `+camposEnvioBoard+` FROM board.envios
+		WHERE user_id = $1 AND formulario = $2
+		ORDER BY creado_en DESC, id DESC
+		LIMIT 1`, userID, formulario), &e)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
 // filtroEnviosSQL arma el WHERE de la bandeja. Todo va parametrizado: el campo
 // de la opción viaja como parámetro del jsonb_build_object, no pegado al SQL.
 func filtroEnviosSQL(f domain.FiltroEnviosBoard) (string, []any) {

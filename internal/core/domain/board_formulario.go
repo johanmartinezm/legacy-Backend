@@ -82,9 +82,14 @@ type FormularioBoard struct {
 	TextoTerminos string `json:"texto_terminos"`
 	// TextoConfirmacion es lo que la app muestra al enviarlo.
 	TextoConfirmacion string `json:"texto_confirmacion"`
-	// EnvioActual lo rellena el servicio: el envío del usuario que manda sobre
-	// el formulario (el A ya enviado, o el B pendiente). Si viene, la app
-	// muestra su estado en vez del formulario.
+	// PermiteNuevo: se puede enviar otro cuando el último ya tiene decisión.
+	// El A es uno por persona; el B admite varias solicitudes en el tiempo,
+	// pero solo una pendiente a la vez (índices de la migración).
+	PermiteNuevo bool `json:"permite_nuevo"`
+	// EnvioActual lo rellena el servicio: el último envío del usuario en este
+	// formulario, en cualquier estado. Si está pendiente, o el formulario no
+	// permite otro, la app muestra solo su estado; si no, el estado y la opción
+	// de empezar uno nuevo.
 	EnvioActual *EnvioBoard `json:"envio_actual"`
 }
 
@@ -182,10 +187,68 @@ var FormularioA = FormularioBoard{
 	},
 }
 
-// FormulariosBoard: los formularios que existen, por clave. El B se añade en
-// la fase 4.
+// FormularioB es la solicitud del empresario o la familia que busca consejero:
+// §7.2 del documento del cliente, con las erratas del 2026-10-02 (cliente/
+// alumni de selección simple, un solo catálogo de documentos y de países, reto
+// en su propio catálogo). Sus campos de matching usan las mismas listas que el
+// A: sector, órgano, expertise, independencia, DINASTÍA, idioma, modalidad y
+// país (§8). Además de lo que pide el §3.5, va cifrado el nombre de la empresa:
+// identifica a una familia que busca consejo y no hace falta para filtrar.
+var FormularioB = FormularioBoard{
+	Clave:        "B",
+	Titulo:       "Solicitud de consejero",
+	PermiteNuevo: true,
+	Descripcion: "Cuéntanos sobre tu empresa y el perfil de consejero que buscas. El comité de " +
+		"curaduría revisa cada solicitud y te contactará con los candidatos que encajen.",
+	TextoTerminos: "Acepto los términos y condiciones y autorizo el tratamiento de mis datos " +
+		"personales y de los de mi empresa para gestionar esta solicitud en Legacy Board.",
+	TextoConfirmacion: "Recibimos tu solicitud. El comité de curaduría la revisará y te " +
+		"contactará con los candidatos que encajen.",
+	Secciones: []SeccionBoard{
+		{Titulo: "Quién solicita", Campos: []CampoBoard{
+			{Clave: "nombre_completo", Etiqueta: "Nombre del solicitante", Tipo: CampoTexto, Obligatorio: true, MaxLargo: 120, Cifrado: true, Prellenar: "nombre"},
+			{Clave: "tipo_documento", Etiqueta: "Tipo de documento", Tipo: CampoSeleccion, Catalogo: "tipo_documento", Cifrado: true},
+			{Clave: "numero_documento", Etiqueta: "Número de documento", Tipo: CampoTexto, MaxLargo: 30, Patron: `^[A-Za-z0-9.\- ]+$`, Cifrado: true},
+			{Clave: "fecha_nacimiento", Etiqueta: "Fecha de nacimiento", Tipo: CampoFecha, Cifrado: true},
+			{Clave: "correo", Etiqueta: "Correo", Tipo: CampoEmail, Obligatorio: true, Cifrado: true, Prellenar: "correo"},
+			{Clave: "telefono", Etiqueta: "Teléfono", Tipo: CampoTelefono, Obligatorio: true, Ayuda: "Con el código de país, p. ej. +57 300 000 0000", Cifrado: true, Prellenar: "telefono"},
+			{Clave: "rol_solicitante", Etiqueta: "Rol del solicitante", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "rol"},
+			{Clave: "cliente_alumni", Etiqueta: "¿Es cliente o alumni de Legacy Network?", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "cliente_alumni"},
+		}},
+		{Titulo: "La organización", Campos: []CampoBoard{
+			{Clave: "nombre_empresa", Etiqueta: "Nombre de la empresa", Tipo: CampoTexto, Obligatorio: true, MaxLargo: 150, Cifrado: true},
+			{Clave: "sector_empresa", Etiqueta: "Sector de la empresa", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "sector"},
+			{Clave: "tipo_empresa", Etiqueta: "Tipo de empresa", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "tipo_empresa"},
+			{Clave: "tamano_empresa", Etiqueta: "Tamaño (número de empleados)", Tipo: CampoSeleccion, Catalogo: "tamano_empresa"},
+			{Clave: "generacion", Etiqueta: "Generación actual de la familia", Tipo: CampoSeleccion, Catalogo: "generacion"},
+			{Clave: "pais_empresa", Etiqueta: "País de la empresa", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "pais", Excluir: []string{"remoto"}},
+			{Clave: "ciudad_empresa", Etiqueta: "Ciudad", Tipo: CampoTexto, Obligatorio: true, MaxLargo: 80},
+			{Clave: "estado_junta", Etiqueta: "¿Tiene junta directiva hoy?", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "estado_junta"},
+		}},
+		{Titulo: "Qué órgano y qué perfil busca", Campos: []CampoBoard{
+			{Clave: "organo_fortalecer", Etiqueta: "Órgano a fortalecer", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "tipo_organo", Excluir: []string{"no_aplica"}},
+			{Clave: "num_consejeros", Etiqueta: "Número de consejeros que busca", Tipo: CampoNumero, Min: entero(1), Max: entero(5)},
+			{Clave: "expertise_requerida", Etiqueta: "Expertise requerida", Tipo: CampoMultiseleccion, Obligatorio: true, Catalogo: "expertise"},
+			{Clave: "requiere_independiente", Etiqueta: "¿Requiere miembro independiente?", Tipo: CampoSiNo},
+			{Clave: "idiomas_requeridos", Etiqueta: "Idioma requerido", Tipo: CampoMultiseleccion, Obligatorio: true, Catalogo: "idioma", Excluir: []string{"otro"}},
+		}},
+		{Titulo: "El reto y el contexto", Campos: []CampoBoard{
+			{Clave: "reto_principal", Etiqueta: "Reto principal a resolver", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "reto"},
+			{Clave: "dinastia_prioritaria", Etiqueta: "Dimensión DINASTÍA prioritaria", Tipo: CampoMultiseleccion, Catalogo: "dinastia"},
+			{Clave: "descripcion_contexto", Etiqueta: "Descripción del contexto", Tipo: CampoTextoLargo, Obligatorio: true, MaxLargo: 2000, Ayuda: "Confidencial: solo lo lee el comité", Cifrado: true},
+			{Clave: "urgencia", Etiqueta: "Urgencia", Tipo: CampoSeleccion, Catalogo: "urgencia"},
+		}},
+		{Titulo: "Condiciones", Campos: []CampoBoard{
+			{Clave: "modalidad_esperada", Etiqueta: "Modalidad de trabajo esperada", Tipo: CampoMultiseleccion, Obligatorio: true, Catalogo: "modalidad"},
+			{Clave: "presupuesto_honorarios", Etiqueta: "Presupuesto de honorarios (rango)", Tipo: CampoSeleccion, Obligatorio: true, Catalogo: "honorarios"},
+		}},
+	},
+}
+
+// FormulariosBoard: los formularios que existen, por clave.
 var FormulariosBoard = map[string]*FormularioBoard{
 	"A": &FormularioA,
+	"B": &FormularioB,
 }
 
 // Lo que sigue es del panel (fase 5): la bandeja, el detalle y los cambios de
@@ -210,9 +273,9 @@ type FiltroEnviosBoard struct {
 }
 
 // CamposFiltroBoard traduce los filtros del panel al campo de cada formulario.
-// El B se completa en la fase 4.
 var CamposFiltroBoard = map[string]map[string]string{
 	"A": {"sector": "sectores", "expertise": "expertise"},
+	"B": {"sector": "sector_empresa", "expertise": "expertise_requerida"},
 }
 
 // ResumenEnvioBoard es una fila de la bandeja del panel.
