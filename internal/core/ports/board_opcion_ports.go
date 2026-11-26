@@ -37,6 +37,29 @@ type BoardEnvioRepository interface {
 	// Actual devuelve el envío que manda sobre el formulario: el A del usuario,
 	// o su B pendiente. domain.ErrNotFound si no hay.
 	Actual(ctx context.Context, userID, formulario string) (*domain.EnvioBoard, error)
+
+	// Lo que sigue es de la bandeja del panel (fase 5).
+	Listar(ctx context.Context, filtro domain.FiltroEnviosBoard, limit, offset int) ([]*domain.EnvioBoard, error)
+	Contar(ctx context.Context, filtro domain.FiltroEnviosBoard) (int, error)
+	// FindByID trae también el correo del administrador del último cambio
+	// (EstadoCambiadoPorStr). domain.ErrNotFound si no existe.
+	FindByID(ctx context.Context, id string) (*domain.EnvioBoard, error)
+	// CambiarEstado guarda el estado, el motivo, quién y cuándo.
+	CambiarEstado(ctx context.Context, id, estado, motivo, adminID string) error
+	MarcarAvisoEnviado(ctx context.Context, id string) error
+	Destinatarios(ctx context.Context) ([]string, error)
+	// ReemplazarDestinatarios deja exactamente esa lista, en una transacción.
+	ReemplazarDestinatarios(ctx context.Context, correos []string) error
+}
+
+// BoardBandejaService es la bandeja del panel: postulaciones y solicitudes,
+// su detalle descifrado, los cambios de estado y quién recibe los avisos.
+type BoardBandejaService interface {
+	Listar(ctx context.Context, filtro domain.FiltroEnviosBoard, limit, offset int) ([]*domain.ResumenEnvioBoard, int, error)
+	Detalle(ctx context.Context, id string) (*domain.DetalleEnvioBoard, error)
+	CambiarEstado(ctx context.Context, id, estado, motivo, adminID string) (*domain.DetalleEnvioBoard, error)
+	Destinatarios(ctx context.Context) ([]string, error)
+	GuardarDestinatarios(ctx context.Context, correos []string) ([]string, error)
 }
 
 // BoardFormularioService sirve los formularios a la app y recibe los envíos.

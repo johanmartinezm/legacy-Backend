@@ -18,6 +18,7 @@ import (
 	"log"
 	netHttp "net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -62,12 +63,23 @@ func main() {
 	tokenRepo := postgres.NewPasswordResetRepository(dbPool)
 	verifyRepo := postgres.NewEmailVerificationRepository(dbPool)
 
-	emailService, err := email.NewGmailService(
-		cfg.Email.GmailCredentialsFile,
-		cfg.Email.GmailImpersonateUser,
-	)
-	if err != nil {
-		log.Fatalf("Failed to init email service: %v", err)
+	// LEGACY_CORREO_SIMULADO=1 (solo para desarrollo): el correo se escribe en
+	// el registro en vez de enviarse. Las credenciales de Gmail del config local
+	// son las de verdad, así que sin esto probar un flujo que escribe a alguien
+	// manda un correo real desde la cuenta del proyecto.
+	var emailService email.Servicio
+	if os.Getenv("LEGACY_CORREO_SIMULADO") == "1" {
+		log.Println("[CORREO] LEGACY_CORREO_SIMULADO=1: ningún correo sale, solo se registra")
+		emailService = email.Simulado{}
+	} else {
+		gmail, err := email.NewGmailService(
+			cfg.Email.GmailCredentialsFile,
+			cfg.Email.GmailImpersonateUser,
+		)
+		if err != nil {
+			log.Fatalf("Failed to init email service: %v", err)
+		}
+		emailService = gmail
 	}
 
 	// Sign in with Apple. Si falta apple.bundle_id el validador se queda a nil y
@@ -200,6 +212,12 @@ func main() {
 	boardEnvioRepo := postgres.NewBoardEnvioRepository(dbPool)
 	boardFormularioService := services.NewBoardFormularioService(boardOpcionRepo, boardEnvioRepo, cryptoService,
 		handler.ImagenSubidaExiste(cfg.Storage.UploadsDir))
+	// Bandeja del panel: estados, detalle descifrado y avisos. Sin destinatarios
+	// cargados, el aviso de un envío nuevo va al buzón de contacto.
+	boardBandejaService := services.NewBoardBandejaService(boardEnvioRepo, boardOpcionRepo, cryptoService,
+		emailService, notificationService, cfg.BuzonDeContacto())
+	boardFormularioService.ConAvisoNuevo(boardBandejaService.AvisarEnvioNuevo)
+	boardBandejaHandler := handler.NewBoardBandejaHandler(boardBandejaService)
 	boardFormularioHandler := handler.NewBoardFormularioHandler(boardFormularioService)
 
 	contentCatRepo := postgres.NewContentCategoryRepository(dbPool)
@@ -625,6 +643,13 @@ func main() {
 		r.Get("/api/admin/board/opciones", boardOpcionHandler.AdminList)
 		r.Post("/api/admin/board/opciones", boardOpcionHandler.AdminCreate)
 		r.Put("/api/admin/board/opciones/{id}", boardOpcionHandler.AdminUpdate)
+
+		// Admin: bandeja de Legacy Board (postulaciones y solicitudes).
+		r.Get("/api/admin/board/envios", boardBandejaHandler.Listar)
+		r.Get("/api/admin/board/envios/{id}", boardBandejaHandler.Detalle)
+		r.Put("/api/admin/board/envios/{id}/estado", boardBandejaHandler.CambiarEstado)
+		r.Get("/api/admin/board/destinatarios", boardBandejaHandler.Destinatarios)
+		r.Put("/api/admin/board/destinatarios", boardBandejaHandler.GuardarDestinatarios)
 
 		// Admin Custom Content Management
 		r.Get("/api/admin/content/categories", contentHandler.ListCategories)

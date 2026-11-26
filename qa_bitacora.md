@@ -2,6 +2,34 @@
 
 Entrada de trabajo para validación de API.
 
+### [2026-11-25]: Legacy Board, fase 5: estados, bandeja y avisos (backend)
+- **Alcance:** `services/board_bandeja_service.go` (con su prueba), `handler/http/board_bandeja_handler.go`,
+  las consultas de la bandeja en `adapter/storage/postgres/board_envio_repository.go`, los tipos del
+  panel en `domain/board_formulario.go`, dos correos nuevos en `infrastructure/email/gmail_service.go`,
+  `infrastructure/email/simulado.go` y cinco rutas bajo `AdminOnly` en `cmd/server/main.go`:
+  `GET /api/admin/board/envios` (paginada, `X-Total-Count`; filtros `formulario`, `estado`, `desde`,
+  `hasta`, `filtro=sector|expertise` + `opcion`), `GET /api/admin/board/envios/{id}` (el detalle
+  descifrado y legible), `PUT /api/admin/board/envios/{id}/estado` (`aprobada` o `rechazada`; rechazar
+  exige motivo) y `GET`/`PUT /api/admin/board/destinatarios`. Cada envío nuevo manda un correo a los
+  destinatarios del panel (o al buzón de contacto si no hay ninguno) y queda `aviso_enviado` si salió a
+  todos. Cada decisión avisa a la persona por push (`{type: board_envio, id: A}`) y por correo, **sin el
+  motivo**, que es nota del comité (decidido el 2026-11-25). Nuevo: `LEGACY_CORREO_SIMULADO=1` hace que
+  el backend escriba los correos en el registro en vez de enviarlos, para probar en local sin escribirle
+  a nadie (las credenciales de Gmail locales son las reales).
+- **Criterios de QA:** (en local, con `LEGACY_CORREO_SIMULADO=1`)
+  1. Un usuario de la app recibe 403 en `GET /api/admin/board/envios?formulario=A`.
+  2. La lista trae nombre y correo descifrados y `X-Total-Count`; el filtro por un sector que el envío
+     tiene lo devuelve y por otro no; `estado=borrada`, `desde=ayer` y `formulario=Z` dan 400.
+  3. El detalle trae las secciones con etiquetas legibles (opciones, «Sí»/«No», fecha `dd/mm/aaaa`),
+     los campos cifrados marcados como confidenciales y la foto aparte.
+  4. Rechazar sin motivo da 400; con motivo, 200, y repetirlo da 409. En `board.envios` quedan el
+     motivo, el correo del administrador y la fecha.
+  5. `GET /api/board/formularios/A` desde la app trae el estado nuevo y no el motivo.
+  6. El registro muestra el push y el correo a la persona, sin el motivo, marcados como simulados.
+  7. Destinatarios: `PUT` con un correo inválido da 400; con mayúsculas y repetidos, guarda la lista
+     limpia.
+  8. Un envío nuevo escribe un correo simulado por destinatario y queda con `aviso_enviado = true`.
+
 ### [2026-11-25]: Legacy Board, fase 3: motor de formularios y Formulario A (backend)
 - **Alcance:** `internal/core/domain/board_formulario.go` (tipos de campo y la configuración del
   Formulario A: 5 secciones, 31 campos más la casilla de términos), `ports/board_opcion_ports.go`

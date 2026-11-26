@@ -112,6 +112,9 @@ type EnvioBoard struct {
 	EstadoMotivo     string     `json:"-"`
 	EstadoCambiadoEn *time.Time `json:"estado_cambiado_en,omitempty"`
 	CreadoEn         time.Time  `json:"creado_en"`
+	// Solo para el panel: nunca viajan a la app.
+	AvisoEnviado         bool   `json:"-"`
+	EstadoCambiadoPorStr string `json:"-"`
 }
 
 func entero(n int) *int { return &n }
@@ -183,4 +186,73 @@ var FormularioA = FormularioBoard{
 // la fase 4.
 var FormulariosBoard = map[string]*FormularioBoard{
 	"A": &FormularioA,
+}
+
+// Lo que sigue es del panel (fase 5): la bandeja, el detalle y los cambios de
+// estado. Va en tipos aparte de EnvioBoard, que es lo que ve la app, para que
+// el motivo del rechazo y los datos descifrados nunca viajen a ella por error.
+
+// FiltroEnviosBoard: lo que el panel puede pedir a la bandeja. Lo cifrado no se
+// puede filtrar en SQL, así que los filtros son el estado, la fecha y dos
+// listas en claro (sector y expertise).
+type FiltroEnviosBoard struct {
+	Formulario string
+	Estado     string
+	Desde      *time.Time
+	Hasta      *time.Time
+	// Campo y Opcion: una opción que la respuesta del campo debe contener
+	// («sectores» contiene la opción X). El servicio traduce «sector» y
+	// «expertise» al campo de cada formulario.
+	Campo  string
+	Opcion string
+	// Multiple: el campo es una lista (multiselección) y no un valor suelto.
+	Multiple bool
+}
+
+// CamposFiltroBoard traduce los filtros del panel al campo de cada formulario.
+// El B se completa en la fase 4.
+var CamposFiltroBoard = map[string]map[string]string{
+	"A": {"sector": "sectores", "expertise": "expertise"},
+}
+
+// ResumenEnvioBoard es una fila de la bandeja del panel.
+type ResumenEnvioBoard struct {
+	ID               string     `json:"id"`
+	Formulario       string     `json:"formulario"`
+	Nombre           string     `json:"nombre"`
+	Correo           string     `json:"correo"`
+	Estado           string     `json:"estado"`
+	AvisoEnviado     bool       `json:"aviso_enviado"`
+	CreadoEn         time.Time  `json:"creado_en"`
+	EstadoCambiadoEn *time.Time `json:"estado_cambiado_en,omitempty"`
+}
+
+// RespuestaLegibleBoard es un campo del detalle, ya traducido para leerlo:
+// etiquetas en vez de ids, «Sí»/«No», etc.
+type RespuestaLegibleBoard struct {
+	Clave    string `json:"clave"`
+	Etiqueta string `json:"etiqueta"`
+	Tipo     string `json:"tipo"`
+	// Valor: el texto que se muestra; vacío si no se respondió.
+	Valor string `json:"valor"`
+	// Valores: las etiquetas de una multiselección, una por elemento.
+	Valores []string `json:"valores,omitempty"`
+	// Confidencial: era un campo cifrado; el panel lo marca.
+	Confidencial bool `json:"confidencial"`
+}
+
+type SeccionLegibleBoard struct {
+	Titulo     string                  `json:"titulo"`
+	Respuestas []RespuestaLegibleBoard `json:"respuestas"`
+}
+
+// DetalleEnvioBoard es un envío completo para el comité, descifrado.
+type DetalleEnvioBoard struct {
+	ResumenEnvioBoard
+	Titulo            string                `json:"titulo"`
+	UserID            string                `json:"user_id"`
+	FotoURL           string                `json:"foto_url"`
+	EstadoMotivo      string                `json:"estado_motivo"`
+	EstadoCambiadoPor string                `json:"estado_cambiado_por"`
+	Secciones         []SeccionLegibleBoard `json:"secciones"`
 }

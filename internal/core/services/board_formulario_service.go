@@ -62,6 +62,16 @@ type BoardFormularioService struct {
 	// (recibe el nombre del archivo, sin /api/images/).
 	fotoExiste func(nombre string) bool
 	ahora      func() time.Time
+	// avisoNuevo avisa al comité de un envío ya guardado (BoardBandejaService).
+	// Puede ser nil: entonces no avisa a nadie.
+	avisoNuevo func(e *domain.EnvioBoard, nombre, correo string)
+}
+
+// ConAvisoNuevo conecta el aviso al comité. Va aparte del constructor porque
+// la bandeja se crea después y depende de los mismos repositorios.
+func (s *BoardFormularioService) ConAvisoNuevo(f func(e *domain.EnvioBoard, nombre, correo string)) *BoardFormularioService {
+	s.avisoNuevo = f
+	return s
 }
 
 func NewBoardFormularioService(opciones ports.BoardOpcionRepository, envios ports.BoardEnvioRepository,
@@ -136,7 +146,7 @@ func (s *BoardFormularioService) Enviar(ctx context.Context, userID, clave strin
 		opciones[o.ID] = o
 	}
 
-	envio, err := s.validar(f, in, opciones)
+	envio, cifrados, err := s.validar(f, in, opciones)
 	if err != nil {
 		return nil, err
 	}
@@ -149,11 +159,18 @@ func (s *BoardFormularioService) Enviar(ctx context.Context, userID, clave strin
 		}
 		return nil, err
 	}
+	if s.avisoNuevo != nil {
+		nombre, _ := cifrados["nombre_completo"].(string)
+		correo, _ := cifrados["correo"].(string)
+		s.avisoNuevo(envio, nombre, correo)
+	}
 	return envio, nil
 }
 
+// validar devuelve el envío listo para guardar y, aparte, los datos en claro
+// que acaba de cifrar (el aviso al comité necesita el nombre y el correo).
 func (s *BoardFormularioService) validar(f *domain.FormularioBoard, in ports.EntradaEnvioBoard,
-	opciones map[string]*domain.OpcionBoard) (*domain.EnvioBoard, error) {
+	opciones map[string]*domain.OpcionBoard) (*domain.EnvioBoard, map[string]any, error) {
 	conocidos := map[string]bool{}
 	respuestas := map[string]any{}
 	cifrados := map[string]any{}
@@ -164,11 +181,11 @@ func (s *BoardFormularioService) validar(f *domain.FormularioBoard, in ports.Ent
 			conocidos[c.Clave] = true
 			valor, presente, err := s.validarCampo(c, in.Respuestas[c.Clave], opciones)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !presente {
 				if c.Obligatorio {
-					return nil, errCampo(c, "es obligatorio")
+					return nil, nil, errCampo(c, "es obligatorio")
 				}
 				continue
 			}
@@ -186,23 +203,23 @@ func (s *BoardFormularioService) validar(f *domain.FormularioBoard, in ports.Ent
 	// decirlo que guardar algo que nadie va a leer.
 	for clave := range in.Respuestas {
 		if !conocidos[clave] {
-			return nil, &ErrCampoBoard{Campo: clave, Mensaje: "el formulario no tiene el campo «" + clave + "»"}
+			return nil, nil, &ErrCampoBoard{Campo: clave, Mensaje: "el formulario no tiene el campo «" + clave + "»"}
 		}
 	}
 	if !in.AceptaTerminos {
-		return nil, ErrFormularioBoardTerminos
+		return nil, nil, ErrFormularioBoardTerminos
 	}
 
 	plano, err := json.Marshal(cifrados)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	envio.DatosCifrados, err = s.cifrador.Encrypt(string(plano))
 	if err != nil {
-		return nil, fmt.Errorf("cifrando el envío: %w", err)
+		return nil, nil, fmt.Errorf("cifrando el envío: %w", err)
 	}
 	envio.Respuestas = respuestas
-	return envio, nil
+	return envio, cifrados, nil
 }
 
 // validarCampo devuelve el valor ya normalizado y si vino. Un texto vacío, un

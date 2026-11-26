@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"io/ioutil"
 	"strings"
 
@@ -452,5 +453,50 @@ func (s *GmailService) SendVerificationEmail(to, verifyLink string) error {
 		</div>
 	`, verifyLink, verifyLink)
 
+	return s.sendMessage(to, subject, body)
+}
+
+// SendBoardEnvioNuevoEmail avisa a los destinatarios del panel de una
+// postulación o solicitud nueva de Legacy Board. Lleva solo el nombre y el
+// correo: el resto, y sobre todo lo confidencial, se lee en el panel, que es
+// donde está descifrado y protegido por la sesión de administrador.
+func (s *GmailService) SendBoardEnvioNuevoEmail(to, titulo, nombre, correo string) error {
+	subject := fmt.Sprintf("Legacy Board: nueva %s - %s", strings.ToLower(titulo), nombre)
+	body := fmt.Sprintf(`
+		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+			<h2 style="color: #162540;">Nueva %s</h2>
+			<p>Llegó desde la app una nueva %s a Legacy Board:</p>
+			<div style="background-color: #f5f7f9; padding: 20px; border-left: 4px solid #306c9e; margin: 20px 0;">
+				<p><strong>Nombre:</strong> %s</p>
+				<p><strong>Correo:</strong> %s</p>
+			</div>
+			<p>Está pendiente de revisión. Para leerla completa y aprobarla o rechazarla, entra al panel de administración: <strong>Bandeja de Legacy Board</strong>.</p>
+			<hr style="border: none; border-top: 1px solid #eee;">
+			<p style="font-size: 12px; color: #777;">Legacy Network - Conectando líderes.</p>
+		</div>
+	`, html.EscapeString(strings.ToLower(titulo)), html.EscapeString(strings.ToLower(titulo)),
+		html.EscapeString(nombre), html.EscapeString(correo))
+	return s.sendMessage(to, subject, body)
+}
+
+// SendBoardEstadoEmail le cuenta a la persona la decisión del comité. No lleva
+// el motivo del rechazo: es una nota interna del comité (decidido el
+// 2026-11-25).
+func (s *GmailService) SendBoardEstadoEmail(to, nombre, titulo, estado string) error {
+	que := strings.ToLower(titulo)
+	subject := "Legacy Board: tu " + que + " fue revisada"
+	texto := fmt.Sprintf("El comité de curaduría <strong>aprobó</strong> tu %s a Legacy Board.", html.EscapeString(que))
+	if estado == "rechazada" {
+		texto = fmt.Sprintf("El comité de curaduría revisó tu %s a Legacy Board y esta vez no fue aprobada. Gracias por tu interés.", html.EscapeString(que))
+	}
+	body := fmt.Sprintf(`
+		<div style="font-family: Arial, sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+			<h2 style="color: #162540;">Hola, %s</h2>
+			<p>%s</p>
+			<p>Puedes ver el estado en la app, en Comunidad → Legacy Board.</p>
+			<hr style="border: none; border-top: 1px solid #eee;">
+			<p style="font-size: 12px; color: #777;">Legacy Network - Conectando líderes.</p>
+		</div>
+	`, html.EscapeString(nombre), texto)
 	return s.sendMessage(to, subject, body)
 }

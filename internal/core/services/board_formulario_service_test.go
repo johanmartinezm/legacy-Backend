@@ -16,6 +16,12 @@ type repoEnviosBoardFake struct {
 	actual *domain.EnvioBoard
 	creado *domain.EnvioBoard
 	choque bool
+	// De la bandeja (board_bandeja_service_test.go).
+	guardados   map[string]*domain.EnvioBoard
+	cambio      []string
+	destinos    []string
+	avisados    []string
+	filtroVisto domain.FiltroEnviosBoard
 }
 
 func (r *repoEnviosBoardFake) Create(ctx context.Context, e *domain.EnvioBoard) error {
